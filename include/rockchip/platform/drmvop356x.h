@@ -226,6 +226,8 @@ typedef struct DrmVop2Context{
                      std::vector<PlaneGroup *> &plane_groups,
                      DrmCompositionPlane::Type type, DrmCrtc *crtc,
                      std::pair<int, std::vector<DrmHwcLayer*>> layers, int zpos, bool match_best);
+  bool PreAlignForAfbc(DrmHwcLayer *layer);
+  void PrepareLayers(std::vector<DrmHwcLayer*> &layers);
  private:
   Vop2Ctx ctx;
 };

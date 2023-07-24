@@ -74,6 +74,8 @@ int Vop356x::TryHwcPolicy(
     DrmCrtc *crtc,
     bool gles_policy) {
 
+  PrepareLayers(layers);
+
   int ret;
   // Get PlaneGroup
   if(plane_groups.size() == 0){
@@ -1801,6 +1803,39 @@ bool Vop356x::CheckGLESLayer(DrmHwcLayer *layer){
       break;
   }
   return false;
+}
+
+#ifndef ALIGN_DOWN
+#define ALIGN_DOWN(value, base) (value & (~(base - 1)))
+#endif
+
+bool Vop356x::PreAlignForAfbc(DrmHwcLayer *layer){
+  if(layer->bAfbcd_){
+    int src_w = static_cast<int>(layer->source_crop.right - layer->source_crop.left);
+    int src_w_fix = ALIGN_DOWN(src_w,4);
+    if(src_w != src_w_fix){
+      auto origin_crop_right = layer->source_crop.right;
+      layer->source_crop.right = layer->source_crop.left + src_w_fix;
+      HWC2_ALOGD_IF_DEBUG(
+          "layer[%u] (%f,%f,%f,%f)=>(%f,%f,%f,%f) sLayerName=%s", layer->uId_,
+          layer->source_crop.left, origin_crop_right,
+          layer->source_crop.top, layer->source_crop.bottom,
+          layer->source_crop.left, layer->source_crop.right,
+          layer->source_crop.top, layer->source_crop.bottom,
+          layer->sLayerName_.c_str());
+      return true;
+    }
+  }
+  return false;
+}
+
+void Vop356x::PrepareLayers(std::vector<DrmHwcLayer*> &layers){
+
+  for(auto layer:layers){
+    //将afbc图层预对齐至4，使其可被硬件合成，提高流畅度
+    //注意！！此修改可能会导致缩放等动画不平滑
+    PreAlignForAfbc(layer);
+  }
 }
 
 void Vop356x::InitRequestContext(std::vector<DrmHwcLayer*> &layers){
