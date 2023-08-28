@@ -168,13 +168,13 @@ int DrmConnector::Init() {
   // Kernel version 5.10 to get color_format_caps
   ret = drm_->GetConnectorProperty(*this, "color_format_caps", &color_format_caps_property_);
   if (ret) {
-    ALOGW("Could not get hdmi_output_format property\n");
+    ALOGW("Could not get color_format_caps property\n");
   }
 
   // Kernel version 5.10 to get color_depth_caps
   ret = drm_->GetConnectorProperty(*this, "color_depth_caps", &color_depth_caps_property_);
   if (ret) {
-   ALOGW("Could not get hdmi_output_depth property\n");
+    ALOGW("Could not get color_depth_caps property\n");
   }
 
   unique_id_=0;
@@ -912,6 +912,7 @@ int DrmConnector::UpdateOutputFormat(int display_id, int update_base_timeline){
   }
 
   if(need_change_format > 0) {
+    color_format = FilterColorFormatWithCaps(color_format);
     ALOGI("%s,line=%d %s change hdmi output format: %d", __FUNCTION__,__LINE__, cUniqueName_, color_format);
     ret = drmModeAtomicAddProperty(pset, id(), color_format_property().id(), color_format);
     if (ret < 0) {
@@ -994,6 +995,7 @@ int DrmConnector::UpdateOutputFormat(drmModeAtomicReqPtr pset){
     color_depth = depth_24bit;
   }
 
+  color_format = FilterColorFormatWithCaps(color_format);
   ALOGI("%s,line=%d %s change hdmi output format: %d", __FUNCTION__,__LINE__, cUniqueName_, color_format);
   ret = drmModeAtomicAddProperty(pset, id(), color_format_property().id(), color_format);
   if (ret < 0) {
@@ -1250,6 +1252,7 @@ int DrmConnector::switch_hdmi_hdr_mode(drmModeAtomicReqPtr pset,
     UpdateOutputFormat(pset);
   }else{
     color_depth = is_10bit ? depth_30bit : depth_24bit;
+    uColorFormat_ = FilterColorFormatWithCaps(uColorFormat_);
     HWC2_ALOGD_IF_DEBUG("change hdmi output format: %d", uColorFormat_);
     ret = drmModeAtomicAddProperty(pset, id(), color_format_property().id(), uColorFormat_);
     if (ret < 0) {
@@ -1381,6 +1384,7 @@ int DrmConnector::switch_hdmi_hdr_mode_by_medadata(drmModeAtomicReqPtr pset,
   if(hwc_get_int_property("persist.sys.vivid.hdr_mode", "2") == 0 || hdmi_metadata_type.eotf == TRADITIONAL_GAMMA_SDR){
     UpdateOutputFormat(pset);
   }else{
+    uColorFormat_ = FilterColorFormatWithCaps(uColorFormat_);
     HWC2_ALOGD_IF_DEBUG("change hdmi output format: %d", uColorFormat_);
     ret = drmModeAtomicAddProperty(pset, id(), color_format_property().id(), uColorFormat_);
     if (ret < 0) {
@@ -1488,6 +1492,20 @@ int DrmConnector::getCropInfo(int32_t *srcX, int32_t *srcY, int32_t *srcW, int32
   *srcW = SrcW_;
   *srcH = SrcH_;
   return 0;
+}
+
+int DrmConnector::FilterColorFormatWithCaps(int inFormat){
+  int outFormat = inFormat;
+  if(color_format_caps_property_.id() > 0 ){
+    int ret;
+    uint64_t uColorFormatCap;
+    std::tie(ret,uColorFormatCap) = color_format_caps_property_.value();
+    HWC2_ALOGD_IF_DEBUG("filter color format %d with caps:%" PRIx64, inFormat, uColorFormatCap);
+    if(((1<<outFormat)&uColorFormatCap)==0){
+      outFormat=RK_IF_FORMAT_YCBCR_HQ;
+    }
+  }
+  return inFormat;
 }
 
 }  // namespace android

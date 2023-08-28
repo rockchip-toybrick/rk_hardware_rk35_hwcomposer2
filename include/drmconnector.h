@@ -29,6 +29,17 @@
 #include <vector>
 #include <map>
 #include <mutex>
+
+enum rk_if_color_format {
+	RK_IF_FORMAT_RGB, /* default RGB */
+	RK_IF_FORMAT_YCBCR444, /* YCBCR 444 */
+	RK_IF_FORMAT_YCBCR422, /* YCBCR 422 */
+	RK_IF_FORMAT_YCBCR420, /* YCBCR 420 */
+	RK_IF_FORMAT_YCBCR_HQ, /* Highest subsampled YUV */
+	RK_IF_FORMAT_YCBCR_LQ, /* Lowest subsampled YUV */
+	RK_IF_FORMAT_MAX,
+};
+
 namespace android {
 
 #define DRM_CONNECTOR_SPILT_MODE_MASK 0xf0
@@ -177,6 +188,7 @@ class DrmConnector {
   const std::vector<DrmHdr> &get_hdr_support_list() const { return drmHdr_; }
   struct drm_hdr_static_metadata_infoframe* get_hdr_metadata_ptr(){ return &hdr_metadata_; };
   const struct disp_info* baseparameter_info(){ return baseparameter_ready_ ? &baseparameter_ : NULL; }
+  int FilterColorFormatWithCaps(int inFormat); 
 
   // VRR
   const std::vector<int> &vrr_modes() const {
