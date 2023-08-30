@@ -2065,7 +2065,7 @@ int Vop3588::TryAcceleratePolicy(
     return ret;
   else{
     ResetLayerFromTmpExceptFB(layers,tmp_layers);
-    for(--layer_indices.first; layer_indices.first > 0; --layer_indices.first){
+    for(--layer_indices.first; layer_indices.first >= 0; --layer_indices.first){
       ALOGD_IF(LogLevel(DBG_DEBUG), "%s:mix accelerate layer (%d,%d)",__FUNCTION__,layer_indices.first, layer_indices.second);
       OutputMatchLayer(layer_indices.first, layer_indices.second, layers, tmp_layers);
       ret = MatchPlanes(composition,layers,crtc,plane_groups);
@@ -3839,6 +3839,11 @@ int Vop3588::InitContext(
     ctx.state.setHwcPolicy.insert(HWC_GLES_POLICY);
     if(ctx.request.bSidebandStreamMode){
       ctx.state.setHwcPolicy.insert(HWC_GLES_SIDEBAND_LOPICY);
+    }
+
+    if(ctx.request.accelerate_app_exist_){
+      ALOGD_IF(LogLevel(DBG_DEBUG),"accelerate_app_exist_ , soc_id=%x", ctx.state.iSocId);
+      ctx.state.setHwcPolicy.insert(HWC_ACCELERATE_LOPICY);
     }
     return 0;
   }
