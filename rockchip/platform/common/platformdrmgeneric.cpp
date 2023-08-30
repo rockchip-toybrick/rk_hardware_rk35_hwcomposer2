@@ -209,9 +209,6 @@ int DrmGenericImporter::ImportBuffer(buffer_handle_t handle, hwc_drm_bo_t *bo) {
     }
   }
 
-  // set gem_handle and offsets
-  bo->gem_handles[0] = gem_handle;
-
   if(DrmFormatToPlaneNum(bo->format) == 2){
     if(bo->format == DRM_FORMAT_NV24 ||
        bo->format == DRM_FORMAT_NV42){

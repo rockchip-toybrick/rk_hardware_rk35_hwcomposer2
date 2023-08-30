@@ -1021,6 +1021,14 @@ int DrmDisplayCompositor::CollectCommitInfo(drmModeAtomicReqPtr pset,
 
     crtc = comp_plane.crtc();
 
+
+    // 来源于BYD Coverty 分析，分析后续处理可能存在空指针问题
+    // 针对此问题，进行修复
+    if(plane == NULL){
+        ALOGE("plane is null");
+        continue;
+    }
+
     if (comp_plane.type() != DrmCompositionPlane::Type::kDisable) {
 
       if(source_layers.empty()){
@@ -1217,7 +1225,7 @@ int DrmDisplayCompositor::CollectCommitInfo(drmModeAtomicReqPtr pset,
     out_log << "DrmDisplayCompositor[" << index << "]"
             << " frame_no=" << display_comp->frame_no()
             << " display=" << display_comp->display()
-            << " plane=" << (plane ? plane->name() : "Unknow")
+            << " plane=" <<  plane->name()
             << " crct id=" << crtc->id()
             << " fb id=" << fb_id
             << " display_frame[" << dst_l << ","
