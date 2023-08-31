@@ -296,8 +296,7 @@ struct DrmHwcLayer {
   rk_hdr_fmt_info_t metadataHdrFmtInfo_;
 
   // fps
-  float fRealFps_;
-  int fRealMaxFps_;
+  float fFps_;
 
 #ifdef RK3528
   // RK3528 vpu prescale info.

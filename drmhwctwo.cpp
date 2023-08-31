@@ -2438,6 +2438,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateDisplay(uint32_t *num_types,
       layer.set_validated_type(HWC2::Composition::Client);
       ++*num_types;
     }
+    layer.StateChange();
   }
 
   if(!client_layer_.isAfbc()){
@@ -3730,8 +3731,7 @@ void DrmHwcTwo::HwcLayer::PopulateDrmLayer(hwc2_layer_t layer_id, DrmHwcLayer *d
   drmHwcLayer->bMatch_ = false;
   drmHwcLayer->IsMetadataHdr_ = false;
   drmHwcLayer->bSideband2_ = false;
-  drmHwcLayer->fRealFps_ = GetRealFps();
-  drmHwcLayer->fRealMaxFps_ = GetRealMaxFps();
+  drmHwcLayer->fFps_ = GetActiveFps();
 
 #ifdef RK3528
   // RK3528 仅 VOP支持AFBC格式，如果遇到以下两个问题需要启用解码预缩小功能：
@@ -4102,21 +4102,21 @@ void DrmHwcTwo::HwcLayer::DumpLayerInfo(String8 &output) {
                        " %-11.11s | %-10.10s |%7.1f,%7.1f,%7.1f,%7.1f |%5d,%5d,%5d,%5d |"
                        " %10x | %5.1f  | %s | 0x%" PRIx64 "\n",
                     id_,
-                    mCurrentState.z_order_,
-                    to_string(mCurrentState.sf_type_).c_str(),
-                    to_string(mCurrentState.validated_type_).c_str(),
+                    mDrawingState.z_order_,
+                    to_string(mDrawingState.sf_type_).c_str(),
+                    to_string(mDrawingState.validated_type_).c_str(),
                     intptr_t(buffer_),
-                    to_string(mCurrentState.transform_).c_str(),
-                    to_string(mCurrentState.blending_).c_str(),
-                    mCurrentState.source_crop_.left,
-                    mCurrentState.source_crop_.top,
-                    mCurrentState.source_crop_.right,
-                    mCurrentState.source_crop_.bottom,
-                    mCurrentState.display_frame_.left,
-                    mCurrentState.display_frame_.top,
-                    mCurrentState.display_frame_.right,
-                    mCurrentState.display_frame_.bottom,
-                    mCurrentState.dataspace_,
+                    to_string(mDrawingState.transform_).c_str(),
+                    to_string(mDrawingState.blending_).c_str(),
+                    mDrawingState.source_crop_.left,
+                    mDrawingState.source_crop_.top,
+                    mDrawingState.source_crop_.right,
+                    mDrawingState.source_crop_.bottom,
+                    mDrawingState.display_frame_.left,
+                    mDrawingState.display_frame_.top,
+                    mDrawingState.display_frame_.right,
+                    mDrawingState.display_frame_.bottom,
+                    mDrawingState.dataspace_,
                     GetFps(),
                     layer_name_.c_str(),
                     pBufferInfo_ != NULL ? pBufferInfo_->uBufferId_ : -1);

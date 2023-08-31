@@ -76,6 +76,11 @@ class DrmHwcTwo : public hwc2_device_t {
       bSideband2_=false;
       sidebandStreamHandle_ = NULL;
       memset(&mSidebandInfo_, 0x00, sizeof(vt_sideband_data_t));
+      uFrameCnt_ = 0;
+      uLastFrameCnt_ = 0;
+      lastTimeRecod_ = 0;
+      last_buffer_id_ = 0;
+      mSvepFps_ = 0;
     };
 
     void clear(){
@@ -259,15 +264,8 @@ class DrmHwcTwo : public hwc2_device_t {
                              bufferInfoMap_.size(),buffer_id,pBufferInfo_->sLayerName_.c_str());
       }
 
-      if(mDrawingState.buffer_ != mCurrentState.buffer_){
-          nsecs_t current_time = systemTime();
-          qFrameTimestamp_.push(current_time);
-          qFrameTimestampBack_.push(current_time);
-          while(qFrameTimestamp_.size() > MAX_NUM_FRAME_TIMESTAMP_CNT){
-            qFrameTimestamp_.pop();
-            qFrameTimestampBack_.pop();
-          }
-        }
+
+      calculateFPS(buffer_id);
       // ALOGI("rk-debug Name=%s mFps=%f", pBufferInfo_->sLayerName_.c_str(), GetFps());;
     }
 
@@ -316,14 +314,9 @@ class DrmHwcTwo : public hwc2_device_t {
                             pBufferInfo_->uModifier_,
                             pBufferInfo_->sLayerName_.c_str());
 
-      if(mDrawingState.buffer_ != mCurrentState.buffer_){
-        nsecs_t current_time = systemTime();
-        qFrameTimestamp_.push(current_time);
-        qFrameTimestampBack_.push(current_time);
-        while(qFrameTimestamp_.size() > MAX_NUM_FRAME_TIMESTAMP_CNT){
-          qFrameTimestamp_.pop();
-          qFrameTimestampBack_.pop();
-        }
+      if(last_buffer_id_ != buffer_id){
+          uFrameCnt_++;
+          last_buffer_id_ = buffer_id;
       }
     }
 
@@ -368,6 +361,10 @@ class DrmHwcTwo : public hwc2_device_t {
                             pBufferInfo_->iUsage_,
                             pBufferInfo_->uModifier_,
                             pBufferInfo_->sLayerName_.c_str());
+      if(last_buffer_id_ != buffer_id){
+          uFrameCnt_++;
+          last_buffer_id_ = buffer_id;
+      }
     }
 
     int initOrGetGemhanleFromCache(DrmHwcLayer* drmHwcLayer) {
@@ -507,43 +504,41 @@ class DrmHwcTwo : public hwc2_device_t {
     bool isSidebandLayer() { return bSideband2_; }
     int getTunnelId() { return mSidebandInfo_.tunnel_id; }
 
-    float GetFps(){
-      nsecs_t current_time = systemTime();
-      nsecs_t start_time = qFrameTimestamp_.front();
-      while( !qFrameTimestamp_.empty() && (current_time - start_time > float(s2ns(1)) )){
-        qFrameTimestamp_.pop();
-        start_time = qFrameTimestamp_.front();
-      }
-      if(!qFrameTimestamp_.empty()){
-        mFps_ =  qFrameTimestamp_.size() * float(s2ns(1)) / (current_time - start_time);
-      }else{
-        mFps_ = 0;
+    int calculateFPS(uint64_t buffer_id){
+      // 若BufferId一致，则认为图层没有更新
+      if(last_buffer_id_ == buffer_id){
+          return 0;
       }
 
+      uFrameCnt_++;
+      last_buffer_id_ = buffer_id;
+
+      if(uLastFrameCnt_ == 0){
+        mSvepFps_ = 60;
+      }
+
+      // 如果图层更新间隔大于300ms仅计算实时fps，不计算active fps
+      nsecs_t current_time = systemTime();
+      if((current_time - last_buffer_id_timestamp_) > float(ms2ns(300))){
+        mFps_ = (uFrameCnt_ - uLastFrameCnt_) * float(s2ns(1)) / ((current_time - lastTimeRecod_));
+        uLastFrameCnt_ = uFrameCnt_;
+        lastTimeRecod_ = current_time;
+      }else if((uFrameCnt_ - uLastFrameCnt_) > MAX_NUM_FRAME_TIMESTAMP_CNT){
+        mFps_ = (uFrameCnt_ - uLastFrameCnt_) * float(s2ns(1)) / ((current_time - lastTimeRecod_));
+        mSvepFps_ = mFps_;
+        uLastFrameCnt_ = uFrameCnt_;
+        lastTimeRecod_ = current_time;
+      }
+      last_buffer_id_timestamp_ = current_time;
+      return 0;
+    }
+
+    float GetFps(){
       return mFps_;
     }
 
-    float GetRealFps(){
-      nsecs_t end_time = qFrameTimestampBack_.back();
-      nsecs_t start_time = qFrameTimestampBack_.front();
-      if(qFrameTimestampBack_.size() > 10){
-        mRealFps_ =  qFrameTimestampBack_.size() * float(s2ns(1)) / (end_time - start_time);
-        if(mRealMaxFps_ < mRealFps_){
-          mRealMaxFps_ = (int)mRealFps_;
-        }
-      }else{
-        mRealFps_ = 60;
-      }
-
-      return mRealFps_;
-    }
-
-    int GetRealMaxFps(){
-      if(mRealMaxFps_ != -1){
-        return mRealMaxFps_;
-      }
-
-      return 60;
+    float GetActiveFps(){
+      return mSvepFps_;
     }
 
     int DoSvep(bool validate, DrmHwcLayer *drmHwcLayer);
@@ -594,14 +589,15 @@ class DrmHwcTwo : public hwc2_device_t {
     std::shared_ptr<LayerInfoCache> pBufferInfo_ = NULL;
 
     // Hwc2Layer fps, for debug.
-    std::queue<nsecs_t> qFrameTimestamp_;
-    std::queue<nsecs_t> qFrameTimestampBack_;
+    uint64_t uFrameCnt_;
+    uint64_t uLastFrameCnt_;
+    nsecs_t lastTimeRecod_;
+    nsecs_t last_buffer_id_timestamp_;
+    uint64_t last_buffer_id_;
     // 考虑世界时间的fps, 1s内不刷新则刷新率为0
     float mFps_ = 0;
-    // 图层更新的fps，不考虑世界时间，提供已刷新的图层刷新率
-    float mRealFps_ = 0;
-    // 记录图层真实最高刷新率
-    int mRealMaxFps_ = -1;
+    // SVEP 使用的帧率估计
+    float mSvepFps_ = 0;
 
     // DRM Resource
     DrmGralloc *drmGralloc_;

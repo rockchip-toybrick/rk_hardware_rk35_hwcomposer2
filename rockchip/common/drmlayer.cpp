@@ -1064,7 +1064,7 @@ int DrmHwcLayer::DumpInfo(String8 &out){
                    TransformToString(transform).c_str(),transform,alpha,BlendingToString(blending).c_str(),
                    source_crop.left,source_crop.top,source_crop.right,source_crop.bottom,
                    display_frame.left,display_frame.top,display_frame.right,display_frame.bottom,bAfbcd_,
-                   bHdr_, fRealFps_);
+                   bHdr_, fFps_);
     else
       out.appendFormat( "DrmHwcLayer[%4u] Buffer[w/h/s/bs/format]=[%4d,%4d,%4d,%4d,%4d,%4d] Fourcc=%c%c%c%c Transform=%-8.8s(0x%x) Blend[a=%d]=%-8.8s "
                         "source_crop[l,t,r,b]=[%5.0f,%5.0f,%5.0f,%5.0f] display_frame[l,t,r,b]=[%4d,%4d,%4d,%4d],skip=%d,afbcd=%d hdr=%d fps=%f \n",
@@ -1072,7 +1072,7 @@ int DrmHwcLayer::DumpInfo(String8 &out){
                        TransformToString(transform).c_str(),transform,alpha,BlendingToString(blending).c_str(),
                        source_crop.left,source_crop.top,source_crop.right,source_crop.bottom,
                        display_frame.left,display_frame.top,display_frame.right,display_frame.bottom,bSkipLayer_,bAfbcd_,
-                       bHdr_, fRealFps_);
+                       bHdr_, fFps_);
     return 0;
 }
 
