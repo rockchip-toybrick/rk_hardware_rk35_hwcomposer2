@@ -224,10 +224,6 @@ class DrmHwcTwo : public hwc2_device_t {
         }else{
           pBufferInfo_ = ret.first->second;
           pBufferInfo_->uBufferId_ = buffer_id;
-          int ret = drmGralloc_->importBuffer(buffer_, &pBufferInfo_->native_buffer_);
-          if(ret){
-            HWC2_ALOGD_IF_WARN("buffer-id=0x%" PRIx64 " importBuffer fail.", buffer_id);
-          }
           // Bug:#426310
           // 多路视频同时输出，SurfaceFlinger可能会频繁触发 buffer_handle_t import/release行为
           // 可能会导致HWC本地cache的fd失效，故需要本地dup dma-buffer-fd副本，确保fd有效
@@ -282,10 +278,6 @@ class DrmHwcTwo : public hwc2_device_t {
       drmGralloc_->hwc_get_handle_buffer_id(buffer_, &buffer_id);
       pBufferInfo_ = std::make_shared<LayerInfoCache>();
       pBufferInfo_->uBufferId_ = buffer_id;
-      int ret = drmGralloc_->importBuffer(buffer_, &pBufferInfo_->native_buffer_);
-      if(ret){
-        HWC2_ALOGD_IF_WARN("buffer-id=0x%" PRIx64 " importBuffer fail.", buffer_id);
-      }
       pBufferInfo_->iFd_     = base::unique_fd(dup(drmGralloc_->hwc_get_handle_primefd(buffer_)));
       pBufferInfo_->iWidth_  = drmGralloc_->hwc_get_handle_attibute(buffer_,ATT_WIDTH);
       pBufferInfo_->iHeight_ = drmGralloc_->hwc_get_handle_attibute(buffer_,ATT_HEIGHT);
@@ -329,10 +321,6 @@ class DrmHwcTwo : public hwc2_device_t {
       uint64_t buffer_id;
       drmGralloc_->hwc_get_handle_buffer_id(buffer_, &buffer_id);
       pBufferInfo_ = std::make_shared<LayerInfoCache>();
-      int ret = drmGralloc_->importBuffer(buffer_, &pBufferInfo_->native_buffer_);
-      if(ret){
-        HWC2_ALOGD_IF_WARN("buffer-id=0x%" PRIx64 " importBuffer fail.", buffer_id);
-      }
       pBufferInfo_->uBufferId_ = buffer_id;
       pBufferInfo_->iFd_     = base::unique_fd(dup(drmGralloc_->hwc_get_handle_primefd(buffer_)));
       pBufferInfo_->iWidth_  = drmGralloc_->hwc_get_handle_attibute(buffer_,ATT_WIDTH);

@@ -47,7 +47,6 @@ class LayerInfoCache{
   LayerInfoCache(const LayerInfoCache&) = delete;
   LayerInfoCache& operator=(const LayerInfoCache&) = delete;
 
-  buffer_handle_t native_buffer_ = NULL;
   base::unique_fd iFd_;
   int iFormat_=0;
   int iWidth_=0;

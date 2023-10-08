@@ -3717,7 +3717,7 @@ void DrmHwcTwo::HwcLayer::PopulateNormalLayer(DrmHwcLayer *drmHwcLayer,
     drmHwcLayer->SetDisplayFrameMirror(mCurrentState.display_frame_);
 
     if(buffer_){
-      drmHwcLayer->sf_handle =  pBufferInfo_->native_buffer_;
+      drmHwcLayer->sf_handle  = buffer_;
       drmHwcLayer->uBufferId_ = pBufferInfo_->uBufferId_;
       drmHwcLayer->iFd_     = pBufferInfo_->iFd_.get();
       drmHwcLayer->iWidth_  = pBufferInfo_->iWidth_;
