@@ -227,7 +227,7 @@ class DrmHwcTwo : public hwc2_device_t {
           // Bug:#426310
           // 多路视频同时输出，SurfaceFlinger可能会频繁触发 buffer_handle_t import/release行为
           // 可能会导致HWC本地cache的fd失效，故需要本地dup dma-buffer-fd副本，确保fd有效
-          pBufferInfo_->iFd_     = base::unique_fd(dup(drmGralloc_->hwc_get_handle_primefd(buffer_)));
+          pBufferInfo_->uniqueFd_     = base::unique_fd(dup(drmGralloc_->hwc_get_handle_primefd(buffer_)));
           pBufferInfo_->iWidth_  = drmGralloc_->hwc_get_handle_attibute(buffer_,ATT_WIDTH);
           pBufferInfo_->iHeight_ = drmGralloc_->hwc_get_handle_attibute(buffer_,ATT_HEIGHT);
           pBufferInfo_->iStride_ = drmGralloc_->hwc_get_handle_attibute(buffer_,ATT_STRIDE);
@@ -278,7 +278,7 @@ class DrmHwcTwo : public hwc2_device_t {
       drmGralloc_->hwc_get_handle_buffer_id(buffer_, &buffer_id);
       pBufferInfo_ = std::make_shared<LayerInfoCache>();
       pBufferInfo_->uBufferId_ = buffer_id;
-      pBufferInfo_->iFd_     = base::unique_fd(dup(drmGralloc_->hwc_get_handle_primefd(buffer_)));
+      pBufferInfo_->uniqueFd_     = base::unique_fd(dup(drmGralloc_->hwc_get_handle_primefd(buffer_)));
       pBufferInfo_->iWidth_  = drmGralloc_->hwc_get_handle_attibute(buffer_,ATT_WIDTH);
       pBufferInfo_->iHeight_ = drmGralloc_->hwc_get_handle_attibute(buffer_,ATT_HEIGHT);
       pBufferInfo_->iStride_ = drmGralloc_->hwc_get_handle_attibute(buffer_,ATT_STRIDE);
@@ -294,7 +294,7 @@ class DrmHwcTwo : public hwc2_device_t {
       HWC2_ALOGD_IF_VERBOSE("bufferInfoMap_ size = %zu insert success! BufferId=%" PRIx64
                             " fd=%d w=%d h=%d format=%d fourcc=%c%c%c%c usage=%" PRIx64 " modifier=%" PRIx64 " Name=%s",
                             bufferInfoMap_.size(),buffer_id,
-                            pBufferInfo_->iFd_.get(),
+                            pBufferInfo_->uniqueFd_.get(),
                             pBufferInfo_->iWidth_,
                             pBufferInfo_->iHeight_,
                             pBufferInfo_->iFormat_,
@@ -322,7 +322,7 @@ class DrmHwcTwo : public hwc2_device_t {
       drmGralloc_->hwc_get_handle_buffer_id(buffer_, &buffer_id);
       pBufferInfo_ = std::make_shared<LayerInfoCache>();
       pBufferInfo_->uBufferId_ = buffer_id;
-      pBufferInfo_->iFd_     = base::unique_fd(dup(drmGralloc_->hwc_get_handle_primefd(buffer_)));
+      pBufferInfo_->uniqueFd_     = base::unique_fd(dup(drmGralloc_->hwc_get_handle_primefd(buffer_)));
       pBufferInfo_->iWidth_  = drmGralloc_->hwc_get_handle_attibute(buffer_,ATT_WIDTH);
       pBufferInfo_->iHeight_ = drmGralloc_->hwc_get_handle_attibute(buffer_,ATT_HEIGHT);
       pBufferInfo_->iStride_ = drmGralloc_->hwc_get_handle_attibute(buffer_,ATT_STRIDE);
@@ -338,7 +338,7 @@ class DrmHwcTwo : public hwc2_device_t {
       HWC2_ALOGD_IF_VERBOSE("bufferInfoMap_ size = %zu insert success! BufferId=%" PRIx64
                             " fd=%d w=%d h=%d format=%d fourcc=%c%c%c%c usage=%" PRIx64 " modifier=%" PRIx64 " Name=%s",
                             bufferInfoMap_.size(),buffer_id,
-                            pBufferInfo_->iFd_.get(),
+                            pBufferInfo_->uniqueFd_.get(),
                             pBufferInfo_->iWidth_,
                             pBufferInfo_->iHeight_,
                             pBufferInfo_->iFormat_,
@@ -365,7 +365,7 @@ class DrmHwcTwo : public hwc2_device_t {
       uint64_t buffer_id = pBufferInfo_->uBufferId_;
       if(!pBufferInfo_->gemHandle_.isValid()){
         pBufferInfo_->gemHandle_.InitGemHandle(pBufferInfo_->sLayerName_.c_str(),
-                                               pBufferInfo_->iFd_.get(),
+                                               pBufferInfo_->uniqueFd_.get(),
                                                buffer_id);
         pBufferInfo_->uGemHandle_ = pBufferInfo_->gemHandle_.GetGemHandle();
         drmHwcLayer->uGemHandle_ = pBufferInfo_->gemHandle_.GetGemHandle();
@@ -415,7 +415,7 @@ class DrmHwcTwo : public hwc2_device_t {
       }else{
         pBufferInfo_ = ret.first->second;
         pBufferInfo_->uBufferId_ = buffer_id;
-        pBufferInfo_->iFd_     = base::unique_fd(dup(drmGralloc_->hwc_get_handle_primefd(sidebandStreamHandle_)));
+        pBufferInfo_->uniqueFd_     = base::unique_fd(dup(drmGralloc_->hwc_get_handle_primefd(sidebandStreamHandle_)));
         pBufferInfo_->iWidth_  = drmGralloc_->hwc_get_handle_attibute(sidebandStreamHandle_,ATT_WIDTH);
         pBufferInfo_->iHeight_ = drmGralloc_->hwc_get_handle_attibute(sidebandStreamHandle_,ATT_HEIGHT);
         pBufferInfo_->iStride_ = drmGralloc_->hwc_get_handle_attibute(sidebandStreamHandle_,ATT_STRIDE);
@@ -427,7 +427,7 @@ class DrmHwcTwo : public hwc2_device_t {
         pBufferInfo_->uModifier_ = drmGralloc_->hwc_get_handle_format_modifier(sidebandStreamHandle_);
         drmGralloc_->hwc_get_handle_name(sidebandStreamHandle_,pBufferInfo_->sLayerName_);
         layer_name_ = pBufferInfo_->sLayerName_;
-        pBufferInfo_->gemHandle_.InitGemHandle(pBufferInfo_->sLayerName_.c_str(), pBufferInfo_->iFd_, buffer_id);
+        pBufferInfo_->gemHandle_.InitGemHandle(pBufferInfo_->sLayerName_.c_str(), pBufferInfo_->uniqueFd_.get(), buffer_id);
         pBufferInfo_->uGemHandle_ = pBufferInfo_->gemHandle_.GetGemHandle();
         HWC2_ALOGD_IF_VERBOSE("bufferInfoMap_ size = %zu insert success! BufferId=%" PRIx64 " Name=%s",
                             bufferInfoMap_.size(),buffer_id,pBufferInfo_->sLayerName_.c_str());

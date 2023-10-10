@@ -25,6 +25,7 @@
 
 #include <hardware/hardware.h>
 #include <hardware/hwcomposer2.h>
+#include <android-base/unique_fd.h>
 
 #include "utils/autofd.h"
 #include "drmhwcgralloc.h"
@@ -167,8 +168,10 @@ struct DrmLayerInfoStore{
   hwc_frect_t source_crop;
   hwc_rect_t display_frame;
 
-  // Buffer info
+  // BufferId fd, 值为 uniqueFd_.get()
   int iFd_;
+  // uniqueFd
+  base::unique_fd uniqueFd_;
   int iFormat_;
   int iWidth_;
   int iHeight_;
@@ -234,7 +237,10 @@ struct DrmHwcLayer {
 
   // Buffer info
   uint64_t uBufferId_;
+  // fd, 值为 uniqueFd_.get()
   int iFd_;
+  // uniqueFd
+  base::unique_fd uniqueFd_;
   int iFormat_;
   int iWidth_;
   int iHeight_;

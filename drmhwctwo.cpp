@@ -1704,7 +1704,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::PresentVirtualDisplay(int32_t *retire_fence) 
         src_rect.height = resetBuffer->GetHeight();
 
         // Set dst buffer info
-        dst.fd      = bufferinfo->iFd_;
+        dst.fd      = bufferinfo->uniqueFd_.get();
         dst.width   = bufferinfo->iWidth_;
         dst.height  = bufferinfo->iHeight_;
         dst.wstride = bufferinfo->iStride_;
@@ -1787,7 +1787,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::PresentVirtualDisplay(int32_t *retire_fence) 
       memset(&dst_rect, 0x00, sizeof(im_rect));
 
       // Set dst buffer info
-      dst.fd      = bufferinfo->iFd_;
+      dst.fd      = bufferinfo->uniqueFd_.get();
       dst.width   = bufferinfo->iWidth_;
       dst.height  = bufferinfo->iHeight_;
       dst.wstride = bufferinfo->iStride_;
@@ -3635,6 +3635,7 @@ void DrmHwcTwo::HwcLayer::PopulateSidebandLayer(DrmHwcLayer *drmHwcLayer,
         drmHwcLayer->SetDisplayFrameMirror(mCurrentState.display_frame_);
 
         drmHwcLayer->iFd_     = -1;
+        drmHwcLayer->uniqueFd_.reset();
         drmHwcLayer->iWidth_  = mSidebandInfo_.crop.right - mSidebandInfo_.crop.left;
         drmHwcLayer->iHeight_ = mSidebandInfo_.crop.bottom - mSidebandInfo_.crop.top;
         drmHwcLayer->iStride_ = mSidebandInfo_.crop.right - mSidebandInfo_.crop.left;;
@@ -3650,6 +3651,7 @@ void DrmHwcTwo::HwcLayer::PopulateSidebandLayer(DrmHwcLayer *drmHwcLayer,
         drmHwcLayer->eDataSpace_ = (android_dataspace_t)mSidebandInfo_.data_space;
       }else{
         drmHwcLayer->iFd_     = -1;
+        drmHwcLayer->uniqueFd_.reset();
         drmHwcLayer->iWidth_  = -1;
         drmHwcLayer->iHeight_ = -1;
         drmHwcLayer->iStride_ = -1;
@@ -3678,7 +3680,8 @@ void DrmHwcTwo::HwcLayer::PopulateSidebandLayer(DrmHwcLayer *drmHwcLayer,
       drmHwcLayer->SetDisplayFrameMirror(mCurrentState.display_frame_);
 
       if(mCurrentState.sidebandStreamHandle_){
-        drmHwcLayer->iFd_     = pBufferInfo_->iFd_.get();
+        drmHwcLayer->uniqueFd_     = base::unique_fd(dup(pBufferInfo_->uniqueFd_.get()));
+        drmHwcLayer->iFd_     = drmHwcLayer->uniqueFd_.get();
         drmHwcLayer->iWidth_  = pBufferInfo_->iWidth_;
         drmHwcLayer->iHeight_ = pBufferInfo_->iHeight_;
         drmHwcLayer->iStride_ = pBufferInfo_->iStride_;
@@ -3691,6 +3694,7 @@ void DrmHwcTwo::HwcLayer::PopulateSidebandLayer(DrmHwcLayer *drmHwcLayer,
         drmHwcLayer->sLayerName_      = pBufferInfo_->sLayerName_;
       }else{
         drmHwcLayer->iFd_     = -1;
+        drmHwcLayer->uniqueFd_.reset();
         drmHwcLayer->iWidth_  = -1;
         drmHwcLayer->iHeight_ = -1;
         drmHwcLayer->iStride_ = -1;
@@ -3719,7 +3723,10 @@ void DrmHwcTwo::HwcLayer::PopulateNormalLayer(DrmHwcLayer *drmHwcLayer,
     if(buffer_){
       drmHwcLayer->sf_handle  = buffer_;
       drmHwcLayer->uBufferId_ = pBufferInfo_->uBufferId_;
-      drmHwcLayer->iFd_     = pBufferInfo_->iFd_.get();
+      // 利用 dup dma-buffer-fd 来增加对 dma-buffer 的引用计数
+      // 避免 dma-buffer 被提前释放
+      drmHwcLayer->uniqueFd_     = base::unique_fd(dup(pBufferInfo_->uniqueFd_.get()));
+      drmHwcLayer->iFd_     = drmHwcLayer->uniqueFd_.get();
       drmHwcLayer->iWidth_  = pBufferInfo_->iWidth_;
       drmHwcLayer->iHeight_ = pBufferInfo_->iHeight_;
       drmHwcLayer->iStride_ = pBufferInfo_->iStride_;
@@ -3734,6 +3741,7 @@ void DrmHwcTwo::HwcLayer::PopulateNormalLayer(DrmHwcLayer *drmHwcLayer,
       drmHwcLayer->uByteStridePlanes_ = pBufferInfo_->uByteStridePlanes_;
     }else{
       drmHwcLayer->iFd_     = -1;
+      drmHwcLayer->uniqueFd_.reset();
       drmHwcLayer->iWidth_  = -1;
       drmHwcLayer->iHeight_ = -1;
       drmHwcLayer->iStride_ = -1;
@@ -3894,7 +3902,10 @@ void DrmHwcTwo::HwcLayer::PopulateFB(hwc2_layer_t layer_id, DrmHwcLayer *drmHwcL
   drmHwcLayer->SetTransform(mCurrentState.transform_);
 
   if(buffer_ && !validate){
-    drmHwcLayer->iFd_     = pBufferInfo_->iFd_.get();
+    // 利用 dup dma-buffer-fd 来增加对 dma-buffer 的引用计数
+    // 避免 dma-buffer 被提前释放
+    drmHwcLayer->uniqueFd_  = base::unique_fd(dup(pBufferInfo_->uniqueFd_.get()));
+    drmHwcLayer->iFd_     = drmHwcLayer->uniqueFd_.get();
     drmHwcLayer->iWidth_  = pBufferInfo_->iWidth_;
     drmHwcLayer->iHeight_ = pBufferInfo_->iHeight_;
     drmHwcLayer->iStride_ = pBufferInfo_->iStride_;
@@ -3908,6 +3919,7 @@ void DrmHwcTwo::HwcLayer::PopulateFB(hwc2_layer_t layer_id, DrmHwcLayer *drmHwcL
     drmHwcLayer->sLayerName_      = pBufferInfo_->sLayerName_;
   }else{
     drmHwcLayer->iFd_     = -1;
+    drmHwcLayer->uniqueFd_.reset();
     drmHwcLayer->iWidth_  = -1;
     drmHwcLayer->iHeight_ = -1;
     drmHwcLayer->iStride_ = -1;
