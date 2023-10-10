@@ -192,6 +192,73 @@ class DrmHwcTwo : public hwc2_device_t {
       return buffer_;
     }
 
+    void CacheBufferInfoBySlot(buffer_handle_t buffer, bool use_cache, uint32_t slot) {
+      buffer_ = buffer;
+      mCurrentState.buffer_ = buffer;
+      uint64_t local_cache_slot = static_cast<uint64_t>(slot);
+      bool success = false;
+      if(use_cache){
+        // Get Buffer info
+        const auto mapBuffer = bufferInfoMap_.find(local_cache_slot);
+        if(mapBuffer != bufferInfoMap_.end()){
+          pBufferInfo_ = mapBuffer->second;
+          HWC2_ALOGD_IF_DEBUG("rk-debug: bufferInfoMap_ size = %zu has cache! Slot=%" PRIu64 " Name=%s",
+                              bufferInfoMap_.size(),
+                              local_cache_slot,
+                              pBufferInfo_->sLayerName_.c_str());
+          success = true;
+        }
+      }
+
+      if(success == false){
+        bufferInfoMap_[local_cache_slot] = std::make_shared<LayerInfoCache>();
+        pBufferInfo_ = bufferInfoMap_[local_cache_slot];
+        uint64_t buffer_id;
+        drmGralloc_->hwc_get_handle_buffer_id(buffer_, &buffer_id);
+        pBufferInfo_->uBufferId_ = buffer_id;
+        // Bug:#426310
+        // 多路视频同时输出，SurfaceFlinger可能会频繁触发 buffer_handle_t import/release行为
+        // 可能会导致HWC本地cache的fd失效，故需要本地dup dma-buffer-fd副本，确保fd有效
+        pBufferInfo_->uniqueFd_     = base::unique_fd(dup(drmGralloc_->hwc_get_handle_primefd(buffer_)));
+        pBufferInfo_->iWidth_  = drmGralloc_->hwc_get_handle_attibute(buffer_,ATT_WIDTH);
+        pBufferInfo_->iHeight_ = drmGralloc_->hwc_get_handle_attibute(buffer_,ATT_HEIGHT);
+        pBufferInfo_->iStride_ = drmGralloc_->hwc_get_handle_attibute(buffer_,ATT_STRIDE);
+        pBufferInfo_->iSize_   = drmGralloc_->hwc_get_handle_attibute(buffer_,ATT_SIZE);
+        pBufferInfo_->iHeightStride_ = drmGralloc_->hwc_get_handle_attibute(buffer_,ATT_HEIGHT_STRIDE);
+        pBufferInfo_->iByteStride_ = drmGralloc_->hwc_get_handle_attibute(buffer_,ATT_BYTE_STRIDE_WORKROUND);
+        pBufferInfo_->iFormat_ = drmGralloc_->hwc_get_handle_attibute(buffer_,ATT_FORMAT);
+        pBufferInfo_->iUsage_   = drmGralloc_->hwc_get_handle_usage(buffer_);
+        pBufferInfo_->uFourccFormat_ = drmGralloc_->hwc_get_handle_fourcc_format(buffer_);
+        pBufferInfo_->uModifier_ = drmGralloc_->hwc_get_handle_format_modifier(buffer_);
+        drmGralloc_->hwc_get_handle_plane_bytes_stride(buffer_, pBufferInfo_->uByteStridePlanes_);
+        drmGralloc_->hwc_get_handle_name(buffer_,pBufferInfo_->sLayerName_);
+        layer_name_ = pBufferInfo_->sLayerName_;
+        HWC2_ALOGD_IF_DEBUG("rk-debug : bufferInfoMap_ size = %zu insert success! slot=%" PRIu64
+                              "w=%d h=%d format=%d fourcc=%c%c%c%c Name=%s",
+                              bufferInfoMap_.size(), local_cache_slot,
+                              pBufferInfo_->iWidth_,
+                              pBufferInfo_->iHeight_,
+                              pBufferInfo_->iFormat_,
+                              pBufferInfo_->uFourccFormat_,
+                              pBufferInfo_->uFourccFormat_ >> 8,
+                              pBufferInfo_->uFourccFormat_ >> 16,
+                              pBufferInfo_->uFourccFormat_ >> 24,
+                              pBufferInfo_->sLayerName_.c_str());
+        success = true;
+      }
+
+      if(mDrawingState.buffer_ != mCurrentState.buffer_){
+          nsecs_t current_time = systemTime();
+          qFrameTimestamp_.push(current_time);
+          qFrameTimestampBack_.push(current_time);
+          while(qFrameTimestamp_.size() > MAX_NUM_FRAME_TIMESTAMP_CNT){
+            qFrameTimestamp_.pop();
+            qFrameTimestampBack_.pop();
+          }
+        }
+      // ALOGI("rk-debug Name=%s mFps=%f", pBufferInfo_->sLayerName_.c_str(), GetFps());;
+    }
+
     void CacheBufferInfo(buffer_handle_t buffer) {
       buffer_ = buffer;
       mCurrentState.buffer_ = buffer;
@@ -569,6 +636,11 @@ class DrmHwcTwo : public hwc2_device_t {
 
     // Buffer info map
     bool bHasCache_ = false;
+
+    // Slot cache
+    bool bUseSlotCache = false;
+    uint32_t uCacheSlot = -1;
+
     std::map<uint64_t, std::shared_ptr<LayerInfoCache>> bufferInfoMap_;
     std::string layer_name_;
     bool is_afbc_;

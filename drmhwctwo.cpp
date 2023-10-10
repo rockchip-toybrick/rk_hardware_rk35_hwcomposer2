@@ -3450,6 +3450,14 @@ HWC2::Error DrmHwcTwo::HwcLayer::SetLayerBlendMode(int32_t mode) {
   return HWC2::Error::None;
 }
 
+// 此定义位于 hardware/interfaces/graphics/composer/2.1/utils/hal/include/composer-hal/2.1/ComposerCommandEngine.h
+#define RK_BUFFER_SLOT_SHIFT 8
+#define RK_BUFFER_CACHE_SHIFT 16
+#define RK_BUFFER_USE_CACHE_FLAG 1
+#define RK_BUFFER_USE_UNCACHE_FLAG (1 << 1)
+#define RK_DECODING_CALCULATION(value, shift) \
+   (((value * (-1)) >> shift) & 0xff)
+
 HWC2::Error DrmHwcTwo::HwcLayer::SetLayerBuffer(buffer_handle_t buffer,
                                                 int32_t acquire_fence) {
   HWC2_ALOGD_IF_VERBOSE("layer-id=%d"", buffer=%p, acq_fence=%d" ,id_,buffer,acquire_fence);
@@ -3468,6 +3476,24 @@ HWC2::Error DrmHwcTwo::HwcLayer::SetLayerBuffer(buffer_handle_t buffer,
   bSideband2Valid_ = false;
   sidebandStreamHandle_ = NULL;
 
+  /* RK 内部实现 cache 方法：
+   * acquire_fence 原则上是只会出现 -1 或者 > 0 的数值，目前 RK 利用 < -1 的值范围
+   * 传递 cache 信息，具体方法如下：
+   * 1. 如果 acquire_fence 出现 小于 -1 的值，则说明 RK 内部实现的cache方法生效
+   * 2. acquire_fence 通过如下方法构造：
+   *    2.1. acquire_fence |= CACHE_SLOT << RK_BUFFER_SLOT_SHIFT
+   *    2.2. acquire_fence |= (USE_CACHE or USE_UNCACHE) << RK_BUFFER_CACHE_SHIFT
+   *    2.3  acquire_fence = acquire_fence * (-1)
+   */
+  if(acquire_fence < -1){
+    bUseSlotCache = RK_DECODING_CALCULATION(acquire_fence, RK_BUFFER_CACHE_SHIFT) == RK_BUFFER_USE_CACHE_FLAG;
+    uCacheSlot = RK_DECODING_CALCULATION(acquire_fence, RK_BUFFER_SLOT_SHIFT);
+    if(uCacheSlot > 0){
+      HWC2_ALOGD_IF_DEBUG("rk-debug use_cache=%d cache_slot=%d",bUseSlotCache, uCacheSlot);
+      return HWC2::Error::None;
+    }
+  }
+
   // 部分video不希望使用cache逻辑，因为可能会导致oom问题
   bool need_cache = true;
   ResourceManager* rm = ResourceManager::getInstance();
@@ -3485,11 +3511,17 @@ HWC2::Error DrmHwcTwo::HwcLayer::SetLayerBuffer(buffer_handle_t buffer,
   }
 
   if(need_cache){
-    CacheBufferInfo(buffer);
+    if(uCacheSlot > 0){
+      CacheBufferInfoBySlot(buffer, bUseSlotCache, uCacheSlot);
+    }else{
+      CacheBufferInfo(buffer);
+    }
   }else{
     NoCacheBufferInfo(buffer);
   }
   acquire_fence_ = sp<AcquireFence>(new AcquireFence(acquire_fence));
+  bUseSlotCache = false;
+  uCacheSlot = -1;
   return HWC2::Error::None;
 }
 
