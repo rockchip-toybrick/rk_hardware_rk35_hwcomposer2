@@ -165,6 +165,10 @@ LOCAL_C_INCLUDES += \
   hardware/rockchip/hwcomposer/include
 endif
 
+# HWC3-AIDL config
+ifeq ($(TARGET_USES_HWC3_AIDL), true)
+LOCAL_CPPFLAGS += -DUSE_HWC3_AIDL=1
+endif
 
 # Mali config:
 # API 29 -> Android 10.0
