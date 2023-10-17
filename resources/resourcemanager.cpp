@@ -565,11 +565,31 @@ int ResourceManager::OutputWBBuffer(int display_id,
                                     uint64_t *last_frame_no){
 
   ATRACE_CALL();
+
+  // 第一帧需要等待WriteBack返回
+  if(*last_frame_no == 0){
+    int cnt = 0;
+    while(true){
+      cnt++;
+      if(mDrawingWriteBackBuffer_.get() == NULL){
+        // 每次等待 5ms
+        usleep(5*1000);
+      }
+      // 最多等待 50ms ，或者 WriteBack已返回
+      if(cnt > 10 || mDrawingWriteBackBuffer_.get() != NULL){
+        break;
+      }
+    }
+  }
+
   std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
-  if(mFinishBufferQueue_.size() == 0){
-    HWC2_ALOGE("mFinishBufferQueue_ size is 0");
+
+  if(mFinishBufferQueue_.size() == 0 &&
+     mDrawingWriteBackBuffer_.get() == NULL){
+    HWC2_ALOGE("mFinishBufferQueue_ size is 0, mDrawingWriteBackBuffer_=%p", mDrawingWriteBackBuffer_.get());
     return -1;
   }
+
 
   std::shared_ptr<DrmBuffer> output_buffer = NULL;
   uint64_t output_frame_no = 0;
@@ -582,10 +602,16 @@ int ResourceManager::OutputWBBuffer(int display_id,
     }
   }
 
-  if(output_buffer == NULL && mFinishBufferQueue_.size() >0){
+  // 从已经 WriteBack 完成的缓冲池获取下一帧 WriteBack 图像
+  if(output_buffer == NULL && mFinishBufferQueue_.size() > 0){
     output_buffer = mFinishBufferQueue_.back().second;
     output_frame_no = mFinishBufferQueue_.back().first;
     HWC2_ALOGW("VDS may output a same image frame_no=%" PRIu64 " Last_frame_no=%" PRIu64 , output_frame_no, *last_frame_no);
+  }
+
+  // 若已经完成的WriteBack均无法找到正常图像，则设置vop正在写的Buffer作为输出
+  if(output_buffer == NULL && mDrawingWriteBackBuffer_.get() != NULL){
+    output_buffer = mDrawingWriteBackBuffer_;
   }
 
   if(output_buffer == NULL){
@@ -679,7 +705,7 @@ int ResourceManager::SwapWBBuffer(uint64_t frame_no){
   // 1. Drawing 切换为 Finish 状态, 并 push 进队列
   if(mDrawingWriteBackBuffer_ != NULL){
     mFinishBufferQueue_.push_back(PAIR_ID_BUFFER{frame_no, mDrawingWriteBackBuffer_});
-    HWC2_ALOGD_IF_VERBOSE("WB: frame_no=%" PRIu64 " id=%" PRIu64 " queue.size=%zu" ,frame_no, mDrawingWriteBackBuffer_->GetId(),mFinishBufferQueue_.size());
+    HWC2_ALOGD_IF_DEBUG("WB: frame_no=%" PRIu64 " id=%" PRIu64 " queue.size=%zu" ,frame_no, mDrawingWriteBackBuffer_->GetId(),mFinishBufferQueue_.size());
     // 环形缓冲区，若达到环形缓冲区最大尺寸，则需要丢掉最旧的一帧缓存
     if(mFinishBufferQueue_.size() > (WB_BUFFERQUEUE_MAX_SIZE - 1)){
       auto last_buffer_pair = mFinishBufferQueue_.begin();

@@ -538,6 +538,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::InitVirtual() {
 
   init_success_ = true;
   frame_no_ = 0;
+  wb_frame_no_ = 0;
   return HWC2::Error::None;
 }
 
@@ -2332,10 +2333,10 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateVirtualDisplay(uint32_t *num_types,
           bUseWriteBack_ = false;
         }
 
-        if(resource_manager_->GetFinishWBBufferSize() == 0){
-          HWC2_ALOGD_IF_DEBUG("WB buffer not ready, display=%" PRIu64 " wb-display %d frame_no=%d", handle_, WBDisplayId, frame_no_);
-          bUseWriteBack_ = false;
-        }
+        // if(resource_manager_->GetFinishWBBufferSize() == 0){
+        //   HWC2_ALOGD_IF_DEBUG("WB buffer not ready, display=%" PRIu64 " wb-display %d frame_no=%d", handle_, WBDisplayId, frame_no_);
+        //   bUseWriteBack_ = false;
+        // }
       }
     }else{
       bUseWriteBack_ = false;
