@@ -3305,6 +3305,7 @@ int DrmHwcTwo::HwcDisplay::SelfRefreshEnable(){
   }
 
   if(resource_manager_->isWBMode()){
+    enable_self_refresh = true;
     if(self_fps < 30)
       self_fps = 30;
   }
