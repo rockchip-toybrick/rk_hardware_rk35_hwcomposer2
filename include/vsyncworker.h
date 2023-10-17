@@ -33,7 +33,6 @@ class VsyncCallback {
   virtual ~VsyncCallback() {
   }
   virtual void Callback(int display, int64_t timestamp) = 0;
-  virtual void Callback(int display, int64_t timestamp, hwc2_vsync_period_t vsyncPeriodNanos) = 0;
 };
 
 class VSyncWorker : public Worker {
