@@ -294,23 +294,32 @@ int ResourceManager::WriteBackUseVop(int display){
   // 5. 创建 WriteBackBuffer BufferQueue，并且申请 WB Buffer.
   if(mWriteBackBQ_ == NULL){
     mWriteBackBQ_ = std::make_shared<DrmBufferQueue>(WB_BUFFERQUEUE_MAX_SIZE);
-    mNextWriteBackBuffer_
-      = mWriteBackBQ_->DequeueDrmBuffer(iWBWidth_,
-                                        iWBHeight_,
-                                        iWBFormat_,
-                                        RK_GRALLOC_USAGE_STRIDE_ALIGN_16 |
-                                        MALI_GRALLOC_USAGE_NO_AFBC,
-                                        "WriteBackBuffer");
-    if(!mNextWriteBackBuffer_->initCheck()){
-      HWC2_ALOGE("display=%d WBBuffer Dequeue fail, w=%d h=%d format=%d",
-                                        display,
-                                        iWBWidth_,
-                                        iWBHeight_,
-                                        iWBFormat_);
-      return -1;
-    }
   }
 
+  mNextWriteBackBuffer_
+    = mWriteBackBQ_->DequeueDrmBuffer(iWBWidth_,
+                                      iWBHeight_,
+                                      iWBFormat_,
+                                      RK_GRALLOC_USAGE_STRIDE_ALIGN_16 |
+                                      MALI_GRALLOC_USAGE_NO_AFBC,
+                                      "WriteBackBuffer");
+  if(!mNextWriteBackBuffer_->initCheck()){
+    HWC2_ALOGE("display=%d WBBuffer Dequeue fail, w=%d h=%d format=%d",
+                                      display,
+                                      iWBWidth_,
+                                      iWBHeight_,
+                                      iWBFormat_);
+    return -1;
+  }
+
+  if(mWriteBackBQ_->QueueBuffer(mNextWriteBackBuffer_)){
+    HWC2_ALOGE("display=%d WBBuffer Queue fail, w=%d h=%d format=%d",
+                                      iWriteBackDisplayId_,
+                                      iWBWidth_,
+                                      iWBHeight_,
+                                      iWBFormat_);
+    return -1;
+  }
   bEnableWriteBackRef_++;
   iWriteBackDisplayId_ = display;
   return 0;
@@ -334,22 +343,30 @@ int ResourceManager::WriteBackUseRga(int display){
   // 5. 创建 WriteBackBuffer BufferQueue，并且申请 WB Buffer.
   if(mWriteBackBQ_ == NULL){
     mWriteBackBQ_ = std::make_shared<DrmBufferQueue>();
+  }
+  mNextWriteBackBuffer_
+    = mWriteBackBQ_->DequeueDrmBuffer(iWBWidth_,
+                                      iWBHeight_,
+                                      iWBFormat_,
+                                      RK_GRALLOC_USAGE_STRIDE_ALIGN_16 |
+                                      MALI_GRALLOC_USAGE_NO_AFBC,
+                                      "WriteBackBuffer");
+  if(!mNextWriteBackBuffer_->initCheck()){
+    HWC2_ALOGE("display=%d WBBuffer Dequeue fail, w=%d h=%d format=%d",
+                                      display,
+                                      iWBWidth_,
+                                      iWBHeight_,
+                                      iWBFormat_);
+    return -1;
+  }
 
-    mNextWriteBackBuffer_
-      = mWriteBackBQ_->DequeueDrmBuffer(iWBWidth_,
-                                        iWBHeight_,
-                                        iWBFormat_,
-                                        RK_GRALLOC_USAGE_STRIDE_ALIGN_16 |
-                                        MALI_GRALLOC_USAGE_NO_AFBC,
-                                        "WriteBackBuffer");
-    if(!mNextWriteBackBuffer_->initCheck()){
-      HWC2_ALOGE("display=%d WBBuffer Dequeue fail, w=%d h=%d format=%d",
-                                        display,
-                                        iWBWidth_,
-                                        iWBHeight_,
-                                        iWBFormat_);
-      return -1;
-    }
+  if(mWriteBackBQ_->QueueBuffer(mNextWriteBackBuffer_)){
+    HWC2_ALOGE("display=%d WBBuffer Queue fail, w=%d h=%d format=%d",
+                                      iWriteBackDisplayId_,
+                                      iWBWidth_,
+                                      iWBHeight_,
+                                      iWBFormat_);
+    return -1;
   }
 
   bEnableWriteBackRef_++;
@@ -442,6 +459,15 @@ int ResourceManager::UpdateWriteBackResolutionUseVop(int display){
                 display, iWBWidth_, iWBHeight_, iWBFormat_);
     return -1;
   }
+
+  if(mWriteBackBQ_->QueueBuffer(mNextWriteBackBuffer_)){
+    HWC2_ALOGE("display=%d WBBuffer Queue fail, w=%d h=%d format=%d",
+                                      iWriteBackDisplayId_,
+                                      iWBWidth_,
+                                      iWBHeight_,
+                                      iWBFormat_);
+    return -1;
+  }
   return 0;
 }
 
@@ -479,9 +505,11 @@ int ResourceManager::DisableWriteBackMode(int display){
 
   bEnableWriteBackRef_--;
   if(bEnableWriteBackRef_ <= 0){
+    mVDMode_ = HWC2_DISABLE_HW_VIRTUAL_DISPLAY;
     iWriteBackDisplayId_ = -1;
     mFinishBufferQueue_.clear();
-    mVDMode_ = HWC2_DISABLE_HW_VIRTUAL_DISPLAY;
+    mDrawingWriteBackBuffer_ = NULL;
+    mNextWriteBackBuffer_ = NULL;
   }
   return 0;
 }
@@ -568,17 +596,15 @@ int ResourceManager::OutputWBBuffer(int display_id,
 
   // 第一帧需要等待WriteBack返回
   if(*last_frame_no == 0){
-    int cnt = 0;
-    while(true){
-      cnt++;
+    // 最多等待 100ms
+    for(int wait_cnt = 0; wait_cnt < 20; wait_cnt++){
+      // mDrawingWriteBackBuffer_ 非空则表示开始回写第一帧
       if(mDrawingWriteBackBuffer_.get() == NULL){
         // 每次等待 5ms
         usleep(5*1000);
+        continue;
       }
-      // 最多等待 50ms ，或者 WriteBack已返回
-      if(cnt > 10 || mDrawingWriteBackBuffer_.get() != NULL){
-        break;
-      }
+      break;
     }
   }
 
@@ -719,14 +745,6 @@ int ResourceManager::SwapWBBuffer(uint64_t frame_no){
   }
   // 2. Next 切换为 Drawing 状态
   mDrawingWriteBackBuffer_ = mNextWriteBackBuffer_;
-  if(mWriteBackBQ_->QueueBuffer(mNextWriteBackBuffer_)){
-    HWC2_ALOGE("display=%d WBBuffer Queue fail, w=%d h=%d format=%d",
-                                      iWriteBackDisplayId_,
-                                      iWBWidth_,
-                                      iWBHeight_,
-                                      iWBFormat_);
-    return -1;
-  }
 
   // 3. 申请 Next Buffer
   std::shared_ptr<DrmBuffer> next
@@ -738,6 +756,15 @@ int ResourceManager::SwapWBBuffer(uint64_t frame_no){
                                       "WriteBackBuffer");
   if(!next->initCheck()){
     HWC2_ALOGE("display=%d WBBuffer Dequeue fail, w=%d h=%d format=%d",
+                                      iWriteBackDisplayId_,
+                                      iWBWidth_,
+                                      iWBHeight_,
+                                      iWBFormat_);
+    return -1;
+  }
+
+  if(mWriteBackBQ_->QueueBuffer(next)){
+    HWC2_ALOGE("display=%d WBBuffer Queue fail, w=%d h=%d format=%d",
                                       iWriteBackDisplayId_,
                                       iWBWidth_,
                                       iWBHeight_,
