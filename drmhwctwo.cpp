@@ -2496,6 +2496,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateDisplay(uint32_t *num_types,
 
 #if PLATFORM_SDK_VERSION > 29
 HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayConnectionType(uint32_t *outType) {
+  HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ,handle_);
   if (connector_->internal())
     *outType = static_cast<uint32_t>(HWC2::DisplayConnectionType::Internal);
   else if (connector_->external())
@@ -2508,6 +2509,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayConnectionType(uint32_t *outType) {
 
 HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayVsyncPeriod(
     hwc2_vsync_period_t *outVsyncPeriod /* ns */) {
+  HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ,handle_);
   supported(__func__);
   DrmMode const &mode = connector_->active_mode();
   if (mode.id() == 0)
@@ -2521,6 +2523,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetActiveConfigWithConstraints(
     hwc2_config_t config,
     hwc_vsync_period_change_constraints_t *vsyncPeriodChangeConstraints,
     hwc_vsync_period_change_timeline_t *outTimeline) {
+  HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ,handle_);
   supported(__func__);
 
   if (vsyncPeriodChangeConstraints == nullptr || outTimeline == nullptr) {
@@ -2535,12 +2538,14 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetActiveConfigWithConstraints(
 }
 
 HWC2::Error DrmHwcTwo::HwcDisplay::SetAutoLowLatencyMode(bool /*on*/) {
+  HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ,handle_);
   return HWC2::Error::Unsupported;
 }
 
 HWC2::Error DrmHwcTwo::HwcDisplay::GetSupportedContentTypes(
     uint32_t *outNumSupportedContentTypes,
     const uint32_t *outSupportedContentTypes) {
+  HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ,handle_);
   if (outSupportedContentTypes == nullptr)
     *outNumSupportedContentTypes = 0;
 
@@ -2548,6 +2553,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetSupportedContentTypes(
 }
 
 HWC2::Error DrmHwcTwo::HwcDisplay::SetContentType(int32_t contentType) {
+  HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ,handle_);
   supported(__func__);
 
   if (contentType != HWC2_CONTENT_TYPE_NONE)
@@ -2564,28 +2570,33 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetContentType(int32_t contentType) {
 #if PLATFORM_SDK_VERSION > 28
 HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayIdentificationData(
     uint8_t *outPort, uint32_t *outDataSize, uint8_t *outData) {
+  HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ,handle_);
   supported(__func__);
 
-  // drmModePropertyBlobPtr blob = nullptr;
+  auto blob = connector_->GetEdidBlob();
 
-  // if (connector_->GetEdidBlob(blob)) {
-  //   ALOGE("Failed to get edid property value.");
-  //   return HWC2::Error::Unsupported;
-  // }
+  *outPort = connector_->id();
 
-  // if (outData) {
-  //   *outDataSize = std::min(*outDataSize, blob->length);
-  //   memcpy(outData, blob->data, *outDataSize);
-  // } else {
-  //   *outDataSize = blob->length;
-  // }
-  // *outPort = connector_->id();
+  if (!blob) {
+    if (outData == nullptr) {
+      *outDataSize = 0;
+    }
+    return HWC2::Error::None;
+  }
+
+  if (outData) {
+    *outDataSize = std::min(*outDataSize, blob->length);
+    memcpy(outData, blob->data, *outDataSize);
+  } else {
+    *outDataSize = blob->length;
+  }
 
   return HWC2::Error::None;
 }
 
 HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayCapabilities(
     uint32_t *outNumCapabilities, uint32_t *outCapabilities) {
+  HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ,handle_);
   unsupported(__func__, outCapabilities);
 
   if (outNumCapabilities == nullptr) {
@@ -2599,12 +2610,14 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayCapabilities(
 
 HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayBrightnessSupport(
     bool *supported) {
+  HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ,handle_);
   *supported = false;
   return HWC2::Error::None;
 }
 
 HWC2::Error DrmHwcTwo::HwcDisplay::SetDisplayBrightness(
     float /* brightness */) {
+  HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ,handle_);
   return HWC2::Error::Unsupported;
 }
 
@@ -2615,6 +2628,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetDisplayBrightness(
 HWC2::Error DrmHwcTwo::HwcDisplay::GetRenderIntents(
     int32_t mode, uint32_t *outNumIntents,
     int32_t * /*android_render_intent_v1_1_t*/ outIntents) {
+  HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ,handle_);
   if (mode != HAL_COLOR_MODE_NATIVE) {
     return HWC2::Error::BadParameter;
   }
@@ -2630,6 +2644,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetRenderIntents(
 
 HWC2::Error DrmHwcTwo::HwcDisplay::SetColorModeWithIntent(int32_t mode,
                                                           int32_t intent) {
+  HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ,handle_);
   if (intent < HAL_RENDER_INTENT_COLORIMETRIC ||
       intent > HAL_RENDER_INTENT_TONE_MAP_ENHANCE)
     return HWC2::Error::BadParameter;
