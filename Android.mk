@@ -313,7 +313,8 @@ LOCAL_CFLAGS += \
   -Wno-unused-variable \
   -Wno-unused-parameter \
   -fPIC \
-  -Wno-sign-compare
+  -Wno-sign-compare \
+  -DPLATFORM_SDK_VERSION=$(PLATFORM_SDK_VERSION)
 
 LOCAL_MODULE_RELATIVE_PATH := hw
 LOCAL_MODULE_CLASS := SHARED_LIBRARIES

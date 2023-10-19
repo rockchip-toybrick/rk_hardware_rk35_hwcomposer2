@@ -876,6 +876,11 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayAttribute(hwc2_config_t config,
         // Dots per 1000 inches
         *value = mm_height ? (mode->v_display() * kUmPerInch) / mm_height : -1;
         break;
+#if PLATFORM_SDK_VERSION > 29
+      case HWC2::Attribute::ConfigGroup:
+        *value = 0; /* TODO: Add support for config groups */
+        break;
+#endif
       default:
         *value = -1;
         return HWC2::Error::BadConfig;
@@ -914,6 +919,11 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayAttribute(hwc2_config_t config,
         // Dots per 1000 inches
         *value = mm_height ? (h * kUmPerInch) / mm_height : -1;
         break;
+#if PLATFORM_SDK_VERSION > 29
+      case HWC2::Attribute::ConfigGroup:
+        *value = 0; /* TODO: Add support for config groups */
+        break;
+#endif
       default:
         *value = -1;
         return HWC2::Error::BadConfig;
@@ -2483,32 +2493,161 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateDisplay(uint32_t *num_types,
   return *num_types ? HWC2::Error::HasChanges : HWC2::Error::None;
 }
 
-#ifdef ANDROID_S
-HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayConnectionType(uint32_t *outType) {
-	if (connector_->internal())
-		*outType = static_cast<uint32_t>(HWC2::DisplayConnectionType::Internal);
-	else if (connector_->external())
-		*outType = static_cast<uint32_t>(HWC2::DisplayConnectionType::External);
-	else
-		return HWC2::Error::BadConfig;
 
-	return HWC2::Error::None;
+#if PLATFORM_SDK_VERSION > 29
+HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayConnectionType(uint32_t *outType) {
+  if (connector_->internal())
+    *outType = static_cast<uint32_t>(HWC2::DisplayConnectionType::Internal);
+  else if (connector_->external())
+    *outType = static_cast<uint32_t>(HWC2::DisplayConnectionType::External);
+  else
+    return HWC2::Error::BadConfig;
+
+  return HWC2::Error::None;
 }
 
 HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayVsyncPeriod(
-				hwc2_vsync_period_t *outVsyncPeriod /* ns */) {
-	supported(__func__);
+    hwc2_vsync_period_t *outVsyncPeriod /* ns */) {
+  supported(__func__);
+  DrmMode const &mode = connector_->active_mode();
+  if (mode.id() == 0)
+    return HWC2::Error::BadConfig;
 
-	DrmMode const &mode = connector_->active_mode();
-
-	if (mode.id() == 0)
-		return HWC2::Error::BadConfig;
-
-	*outVsyncPeriod = 1E9 / mode.v_refresh();
-
-	return HWC2::Error::None;
+  *outVsyncPeriod = 1E9 / mode.v_refresh();
+  return HWC2::Error::None;
 }
-#endif //ANDROID_S
+
+HWC2::Error DrmHwcTwo::HwcDisplay::SetActiveConfigWithConstraints(
+    hwc2_config_t config,
+    hwc_vsync_period_change_constraints_t *vsyncPeriodChangeConstraints,
+    hwc_vsync_period_change_timeline_t *outTimeline) {
+  supported(__func__);
+
+  if (vsyncPeriodChangeConstraints == nullptr || outTimeline == nullptr) {
+    return HWC2::Error::BadParameter;
+  }
+
+  if(config > 0){
+    return HWC2::Error::BadConfig;
+  }else{
+    return HWC2::Error::None;
+  }
+}
+
+HWC2::Error DrmHwcTwo::HwcDisplay::SetAutoLowLatencyMode(bool /*on*/) {
+  return HWC2::Error::Unsupported;
+}
+
+HWC2::Error DrmHwcTwo::HwcDisplay::GetSupportedContentTypes(
+    uint32_t *outNumSupportedContentTypes,
+    const uint32_t *outSupportedContentTypes) {
+  if (outSupportedContentTypes == nullptr)
+    *outNumSupportedContentTypes = 0;
+
+  return HWC2::Error::None;
+}
+
+HWC2::Error DrmHwcTwo::HwcDisplay::SetContentType(int32_t contentType) {
+  supported(__func__);
+
+  if (contentType != HWC2_CONTENT_TYPE_NONE)
+    return HWC2::Error::Unsupported;
+
+  /* TODO: Map to the DRM Connector property:
+   * https://elixir.bootlin.com/linux/v5.4-rc5/source/drivers/gpu/drm/drm_connector.c#L809
+   */
+
+  return HWC2::Error::None;
+}
+#endif
+
+#if PLATFORM_SDK_VERSION > 28
+HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayIdentificationData(
+    uint8_t *outPort, uint32_t *outDataSize, uint8_t *outData) {
+  supported(__func__);
+
+  // drmModePropertyBlobPtr blob = nullptr;
+
+  // if (connector_->GetEdidBlob(blob)) {
+  //   ALOGE("Failed to get edid property value.");
+  //   return HWC2::Error::Unsupported;
+  // }
+
+  // if (outData) {
+  //   *outDataSize = std::min(*outDataSize, blob->length);
+  //   memcpy(outData, blob->data, *outDataSize);
+  // } else {
+  //   *outDataSize = blob->length;
+  // }
+  // *outPort = connector_->id();
+
+  return HWC2::Error::None;
+}
+
+HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayCapabilities(
+    uint32_t *outNumCapabilities, uint32_t *outCapabilities) {
+  unsupported(__func__, outCapabilities);
+
+  if (outNumCapabilities == nullptr) {
+    return HWC2::Error::BadParameter;
+  }
+
+  *outNumCapabilities = 0;
+
+  return HWC2::Error::None;
+}
+
+HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayBrightnessSupport(
+    bool *supported) {
+  *supported = false;
+  return HWC2::Error::None;
+}
+
+HWC2::Error DrmHwcTwo::HwcDisplay::SetDisplayBrightness(
+    float /* brightness */) {
+  return HWC2::Error::Unsupported;
+}
+
+#endif /* PLATFORM_SDK_VERSION > 28 */
+
+#if PLATFORM_SDK_VERSION > 27
+
+HWC2::Error DrmHwcTwo::HwcDisplay::GetRenderIntents(
+    int32_t mode, uint32_t *outNumIntents,
+    int32_t * /*android_render_intent_v1_1_t*/ outIntents) {
+  if (mode != HAL_COLOR_MODE_NATIVE) {
+    return HWC2::Error::BadParameter;
+  }
+
+  if (outIntents == nullptr) {
+    *outNumIntents = 1;
+    return HWC2::Error::None;
+  }
+  *outNumIntents = 1;
+  outIntents[0] = HAL_RENDER_INTENT_COLORIMETRIC;
+  return HWC2::Error::None;
+}
+
+HWC2::Error DrmHwcTwo::HwcDisplay::SetColorModeWithIntent(int32_t mode,
+                                                          int32_t intent) {
+  if (intent < HAL_RENDER_INTENT_COLORIMETRIC ||
+      intent > HAL_RENDER_INTENT_TONE_MAP_ENHANCE)
+    return HWC2::Error::BadParameter;
+
+  if (mode < HAL_COLOR_MODE_NATIVE || mode > HAL_COLOR_MODE_BT2100_HLG)
+    return HWC2::Error::BadParameter;
+
+  if (mode != HAL_COLOR_MODE_NATIVE)
+    return HWC2::Error::Unsupported;
+
+  if (intent != HAL_RENDER_INTENT_COLORIMETRIC)
+    return HWC2::Error::Unsupported;
+
+  color_mode_ = mode;
+  return HWC2::Error::None;
+}
+
+#endif /* PLATFORM_SDK_VERSION > 27 */
 
 HWC2::Error DrmHwcTwo::HwcLayer::SetCursorPosition(int32_t x, int32_t y) {
   HWC2_ALOGD_IF_VERBOSE("layer-id=%d"", x=%d, y=%d" ,id_,x,y);
@@ -4865,19 +5004,67 @@ hwc2_function_pointer_t DrmHwcTwo::HookDevGetFunction(
       return ToHook<HWC2_PFN_VALIDATE_DISPLAY>(
           DisplayHook<decltype(&HwcDisplay::ValidateDisplay),
                       &HwcDisplay::ValidateDisplay, uint32_t *, uint32_t *>);
-
-#ifdef ANDROID_S
-	case HWC2::FunctionDescriptor::GetDisplayConnectionType:
-	  return ToHook<HWC2_PFN_GET_DISPLAY_CONNECTION_TYPE>(
-		  DisplayHook<decltype(&HwcDisplay::GetDisplayConnectionType),
-					  &HwcDisplay::GetDisplayConnectionType, uint32_t *>);
-	case HWC2::FunctionDescriptor::GetDisplayVsyncPeriod:
-	  return ToHook<HWC2_PFN_GET_DISPLAY_VSYNC_PERIOD>(
-		  DisplayHook<decltype(&HwcDisplay::GetDisplayVsyncPeriod),
-					  &HwcDisplay::GetDisplayVsyncPeriod,
-					  hwc2_vsync_period_t *>);
-#endif //ANDROID_S
-
+#if PLATFORM_SDK_VERSION > 27
+    case HWC2::FunctionDescriptor::GetRenderIntents:
+      return ToHook<HWC2_PFN_GET_RENDER_INTENTS>(
+          DisplayHook<decltype(&HwcDisplay::GetRenderIntents),
+                      &HwcDisplay::GetRenderIntents, int32_t, uint32_t *,
+                      int32_t *>);
+    case HWC2::FunctionDescriptor::SetColorModeWithRenderIntent:
+      return ToHook<HWC2_PFN_SET_COLOR_MODE_WITH_RENDER_INTENT>(
+          DisplayHook<decltype(&HwcDisplay::SetColorModeWithIntent),
+                      &HwcDisplay::SetColorModeWithIntent, int32_t, int32_t>);
+#endif
+#if PLATFORM_SDK_VERSION > 28
+    case HWC2::FunctionDescriptor::GetDisplayIdentificationData:
+      return ToHook<HWC2_PFN_GET_DISPLAY_IDENTIFICATION_DATA>(
+          DisplayHook<decltype(&HwcDisplay::GetDisplayIdentificationData),
+                      &HwcDisplay::GetDisplayIdentificationData, uint8_t *,
+                      uint32_t *, uint8_t *>);
+    case HWC2::FunctionDescriptor::GetDisplayCapabilities:
+      return ToHook<HWC2_PFN_GET_DISPLAY_CAPABILITIES>(
+          DisplayHook<decltype(&HwcDisplay::GetDisplayCapabilities),
+                      &HwcDisplay::GetDisplayCapabilities, uint32_t *,
+                      uint32_t *>);
+    case HWC2::FunctionDescriptor::GetDisplayBrightnessSupport:
+      return ToHook<HWC2_PFN_GET_DISPLAY_BRIGHTNESS_SUPPORT>(
+          DisplayHook<decltype(&HwcDisplay::GetDisplayBrightnessSupport),
+                      &HwcDisplay::GetDisplayBrightnessSupport, bool *>);
+    case HWC2::FunctionDescriptor::SetDisplayBrightness:
+      return ToHook<HWC2_PFN_SET_DISPLAY_BRIGHTNESS>(
+          DisplayHook<decltype(&HwcDisplay::SetDisplayBrightness),
+                      &HwcDisplay::SetDisplayBrightness, float>);
+#endif /* PLATFORM_SDK_VERSION > 28 */
+#if PLATFORM_SDK_VERSION > 29
+    case HWC2::FunctionDescriptor::GetDisplayConnectionType:
+      return ToHook<HWC2_PFN_GET_DISPLAY_CONNECTION_TYPE>(
+          DisplayHook<decltype(&HwcDisplay::GetDisplayConnectionType),
+                      &HwcDisplay::GetDisplayConnectionType, uint32_t *>);
+    case HWC2::FunctionDescriptor::GetDisplayVsyncPeriod:
+      return ToHook<HWC2_PFN_GET_DISPLAY_VSYNC_PERIOD>(
+          DisplayHook<decltype(&HwcDisplay::GetDisplayVsyncPeriod),
+                      &HwcDisplay::GetDisplayVsyncPeriod,
+                      hwc2_vsync_period_t *>);
+    case HWC2::FunctionDescriptor::SetActiveConfigWithConstraints:
+      return ToHook<HWC2_PFN_SET_ACTIVE_CONFIG_WITH_CONSTRAINTS>(
+          DisplayHook<decltype(&HwcDisplay::SetActiveConfigWithConstraints),
+                      &HwcDisplay::SetActiveConfigWithConstraints,
+                      hwc2_config_t, hwc_vsync_period_change_constraints_t *,
+                      hwc_vsync_period_change_timeline_t *>);
+    case HWC2::FunctionDescriptor::SetAutoLowLatencyMode:
+      return ToHook<HWC2_PFN_SET_AUTO_LOW_LATENCY_MODE>(
+          DisplayHook<decltype(&HwcDisplay::SetAutoLowLatencyMode),
+                      &HwcDisplay::SetAutoLowLatencyMode, bool>);
+    case HWC2::FunctionDescriptor::GetSupportedContentTypes:
+      return ToHook<HWC2_PFN_GET_SUPPORTED_CONTENT_TYPES>(
+          DisplayHook<decltype(&HwcDisplay::GetSupportedContentTypes),
+                      &HwcDisplay::GetSupportedContentTypes, uint32_t *,
+                      uint32_t *>);
+    case HWC2::FunctionDescriptor::SetContentType:
+      return ToHook<HWC2_PFN_SET_CONTENT_TYPE>(
+          DisplayHook<decltype(&HwcDisplay::SetContentType),
+                      &HwcDisplay::SetContentType, int32_t>);
+#endif
     // Layer functions
     case HWC2::FunctionDescriptor::SetCursorPosition:
       return ToHook<HWC2_PFN_SET_CURSOR_POSITION>(

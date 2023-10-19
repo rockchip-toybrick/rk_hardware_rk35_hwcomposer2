@@ -746,10 +746,34 @@ class DrmHwcTwo : public hwc2_device_t {
     HWC2::Error ValidateDisplay(uint32_t *num_types, uint32_t *num_requests);
     HWC2::Error ValidateVirtualDisplay(uint32_t *num_types, uint32_t *num_requests);
 
-#ifdef ANDROID_S
-	//composer 2.4
-	HWC2::Error GetDisplayConnectionType(uint32_t *outType);
-	HWC2::Error GetDisplayVsyncPeriod(hwc2_vsync_period_t *outVsyncPeriod);
+#if PLATFORM_SDK_VERSION > 27
+    HWC2::Error GetRenderIntents(int32_t mode, uint32_t *outNumIntents,
+                                 int32_t *outIntents);
+    HWC2::Error SetColorModeWithIntent(int32_t mode, int32_t intent);
+#endif
+#if PLATFORM_SDK_VERSION > 28
+    HWC2::Error GetDisplayIdentificationData(uint8_t *outPort,
+                                             uint32_t *outDataSize,
+                                             uint8_t *outData);
+    HWC2::Error GetDisplayCapabilities(uint32_t *outNumCapabilities,
+                                       uint32_t *outCapabilities);
+    HWC2::Error GetDisplayBrightnessSupport(bool *supported);
+    HWC2::Error SetDisplayBrightness(float);
+#endif
+#if PLATFORM_SDK_VERSION > 29
+    HWC2::Error GetDisplayConnectionType(uint32_t *outType);
+    HWC2::Error GetDisplayVsyncPeriod(hwc2_vsync_period_t *outVsyncPeriod);
+
+    HWC2::Error SetActiveConfigWithConstraints(
+        hwc2_config_t config,
+        hwc_vsync_period_change_constraints_t *vsyncPeriodChangeConstraints,
+        hwc_vsync_period_change_timeline_t *outTimeline);
+    HWC2::Error SetAutoLowLatencyMode(bool on);
+    HWC2::Error GetSupportedContentTypes(
+        uint32_t *outNumSupportedContentTypes,
+        const uint32_t *outSupportedContentTypes);
+
+    HWC2::Error SetContentType(int32_t contentType);
 #endif
 
     std::map<hwc2_layer_t, HwcLayer> &get_layers(){
