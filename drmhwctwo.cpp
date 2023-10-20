@@ -3667,7 +3667,6 @@ void DrmHwcTwo::HwcLayer::PopulateSidebandLayer(DrmHwcLayer *drmHwcLayer,
         drmHwcLayer->SetDisplayFrameMirror(mCurrentState.display_frame_);
 
         drmHwcLayer->iFd_     = -1;
-        drmHwcLayer->uniqueFd_.reset();
         drmHwcLayer->iWidth_  = mSidebandInfo_.crop.right - mSidebandInfo_.crop.left;
         drmHwcLayer->iHeight_ = mSidebandInfo_.crop.bottom - mSidebandInfo_.crop.top;
         drmHwcLayer->iStride_ = mSidebandInfo_.crop.right - mSidebandInfo_.crop.left;;
@@ -3683,7 +3682,6 @@ void DrmHwcTwo::HwcLayer::PopulateSidebandLayer(DrmHwcLayer *drmHwcLayer,
         drmHwcLayer->eDataSpace_ = (android_dataspace_t)mSidebandInfo_.data_space;
       }else{
         drmHwcLayer->iFd_     = -1;
-        drmHwcLayer->uniqueFd_.reset();
         drmHwcLayer->iWidth_  = -1;
         drmHwcLayer->iHeight_ = -1;
         drmHwcLayer->iStride_ = -1;
@@ -3712,8 +3710,7 @@ void DrmHwcTwo::HwcLayer::PopulateSidebandLayer(DrmHwcLayer *drmHwcLayer,
       drmHwcLayer->SetDisplayFrameMirror(mCurrentState.display_frame_);
 
       if(mCurrentState.sidebandStreamHandle_){
-        drmHwcLayer->uniqueFd_     = base::unique_fd(dup(pBufferInfo_->uniqueFd_.get()));
-        drmHwcLayer->iFd_     = drmHwcLayer->uniqueFd_.get();
+        drmHwcLayer->iFd_     = pBufferInfo_->uniqueFd_.get();
         drmHwcLayer->iWidth_  = pBufferInfo_->iWidth_;
         drmHwcLayer->iHeight_ = pBufferInfo_->iHeight_;
         drmHwcLayer->iStride_ = pBufferInfo_->iStride_;
@@ -3726,7 +3723,6 @@ void DrmHwcTwo::HwcLayer::PopulateSidebandLayer(DrmHwcLayer *drmHwcLayer,
         drmHwcLayer->sLayerName_      = pBufferInfo_->sLayerName_;
       }else{
         drmHwcLayer->iFd_     = -1;
-        drmHwcLayer->uniqueFd_.reset();
         drmHwcLayer->iWidth_  = -1;
         drmHwcLayer->iHeight_ = -1;
         drmHwcLayer->iStride_ = -1;
@@ -3757,8 +3753,7 @@ void DrmHwcTwo::HwcLayer::PopulateNormalLayer(DrmHwcLayer *drmHwcLayer,
       drmHwcLayer->uBufferId_ = pBufferInfo_->uBufferId_;
       // 利用 dup dma-buffer-fd 来增加对 dma-buffer 的引用计数
       // 避免 dma-buffer 被提前释放
-      drmHwcLayer->uniqueFd_     = base::unique_fd(dup(pBufferInfo_->uniqueFd_.get()));
-      drmHwcLayer->iFd_     = drmHwcLayer->uniqueFd_.get();
+      drmHwcLayer->iFd_     = pBufferInfo_->uniqueFd_.get();
       drmHwcLayer->iWidth_  = pBufferInfo_->iWidth_;
       drmHwcLayer->iHeight_ = pBufferInfo_->iHeight_;
       drmHwcLayer->iStride_ = pBufferInfo_->iStride_;
@@ -3773,7 +3768,6 @@ void DrmHwcTwo::HwcLayer::PopulateNormalLayer(DrmHwcLayer *drmHwcLayer,
       drmHwcLayer->uByteStridePlanes_ = pBufferInfo_->uByteStridePlanes_;
     }else{
       drmHwcLayer->iFd_     = -1;
-      drmHwcLayer->uniqueFd_.reset();
       drmHwcLayer->iWidth_  = -1;
       drmHwcLayer->iHeight_ = -1;
       drmHwcLayer->iStride_ = -1;
@@ -3936,8 +3930,7 @@ void DrmHwcTwo::HwcLayer::PopulateFB(hwc2_layer_t layer_id, DrmHwcLayer *drmHwcL
   if(buffer_ && !validate){
     // 利用 dup dma-buffer-fd 来增加对 dma-buffer 的引用计数
     // 避免 dma-buffer 被提前释放
-    drmHwcLayer->uniqueFd_  = base::unique_fd(dup(pBufferInfo_->uniqueFd_.get()));
-    drmHwcLayer->iFd_     = drmHwcLayer->uniqueFd_.get();
+    drmHwcLayer->iFd_     = pBufferInfo_->uniqueFd_.get();
     drmHwcLayer->iWidth_  = pBufferInfo_->iWidth_;
     drmHwcLayer->iHeight_ = pBufferInfo_->iHeight_;
     drmHwcLayer->iStride_ = pBufferInfo_->iStride_;
@@ -3951,7 +3944,6 @@ void DrmHwcTwo::HwcLayer::PopulateFB(hwc2_layer_t layer_id, DrmHwcLayer *drmHwcL
     drmHwcLayer->sLayerName_      = pBufferInfo_->sLayerName_;
   }else{
     drmHwcLayer->iFd_     = -1;
-    drmHwcLayer->uniqueFd_.reset();
     drmHwcLayer->iWidth_  = -1;
     drmHwcLayer->iHeight_ = -1;
     drmHwcLayer->iStride_ = -1;

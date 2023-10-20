@@ -170,8 +170,6 @@ struct DrmLayerInfoStore{
 
   // BufferId fd, 值为 uniqueFd_.get()
   int iFd_;
-  // uniqueFd
-  base::unique_fd uniqueFd_;
   int iFormat_;
   int iWidth_;
   int iHeight_;
@@ -239,8 +237,6 @@ struct DrmHwcLayer {
   uint64_t uBufferId_;
   // fd, 值为 uniqueFd_.get()
   int iFd_;
-  // uniqueFd
-  base::unique_fd uniqueFd_;
   int iFormat_;
   int iWidth_;
   int iHeight_;
