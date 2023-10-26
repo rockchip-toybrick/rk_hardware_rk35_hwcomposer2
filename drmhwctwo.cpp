@@ -166,6 +166,10 @@ HWC2::Error DrmHwcTwo::Init() {
     device->RegisterHotplugHandler(new DrmHotplugHandler(this, device.get()));
   }
 
+  // drm event 异步消息处理线程
+  if(eventWorker_.Init(this)){
+    HWC2_ALOGE("EventWorker init fail.");
+  }
   return ret;
 }
 
@@ -1949,8 +1953,27 @@ HWC2::Error DrmHwcTwo::HwcDisplay::PresentDisplay(int32_t *retire_fence) {
 
   UpdateTimerState(!static_screen_opt_);
 
-  if(IsActiveModeChange())
-    drm_->FlipResolutionSwitchHandler((int)handle_);
+  /* 解决 DynamicDisplayMode 导致SurfaceFlinger奔溃问题, Crash Log如下:
+        F DEBUG   : id: 2873, tid: 2873, name: surfaceflinger  >>> /system/bin/surfaceflinger
+        F DEBUG   : backtrace:
+        F DEBUG   :       #00 pc 00000000000c1848  /system/lib64/libsurfaceflinger.so (android::sp<android::Fence>::operator=(android::Fence*)+68) (BuildId: cf81f72dadf878a95979872a8edad889)
+        F DEBUG   :       #01 pc 00000000000c17d4  /system/lib64/libsurfaceflinger.so (android::HWC2::impl::Display::present(android::sp<android::Fence>*)+104) (BuildId: cf81f72dadf878a95979872a8edad889)
+        F DEBUG   :       #02 pc 00000000000ca2fc  /system/lib64/libsurfaceflinger.so (android::impl::HWComposer::presentAndGetReleaseFences(android::DisplayId)+568) (BuildId: cf81f72dadf878a95979872a8edad889)
+        F DEBUG   :       #03 pc 0000000000141330  /system/lib64/libsurfaceflinger.so (android::compositionengine::impl::Display::presentAndGetFrameFences()+132) (BuildId: cf81f72dadf878a95979872a8edad889)
+
+     问题主要原因在于原方案，会导致 main_thread callback 回 SurfaceFlinger，直接将当前Display资源删除，
+     导致PresentDisplay接口返回后，相关资源被删除，引发空指针crash.
+
+     解决方案为单独创建 eventWorker_ 线程调用SurfaceFlinger callback，不使用 main_thread 则不会删除 display 资源
+  */
+  if(IsActiveModeChange()){
+    DrmEvent event;
+    event.type = HOTPLUG_EVENT;
+    event.display_id = (int)handle_;
+    event.connection = DRM_MODE_CONNECTED;
+    g_ctx->eventWorker_.SendDrmEvent(event);
+    ActiveModeChange(false);
+  }
   return HWC2::Error::None;
 }
 
@@ -4554,6 +4577,102 @@ void DrmHwcTwo::DrmHotplugHandler::HandleResolutionSwitchEvent(int display_id) {
   return;
 }
 
+
+DrmHwcTwo::EventWorker::EventWorker()
+    : Worker("hwc2-event", HAL_PRIORITY_URGENT_DISPLAY),
+      hwc2_(NULL){
+}
+
+DrmHwcTwo::EventWorker::~EventWorker() {
+}
+
+int DrmHwcTwo::EventWorker::Init(DrmHwcTwo *hwc2) {
+  hwc2_ = hwc2;
+  return InitWorker();
+}
+
+int DrmHwcTwo::EventWorker::SendDrmEvent(DrmEvent event){
+  Lock();
+  mPendingEvent_.push(event);
+  Unlock();
+  Signal();
+  return 0;
+}
+
+int DrmHwcTwo::EventWorker::SendHotplugEvent(DrmEvent event){
+  // 若系统没有设置为动态更新模式的话，则不进行分辨率更新
+  ResourceManager* rm = ResourceManager::getInstance();
+  if(!rm->IsDynamicDisplayMode()){
+    return 0;
+  }
+
+  int primary_id = 0;
+  DrmDevice* drm = rm->GetDrmDevice(primary_id);
+  if(drm == NULL){
+    HWC2_ALOGE("Failed to get DrmDevice for display %d", event.display_id);
+    return -1;
+  }
+
+  DrmConnector *connector = drm->GetConnectorForDisplay(event.display_id);
+  if (!connector) {
+    HWC2_ALOGE("Failed to get connector for display %d", event.display_id);
+    return -1;
+  }
+
+  if(hwc2_->displays_.count(event.display_id)){
+    auto &display = hwc2_->displays_.at(event.display_id);
+    HWC2::Error error = display.ChosePreferredConfig();
+    if(error != HWC2::Error::None){
+      HWC2_ALOGE("hwc_resolution_switch: connector %u type=%s, type_id=%d ChosePreferredConfig fail.\n",
+                    connector->id(),
+                    drm->connector_type_str(connector->type()),
+                    connector->type_id());
+      return -1;
+    }
+
+    HWC2_ALOGI("hwc_resolution_switch: display_id=%d connector %u type=%s, type_id=%d\n",
+                  event.display_id,
+                  connector->id(),
+                  drm->connector_type_str(connector->type()),
+                  connector->type_id());
+    hwc2_->HandleDisplayHotplug(event.display_id, DRM_MODE_CONNECTED);
+  }
+
+  if(hwc2_->displays_.count(primary_id)){
+    auto &primary = hwc2_->displays_.at(primary_id);
+    primary.InvalidateControl(5,20);
+  }
+
+  return 0;
+}
+
+void DrmHwcTwo::EventWorker::Routine() {
+  ATRACE_CALL();
+  Lock();
+  int ret = WaitForSignalOrExitLocked();
+  if (ret == -EINTR) {
+    Unlock();
+    return;
+  }
+
+  if(mPendingEvent_.empty()){
+    return;
+  }
+
+  DrmEvent event = mPendingEvent_.front();
+  mPendingEvent_.pop();
+  Unlock();
+
+  if(event.type == HOTPLUG_EVENT){
+    if(SendHotplugEvent(event)){
+      HWC2_ALOGE("SendHotplugEvent fail event.display=%d connection=%d, ret = %d",
+                  event.display_id, event.connection, ret);
+      return;
+    }
+  }
+
+  return;
+}
 
 // static
 int DrmHwcTwo::HookDevClose(hw_device_t * /*dev*/) {

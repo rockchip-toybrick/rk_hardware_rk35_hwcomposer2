@@ -816,6 +816,35 @@ class DrmHwcTwo : public hwc2_device_t {
     DrmDevice *drm_;
   };
 
+  enum DrmEventType{
+    UNKNOW_EVENT = 0,
+    HOTPLUG_EVENT,
+  };
+
+  struct DrmEvent{
+    DrmEventType type;
+    int display_id;
+    drmModeConnection connection;
+  };
+
+  class EventWorker : public Worker {
+  public:
+    EventWorker();
+    ~EventWorker() override;
+
+    int Init(DrmHwcTwo *hwc2);
+    int SendDrmEvent(DrmEvent event);
+
+  protected:
+    void Routine() override;
+    int SendHotplugEvent(DrmEvent event);
+
+  private:
+    DrmHwcTwo *hwc2_;
+    std::queue<DrmEvent> mPendingEvent_;
+  };
+
+
   static DrmHwcTwo *toDrmHwcTwo(hwc2_device_t *dev) {
     return static_cast<DrmHwcTwo *>(dev);
   }
@@ -897,6 +926,7 @@ class DrmHwcTwo : public hwc2_device_t {
   std::atomic<int> mVirtualDisplayCount_;
   // 通过 mHasRegisterDisplay_ 存储已向SurfaceFlinger注册的display
   std::set<hwc2_display_t> mHasRegisterDisplay_;
+  EventWorker eventWorker_;
 };
 }  // namespace android
 #endif // DRM_HWC_TWO_H
