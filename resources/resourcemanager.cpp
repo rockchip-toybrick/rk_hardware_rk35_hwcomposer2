@@ -110,6 +110,14 @@ int ResourceManager::Init(DrmHwcTwo *hwc2) {
   // 更新全局 kernel drm 版本信息
   gSetDrmVersion(drm->getDrmVersion());
 
+#ifdef USE_HWC_PROXY_SERVICE
+  ret = hwc_proxy_client_worker_.Init(drm->fd());
+  if (ret) {
+    HWC2_ALOGE("Failed to create hw_output worker for %d\n", ret);
+    return ret;
+  }
+#endif
+
   // 更新配置
   InitProperty();
   return 0;

@@ -165,6 +165,7 @@ HWC2::Error DrmHwcTwo::Init() {
   for (auto &device : drmDevices) {
     device->RegisterHotplugHandler(new DrmHotplugHandler(this, device.get()));
   }
+
   return ret;
 }
 
@@ -392,7 +393,7 @@ bool DrmHwcTwo::HwcDisplay::IsActiveModeChange() {
 
 HWC2::Error DrmHwcTwo::HwcDisplay::Init() {
 
-  HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64,handle_);
+  HWC2_ALOGD_IF_VERBOSE("HwcDisplay::Init display-id=%" PRIu64,handle_);
 
   int display = static_cast<int>(handle_);
 
