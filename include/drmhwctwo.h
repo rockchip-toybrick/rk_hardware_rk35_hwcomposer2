@@ -247,15 +247,8 @@ class DrmHwcTwo : public hwc2_device_t {
         success = true;
       }
 
-      if(mDrawingState.buffer_ != mCurrentState.buffer_){
-          nsecs_t current_time = systemTime();
-          qFrameTimestamp_.push(current_time);
-          qFrameTimestampBack_.push(current_time);
-          while(qFrameTimestamp_.size() > MAX_NUM_FRAME_TIMESTAMP_CNT){
-            qFrameTimestamp_.pop();
-            qFrameTimestampBack_.pop();
-          }
-        }
+      calculateFPS(pBufferInfo_->uBufferId_);
+
       // ALOGI("rk-debug Name=%s mFps=%f", pBufferInfo_->sLayerName_.c_str(), GetFps());;
     }
 
