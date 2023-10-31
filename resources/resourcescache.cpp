@@ -51,6 +51,12 @@ bool GemHandle::isValid(){ return uGemHandle_ != 0;}
 
 
 LayerInfoCache::LayerInfoCache(){};
-LayerInfoCache::~LayerInfoCache(){}
+LayerInfoCache::~LayerInfoCache(){
+  if(bFbIdCached_){
+    bFbIdCached_ = false;
+    DrmGralloc::getInstance()->hwc_fbid_dec_layer_ref_count(uBufferId_);
+  }
+
+}
 
 };

@@ -3489,7 +3489,7 @@ HWC2::Error DrmHwcTwo::HwcLayer::SetLayerBuffer(buffer_handle_t buffer,
     bUseSlotCache = RK_DECODING_CALCULATION(acquire_fence, RK_BUFFER_CACHE_SHIFT) == RK_BUFFER_USE_CACHE_FLAG;
     uCacheSlot = RK_DECODING_CALCULATION(acquire_fence, RK_BUFFER_SLOT_SHIFT);
     if(uCacheSlot > 0){
-      HWC2_ALOGD_IF_DEBUG("rk-debug use_cache=%d cache_slot=%d",bUseSlotCache, uCacheSlot);
+      HWC2_ALOGD_IF_DEBUG("use_cache=%d cache_slot=%d",bUseSlotCache, uCacheSlot);
       return HWC2::Error::None;
     }
   }
@@ -3930,6 +3930,7 @@ void DrmHwcTwo::HwcLayer::PopulateFB(hwc2_layer_t layer_id, DrmHwcLayer *drmHwcL
   if(buffer_ && !validate){
     // 利用 dup dma-buffer-fd 来增加对 dma-buffer 的引用计数
     // 避免 dma-buffer 被提前释放
+    drmHwcLayer->uBufferId_ = pBufferInfo_->uBufferId_;
     drmHwcLayer->iFd_     = pBufferInfo_->uniqueFd_.get();
     drmHwcLayer->iWidth_  = pBufferInfo_->iWidth_;
     drmHwcLayer->iHeight_ = pBufferInfo_->iHeight_;

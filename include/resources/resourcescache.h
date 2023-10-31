@@ -63,6 +63,7 @@ class LayerInfoCache{
   uint64_t uBufferId_;
   GemHandle gemHandle_;
   std::string sLayerName_;
+  bool bFbIdCached_ = false;
 };
 
 };

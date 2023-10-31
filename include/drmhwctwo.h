@@ -202,7 +202,7 @@ class DrmHwcTwo : public hwc2_device_t {
         const auto mapBuffer = bufferInfoMap_.find(local_cache_slot);
         if(mapBuffer != bufferInfoMap_.end()){
           pBufferInfo_ = mapBuffer->second;
-          HWC2_ALOGD_IF_DEBUG("rk-debug: bufferInfoMap_ size = %zu has cache! Slot=%" PRIu64 " Name=%s",
+          HWC2_ALOGD_IF_DEBUG("bufferInfoMap_ size = %zu has cache! Slot=%" PRIu64 " Name=%s",
                               bufferInfoMap_.size(),
                               local_cache_slot,
                               pBufferInfo_->sLayerName_.c_str());
@@ -233,7 +233,9 @@ class DrmHwcTwo : public hwc2_device_t {
         drmGralloc_->hwc_get_handle_plane_bytes_stride(buffer_, pBufferInfo_->uByteStridePlanes_);
         drmGralloc_->hwc_get_handle_name(buffer_,pBufferInfo_->sLayerName_);
         layer_name_ = pBufferInfo_->sLayerName_;
-        HWC2_ALOGD_IF_DEBUG("rk-debug : bufferInfoMap_ size = %zu insert success! slot=%" PRIu64
+        pBufferInfo_->bFbIdCached_ = true;
+        drmGralloc_->hwc_fbid_add_layer_ref_count(buffer_id);
+        HWC2_ALOGD_IF_DEBUG("bufferInfoMap_ size = %zu insert success! slot=%" PRIu64
                               "w=%d h=%d format=%d fourcc=%c%c%c%c Name=%s",
                               bufferInfoMap_.size(), local_cache_slot,
                               pBufferInfo_->iWidth_,
@@ -301,6 +303,8 @@ class DrmHwcTwo : public hwc2_device_t {
           drmGralloc_->hwc_get_handle_plane_bytes_stride(buffer_, pBufferInfo_->uByteStridePlanes_);
           drmGralloc_->hwc_get_handle_name(buffer_,pBufferInfo_->sLayerName_);
           layer_name_ = pBufferInfo_->sLayerName_;
+          pBufferInfo_->bFbIdCached_ = true;
+          drmGralloc_->hwc_fbid_add_layer_ref_count(buffer_id);
           HWC2_ALOGD_IF_VERBOSE("bufferInfoMap_ size = %zu insert success! BufferId=%" PRIx64
                                 "w=%d h=%d format=%d fourcc=%c%c%c%c Name=%s",
                                bufferInfoMap_.size(),buffer_id,
@@ -351,6 +355,8 @@ class DrmHwcTwo : public hwc2_device_t {
       pBufferInfo_->uModifier_ = drmGralloc_->hwc_get_handle_format_modifier(buffer_);
       drmGralloc_->hwc_get_handle_name(buffer_,pBufferInfo_->sLayerName_);
       layer_name_ = pBufferInfo_->sLayerName_;
+      pBufferInfo_->bFbIdCached_ = true;
+      drmGralloc_->hwc_fbid_add_layer_ref_count(buffer_id);
       HWC2_ALOGD_IF_VERBOSE("bufferInfoMap_ size = %zu insert success! BufferId=%" PRIx64
                             " fd=%d w=%d h=%d format=%d fourcc=%c%c%c%c usage=%" PRIx64 " modifier=%" PRIx64 " Name=%s",
                             bufferInfoMap_.size(),buffer_id,

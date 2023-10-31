@@ -96,7 +96,7 @@ class DrmHwcBuffer {
 
   int ImportBuffer(buffer_handle_t handle, Importer *importer);
 
-  int SetBoInfo(uint32_t fd, uint32_t width,
+  int SetBoInfo(uint64_t buffer_id, uint32_t fd, uint32_t width,
                 uint32_t height, uint32_t height_stride,
                 uint32_t format, uint32_t hal_format,
                 uint64_t modifier,
