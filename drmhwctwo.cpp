@@ -876,7 +876,8 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayAttribute(hwc2_config_t config,
         // Dots per 1000 inches
         *value = mm_height ? (mode->v_display() * kUmPerInch) / mm_height : -1;
         break;
-#if PLATFORM_SDK_VERSION > 29
+// Only Android 14 Support
+#if PLATFORM_SDK_VERSION >= 34
       case HWC2::Attribute::ConfigGroup:
         *value = 0; /* TODO: Add support for config groups */
         break;
@@ -919,7 +920,8 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayAttribute(hwc2_config_t config,
         // Dots per 1000 inches
         *value = mm_height ? (h * kUmPerInch) / mm_height : -1;
         break;
-#if PLATFORM_SDK_VERSION > 29
+// Only Android 14 Support
+#if PLATFORM_SDK_VERSION >= 34
       case HWC2::Attribute::ConfigGroup:
         *value = 0; /* TODO: Add support for config groups */
         break;
@@ -2494,7 +2496,8 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateDisplay(uint32_t *num_types,
 }
 
 
-#if PLATFORM_SDK_VERSION > 29
+// Only Android 14 Support
+#if PLATFORM_SDK_VERSION >= 34
 HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayConnectionType(uint32_t *outType) {
   HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ,handle_);
   if (connector_->internal())
@@ -2567,7 +2570,8 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetContentType(int32_t contentType) {
 }
 #endif
 
-#if PLATFORM_SDK_VERSION > 28
+// Only Android 14 Support
+#if PLATFORM_SDK_VERSION >= 34
 HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayIdentificationData(
     uint8_t *outPort, uint32_t *outDataSize, uint8_t *outData) {
   HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ,handle_);
@@ -2623,7 +2627,8 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetDisplayBrightness(
 
 #endif /* PLATFORM_SDK_VERSION > 28 */
 
-#if PLATFORM_SDK_VERSION > 27
+// Only Android 14 Support
+#if PLATFORM_SDK_VERSION >= 34
 
 HWC2::Error DrmHwcTwo::HwcDisplay::GetRenderIntents(
     int32_t mode, uint32_t *outNumIntents,
@@ -2662,7 +2667,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetColorModeWithIntent(int32_t mode,
   return HWC2::Error::None;
 }
 
-#endif /* PLATFORM_SDK_VERSION > 27 */
+#endif /* PLATFORM_SDK_VERSION >= 34 */
 
 HWC2::Error DrmHwcTwo::HwcLayer::SetCursorPosition(int32_t x, int32_t y) {
   HWC2_ALOGD_IF_VERBOSE("layer-id=%d"", x=%d, y=%d" ,id_,x,y);
@@ -5019,7 +5024,8 @@ hwc2_function_pointer_t DrmHwcTwo::HookDevGetFunction(
       return ToHook<HWC2_PFN_VALIDATE_DISPLAY>(
           DisplayHook<decltype(&HwcDisplay::ValidateDisplay),
                       &HwcDisplay::ValidateDisplay, uint32_t *, uint32_t *>);
-#if PLATFORM_SDK_VERSION > 27
+// Only Android 14 Support
+#if PLATFORM_SDK_VERSION >= 34
     case HWC2::FunctionDescriptor::GetRenderIntents:
       return ToHook<HWC2_PFN_GET_RENDER_INTENTS>(
           DisplayHook<decltype(&HwcDisplay::GetRenderIntents),
@@ -5029,8 +5035,6 @@ hwc2_function_pointer_t DrmHwcTwo::HookDevGetFunction(
       return ToHook<HWC2_PFN_SET_COLOR_MODE_WITH_RENDER_INTENT>(
           DisplayHook<decltype(&HwcDisplay::SetColorModeWithIntent),
                       &HwcDisplay::SetColorModeWithIntent, int32_t, int32_t>);
-#endif
-#if PLATFORM_SDK_VERSION > 28
     case HWC2::FunctionDescriptor::GetDisplayIdentificationData:
       return ToHook<HWC2_PFN_GET_DISPLAY_IDENTIFICATION_DATA>(
           DisplayHook<decltype(&HwcDisplay::GetDisplayIdentificationData),
@@ -5049,8 +5053,6 @@ hwc2_function_pointer_t DrmHwcTwo::HookDevGetFunction(
       return ToHook<HWC2_PFN_SET_DISPLAY_BRIGHTNESS>(
           DisplayHook<decltype(&HwcDisplay::SetDisplayBrightness),
                       &HwcDisplay::SetDisplayBrightness, float>);
-#endif /* PLATFORM_SDK_VERSION > 28 */
-#if PLATFORM_SDK_VERSION > 29
     case HWC2::FunctionDescriptor::GetDisplayConnectionType:
       return ToHook<HWC2_PFN_GET_DISPLAY_CONNECTION_TYPE>(
           DisplayHook<decltype(&HwcDisplay::GetDisplayConnectionType),
