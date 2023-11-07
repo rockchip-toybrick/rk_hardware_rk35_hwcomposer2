@@ -25,7 +25,7 @@
 #include <mutex>
 
 #include <log/log.h>
-#include <drm_api.h>
+#include <DrmApi.h>
 #include "utils/worker.h"
 
 #include "rockchip/utils/drmdebug.h"
