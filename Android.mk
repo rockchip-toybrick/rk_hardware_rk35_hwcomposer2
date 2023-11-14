@@ -63,8 +63,7 @@ LOCAL_SHARED_LIBRARIES := \
   libtinyxml2 \
   libbaseparameter \
   librga \
-  libbase \
-  libbinder_ndk \
+  libbase
 
 LOCAL_STATIC_LIBRARIES := \
   libdrmhwcutils
@@ -209,7 +208,7 @@ LOCAL_SHARED_LIBRARIES += \
 	libhdr_params_parser
 LOCAL_CPPFLAGS += \
 	-DUSE_HDR_PARSER=1
-# API 28/29 -> Android 9.0
+# API 28 -> Android 9.0
 ifeq (0,$(strip $(shell expr $(PLATFORM_SDK_VERSION) \> 29)))
 LOCAL_CPPFLAGS += -DANDROID_P=1
 LOCAL_C_INCLUDES += \
@@ -276,6 +275,7 @@ ifeq ($(strip $(BOARD_USES_HWC_PROXY_SERVICE)),true)
 LOCAL_SHARED_LIBRARIES += \
 	rockchip.hwc.proxy.aidl-V1-ndk \
 	librkhwcproxy \
+	libbinder_ndk
 
 LOCAL_C_INCLUDES += \
 	hardware/rockchip/hwc_proxy_service/rockchip/hwc/proxy/drm_api

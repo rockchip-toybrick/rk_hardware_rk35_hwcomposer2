@@ -209,8 +209,8 @@ public:
 
   int hwc_fbid_get_and_cached(buffer_id_t buffer_id,
     int fd, uint32_t width, uint32_t height, uint32_t fourcc_format,
-    const uint32_t bo_handles[4], const uint32_t pitches[4],
-    const uint32_t offsets[4], const uint64_t modifier[4], uint32_t* fb_id,
+    uint32_t bo_handles[4], uint32_t pitches[4],
+    uint32_t offsets[4], uint64_t modifier[4], uint32_t* fb_id,
     uint32_t flags);
   int hwc_fbid_rm_cache(int fd, uint32_t fb_id);
   int hwc_fbid_add_layer_ref_count(uint64_t buffer_id);

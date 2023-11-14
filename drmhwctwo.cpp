@@ -85,12 +85,14 @@ class DrmVsyncCallback : public VsyncCallback {
     }
   }
 
+#if PLATFORM_SDK_VERSION >= 34
   void Callback(int display, int64_t timestamp, hwc2_vsync_period_t vsyncPeriodNanos) {
     auto hook = reinterpret_cast<HWC2_PFN_VSYNC_2_4>(hook_);
     if(hook){
       hook(data_, display, timestamp, vsyncPeriodNanos);
     }
   }
+#endif
 
  private:
   hwc2_callback_data_t data_;
@@ -283,7 +285,11 @@ static bool isValid(HWC2::Callback descriptor) {
     switch (descriptor) {
         case HWC2::Callback::Hotplug: // Fall-through
         case HWC2::Callback::Refresh: // Fall-through
+
+#if PLATFORM_SDK_VERSION >= 34
         case HWC2::Callback::Vsync_2_4:
+#endif
+
         case HWC2::Callback::Vsync: return true;
         default: return false;
     }
@@ -303,7 +309,9 @@ HWC2::Error DrmHwcTwo::RegisterCallback(int32_t descriptor,
   if (!function) {
     callbacks_.erase(callback);
     switch (callback) {
+#if PLATFORM_SDK_VERSION >= 34
       case HWC2::Callback::Vsync_2_4:
+#endif
       case HWC2::Callback::Vsync: {
         for (std::pair<const hwc2_display_t, DrmHwcTwo::HwcDisplay> &d :
              displays_)
@@ -336,7 +344,10 @@ HWC2::Error DrmHwcTwo::RegisterCallback(int32_t descriptor,
         HandleInitialHotplugState(device.get());
       break;
     }
+
+#if PLATFORM_SDK_VERSION >= 34
     case HWC2::Callback::Vsync_2_4:
+#endif
     case HWC2::Callback::Vsync: {
       for (std::pair<const hwc2_display_t, DrmHwcTwo::HwcDisplay> &d :
            displays_)

@@ -33,7 +33,10 @@ class VsyncCallback {
   virtual ~VsyncCallback() {
   }
   virtual void Callback(int display, int64_t timestamp) = 0;
+// Only Android 14 Support
+#if PLATFORM_SDK_VERSION >= 34
   virtual void Callback(int display, int64_t timestamp, hwc2_vsync_period_t vsyncPeriodNanos) = 0;
+#endif
 };
 
 class VSyncWorker : public Worker {
