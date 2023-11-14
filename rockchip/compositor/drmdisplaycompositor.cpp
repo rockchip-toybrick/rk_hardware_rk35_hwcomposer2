@@ -1089,11 +1089,21 @@ int DrmDisplayCompositor::CollectCommitInfo(drmModeAtomicReqPtr pset,
 
 #ifdef RK3528
       if(layer.bNeedPreScale_ && !layer.bIsPreScale_){
-        HWC2_ALOGD_IF_WARN("%s bNeedPreScale_=%d bIsPreScale_=%d skip until PreScale ready.",
-                            layer.sLayerName_.c_str(),
-                            layer.bNeedPreScale_,
-                            layer.bIsPreScale_);
-        continue;
+        // Prescale 图层若无法满足送显示条件，需要将图层关闭.
+        ret = drmModeAtomicAddProperty(pset, plane->id(),
+                                      plane->crtc_property().id(), 0) < 0 ||
+              drmModeAtomicAddProperty(pset, plane->id(),
+                                      plane->fb_property().id(), 0) < 0;
+        if (ret) {
+          ALOGE("Failed to prescale_layer add plane %d disable to pset", plane->id());
+          continue;
+        }else{
+          HWC2_ALOGD_IF_WARN("%s bNeedPreScale_=%d bIsPreScale_=%d skip until PreScale ready.",
+                              layer.sLayerName_.c_str(),
+                              layer.bNeedPreScale_,
+                              layer.bIsPreScale_);
+          continue;
+        }
       }
 #endif
 
@@ -1135,6 +1145,11 @@ int DrmDisplayCompositor::CollectCommitInfo(drmModeAtomicReqPtr pset,
                                      plane->crtc_property().id(), 0) < 0 ||
             drmModeAtomicAddProperty(pset, plane->id(),
                                      plane->fb_property().id(), 0) < 0;
+      if (ret) {
+        ALOGE("Failed to add plane %d disable to pset", plane->id());
+        continue;
+      }
+
       // set async_cmmit = 0
       if(plane->async_commit_property().id()) {
         ret |= drmModeAtomicAddProperty(pset, plane->id(),
@@ -1145,10 +1160,6 @@ int DrmDisplayCompositor::CollectCommitInfo(drmModeAtomicReqPtr pset,
                 plane->async_commit_property().id(), plane->id());
           continue;
         }
-      }
-      if (ret) {
-        ALOGE("Failed to add plane %d disable to pset", plane->id());
-        break;
       }
       continue;
     }
