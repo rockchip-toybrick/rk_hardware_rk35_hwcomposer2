@@ -3520,6 +3520,7 @@ void Vop3588::InitRequestContext(std::vector<DrmHwcLayer*> &layers){
   ctx.request.iHdrCnt=0;
 
   ctx.request.bSidebandStreamMode=false;
+  ctx.request.accelerate_app_exist_=false;
 
   for(auto &layer : layers){
     if(CheckGLESLayer(layer)){
