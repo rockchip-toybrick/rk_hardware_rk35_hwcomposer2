@@ -2589,6 +2589,10 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayIdentificationData(
   supported(__func__);
 
   auto blob = connector_->GetEdidBlob();
+  if (blob == nullptr) {
+    ALOGD("Failed to get blob");
+    return HWC2::Error::Unsupported;
+  }
 
   *outPort = connector_->id();
 
