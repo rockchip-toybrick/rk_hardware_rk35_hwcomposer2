@@ -2612,13 +2612,18 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayIdentificationData(
 HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayCapabilities(
     uint32_t *outNumCapabilities, uint32_t *outCapabilities) {
   HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ,handle_);
-  unsupported(__func__, outCapabilities);
 
-  if (outNumCapabilities == nullptr) {
-    return HWC2::Error::BadParameter;
+  uint32_t capabilityNum = 0;
+
+  if (outCapabilities == NULL) {
+    *outNumCapabilities = capabilityNum;
+    return HWC2::Error::None;
   }
 
-  *outNumCapabilities = 0;
+  if (capabilityNum != *outNumCapabilities) {
+    ALOGE("%s:: invalid outNumCapabilities(%d), should be(%d)", __func__, *outNumCapabilities, capabilityNum);
+    return HWC2::Error::BadParameter;
+  }
 
   return HWC2::Error::None;
 }
