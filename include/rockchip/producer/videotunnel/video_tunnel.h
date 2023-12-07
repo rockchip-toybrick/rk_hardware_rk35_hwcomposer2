@@ -18,6 +18,7 @@
 #define _RK_VIDEO_TUNNEL_H
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <cutils/native_handle.h>
 
 #ifdef __cplusplus
@@ -40,6 +41,12 @@ typedef enum vt_role {
     RKVT_ROLE_CONSUMER,
     RKVT_ROLE_INVALID,
 } vt_role_t;
+
+typedef enum vt_buffer_mode {
+    RKVT_BUFFER_INTERNAL,
+    RKVT_BUFFER_EXTERNAL,
+    RKVT_BUFFER_MODE_BUTT,
+} vt_bufmode_t;
 
 typedef struct vt_rect {
     int left;
@@ -65,7 +72,7 @@ typedef struct vt_sideband_data {
     uint64_t    usage;
     uint64_t    data_space;
     uint64_t    fps;
-    int         is_afbc;
+    int         compress_mode;
     int         reserved[13];
 } vt_sideband_data_t;
 
@@ -82,7 +89,10 @@ typedef struct vt_win_attr {
     uint64_t usage;
     uint64_t data_space;
     int      transform;
-    int      is_afbc;
+    int      compress_mode;
+    uint32_t buffer_cnt;
+    uint32_t remain_cnt;
+    void    *native_window;
 } vt_win_attr_t;
 
 typedef struct vt_cmd_data {
@@ -99,7 +109,10 @@ typedef struct vt_buffer {
     uint64_t buffer_id;
     vt_rect_t crop;
     vt_rect_t dis_rect;
-    int reserve[8];
+    int64_t private_data;
+    vt_bufmode_t buffer_mode;
+    int rdy_render_fence_fd;
+    int reserve[4];
 } vt_buffer_t;
 
 int rk_vt_open();
@@ -128,6 +141,7 @@ int rk_vt_setDisplayVsyncAndPeroid(int fd, int tunnel_id, uint64_t timestamp, ui
 int rk_vt_set_mode(int fd, int block_mode);
 int rk_vt_send_cmd(int fd, int tunnel_id, enum vt_cmd cmd, int cmd_data);
 int rk_vt_recv_cmd(int fd, int tunnel_id, enum vt_cmd *cmd, struct vt_cmd_data *cmd_data);
+bool rk_vt_query_has_consumer(int fd, int tunnel_id);
 
 /* for buffer operation */
 vt_buffer_t* rk_vt_buffer_malloc();

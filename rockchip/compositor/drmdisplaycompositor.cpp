@@ -526,6 +526,19 @@ int DrmDisplayCompositor::SyntheticWaitVBlank() {
   }
 
   float percentage = 0.1f; // 10% Remaining Time to the drm driver。
+
+  //使用sideband模式时将sleep时长默认增加到0.5Vsync以降低延迟
+  if(IsSidebandMode()){
+    char property_value[PROPERTY_VALUE_MAX];
+    int sideband_percentage=50;
+    property_get("vendor.hwc.siedeband_wait_vsync_percentage", property_value, "50");
+    //确认是否获取到了有效的percentage
+    if (sscanf(property_value, "%d", &sideband_percentage) == 1 &&
+        sideband_percentage >= 0 && sideband_percentage <= 80)
+      percentage = (float)sideband_percentage / 100.0f;
+    else
+      percentage = 0.5f;
+  }
   int64_t phased_timestamp = GetPhasedVSync(kOneSecondNs / refresh * percentage,
                                             vsync_.tv_sec * kOneSecondNs +
                                                 vsync_.tv_nsec);
@@ -865,6 +878,9 @@ int DrmDisplayCompositor::UpdateSidebandState() {
         drawing_sideband2_.buffer_ = current_sideband2_.buffer_;
     }
   }else if(current_sideband2_.tunnel_id_ > 0){  // 2. ct == dt, 进入送显逻辑
+    //打印当期帧送显时间戳
+    if(current_sideband2_.buffer_ != NULL)
+      dvp->PrintTimeStamp(display_,current_sideband2_.tunnel_id_,current_sideband2_.buffer_->GetExternalId());
     // 若上一帧已显示完成，且当前帧与上一帧不同
     if(drawing_sideband2_.buffer_ != NULL && drawing_sideband2_.buffer_ != current_sideband2_.buffer_){
       if(dvp->SignalReleaseFence(display_,
@@ -2485,7 +2501,26 @@ int DrmDisplayCompositor::CollectVPInfo() {
         dis_rect.top    = layer.display_frame.top;
         dis_rect.right  = layer.display_frame.right;
         dis_rect.bottom = layer.display_frame.bottom;
-        std::shared_ptr<DrmBuffer> buffer = dvp->AcquireBuffer(display_, layer.iTunnelId_, &dis_rect, 0);
+
+        float producer_fps = dvp->GetProducerFps(layer.iTunnelId_);
+        bool acquire_fence_en = false;
+        float display_refresh = 60;
+        //获取屏幕帧率
+        DrmDevice *drm = resource_manager_->GetDrmDevice(display_);
+        DrmConnector *conn = drm->GetConnectorForDisplay(display_);
+        if (conn && conn->state() == DRM_MODE_CONNECTED) {
+          if (conn->active_mode().v_refresh() > 0.0f)
+            display_refresh = conn->active_mode().v_refresh();
+        }
+        //若屏幕帧率大于sideband producer帧率，则需要等待AcquireFence
+        //若使用RGAWriteBack，也需要等待AcquireFence
+        if ((resource_manager_->isWBMode() &&
+             resource_manager_->IsWriteBackByRga()) ||
+            display_refresh > producer_fps) {
+          acquire_fence_en = true;
+        }
+        //HWC2_ALOGD_IF_DEBUG("DVP AcquireBuffer with acquire_fence_en:%d,display_refresh:%f,ProducerFps:%f",acquire_fence_en,display_refresh,producer_fps);
+        std::shared_ptr<DrmBuffer> buffer = dvp->AcquireBuffer(display_, layer.iTunnelId_, &dis_rect, 0 ,acquire_fence_en);
         if(buffer == NULL){
           HWC2_ALOGD_IF_WARN("SidebandStream: display-id=%d AcquireBuffer fail, iTunnelId = %d",
                      display_, layer.iTunnelId_);
@@ -2542,15 +2577,6 @@ int DrmDisplayCompositor::CollectVPInfo() {
             current_composition->SetDisplayHdrMode(DRM_HWC_SDR, HAL_DATASPACE_UNKNOWN);
           }
           CollectModeSetInfo(pset, current_composition, true);
-        }
-
-        // Release 当前帧
-        ret = dvp->ReleaseBuffer(display_,
-                                 layer.iTunnelId_,
-                                 buffer->GetExternalId());
-        if(ret){
-          HWC2_ALOGE("SidebandStream: display-id=%d ReleaseBuffer fail, buffer id=%" PRIu64 ,
-                     display_, buffer->GetId());
         }
       }else{
         fb_id = layer.buffer->fb_id;

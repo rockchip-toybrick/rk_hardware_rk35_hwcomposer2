@@ -221,13 +221,22 @@ int VpContext::SignalReleaseFence(int display_id, uint64_t buffer_id){
   return -1;
 }
 
-int VpContext::SetTimeStamp(int64_t queue_time){
+int VpContext::SetTimeStamp(uint64_t buffer_id, int64_t queue_time){
   std::lock_guard<std::mutex> lock(mtx_);
   mQueueFrameTimestamp_ = queue_time;
 
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
   mAcquireFrameTimestamp_ = ts.tv_sec * 1000 * 1000 + ts.tv_nsec / 1000;
+
+  if(mMapBuffer_.count(buffer_id)){
+    mMapBuffer_[buffer_id]->iQueuedTimestamp_ = mQueueFrameTimestamp_;
+    mMapBuffer_[buffer_id]->iAcquireTimestamp_ = mAcquireFrameTimestamp_;
+  }else{
+    HWC2_ALOGD_IF_ERR("can't find buffer-id=%" PRIu64 " TunnelId=%d",
+             buffer_id, iTunnelId_);
+    return -1;
+  }
   return 0;
 }
 
@@ -242,17 +251,61 @@ int64_t VpContext::GetAcquireTime(){
   return mAcquireFrameTimestamp_;
 }
 
-int VpContext::VpPrintTimestamp(){
+int VpContext::VpPrintTimestamp(int display_id, int64_t buffer_id){
   std::lock_guard<std::mutex> lock(mtx_);
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  mCommitFrameTimestamp_ = ts.tv_sec * 1000 * 1000 + ts.tv_nsec / 1000;
-
-  HWC2_ALOGD_IF_INFO("Queue->Acquire=%" PRIi64 "ms Queue->Commit=%" PRIi64 "ms",
-              (mAcquireFrameTimestamp_ - mQueueFrameTimestamp_) / 1000,
-              (mCommitFrameTimestamp_ - mQueueFrameTimestamp_) / 1000);
-
-  return 0;
+  if(mMapBuffer_.count(buffer_id)){
+    auto &buffer_info = mMapBuffer_[buffer_id];
+    buffer_info->PrintTimestamp(display_id);
+    return 0;
+  }
+  return -1;
 }
 
+int VpContext::SetAcquireFence(uint64_t buffer_id, int fence_fd){
+  std::lock_guard<std::mutex> lock(mtx_);
+  if(fence_fd<=0)
+    return 0;
+  if(mMapBuffer_.count(buffer_id)){
+    sp<AcquireFence> acquire_fence = sp<AcquireFence>(new AcquireFence(fence_fd));
+    auto &buffer_info = mMapBuffer_[buffer_id];
+    buffer_info->SetAcqurieFence(acquire_fence);
+    return 0;
+  }
+  return -1;
+}
+
+int VpContext::WaitAcquireFence(uint64_t buffer_id, int time){
+  std::lock_guard<std::mutex> lock(mtx_);
+  if(mMapBuffer_.count(buffer_id)){
+    auto &buffer_info = mMapBuffer_[buffer_id];
+    int ret = buffer_info->WaitAcquireFence(time);
+    if(ret == 0){
+      buffer_info->CloseAcquireFence();
+    }
+    return ret;
+  }
+  return -1;
+}
+
+int VpContext::CloseAcquireFence(uint64_t buffer_id){
+  std::lock_guard<std::mutex> lock(mtx_);
+  if(mMapBuffer_.count(buffer_id)){
+    auto &buffer_info = mMapBuffer_[buffer_id];
+    return buffer_info->CloseAcquireFence();
+  }
+  return -1;
+}
+
+void VpContext::PrintReleaseFailedBuffer(){
+    if(mReleaseFailedBuffer_.size()==0)
+      return;
+
+    char buf[200]={0};
+    int printCount = mReleaseFailedBuffer_.size();
+    if(printCount>5)
+      printCount=5;
+    for(int i=0;i<printCount;i++)
+      sprintf(buf,"%s,%" PRIx64,buf,mReleaseFailedBuffer_[i]);
+    HWC2_ALOGW("Tunnel_id=%d buffer:%s...(total %zu buffer(s)) pervious release failed!",iTunnelId_,buf,mReleaseFailedBuffer_.size());
+  }
 };

@@ -557,6 +557,7 @@ class DrmHwcTwo : public hwc2_device_t {
 
     bool isSidebandLayer() { return bSideband2_; }
     int getTunnelId() { return mSidebandInfo_.tunnel_id; }
+    uint64_t GetSidebandLayerFps() { return mSidebandInfo_.fps; }
 
     int calculateFPS(uint64_t buffer_id){
       // 若BufferId一致，则认为图层没有更新

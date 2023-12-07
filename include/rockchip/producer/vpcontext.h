@@ -35,6 +35,7 @@ public:
       mDrmBuffer_(drm_buffer),
       mReleaseFence_(ReleaseFence::NO_FENCE){
     mReleaseRefCnt_.clear();
+    mAcquireFence_=NULL;
   };
 
   ~VpBufferInfo(){};
@@ -62,7 +63,7 @@ public:
     std::lock_guard<std::mutex> lock(mtx_);
     mReleaseRefCnt_.insert(display_id);
     if(mReleaseFence_ != NULL){
-      HWC2_ALOGD_IF_INFO("Add refCnt display-id=%d Name=%s" ,display_id, mReleaseFence_->getName().c_str());
+      HWC2_ALOGD_IF_VERBOSE("Add refCnt display-id=%d Name=%s" ,display_id, mReleaseFence_->getName().c_str());
     }
   }
 
@@ -83,7 +84,8 @@ public:
     std::lock_guard<std::mutex> lock(mtx_);
     mReleaseRefCnt_.erase(display_id);
     if(mReleaseFence_ != NULL){
-      HWC2_ALOGD_IF_INFO("want to signal display_id=%d %s", display_id, mReleaseFence_->getName().c_str());
+      if(display_id>=0)
+        HWC2_ALOGD_IF_INFO("display_id=%d signal release fence %s , ref count:%zu", display_id, mReleaseFence_->getName().c_str(),mReleaseRefCnt_.size());
     }
     // 若ReleaseFence引用计数为0，则释放ReleaseFence
     if(mReleaseFence_ != NULL && mReleaseRefCnt_.size() == 0){
@@ -104,11 +106,51 @@ public:
     return 0;
   }
 
+  void SetAcqurieFence(sp<AcquireFence> acquireFence){
+    std::lock_guard<std::mutex> lock(mtx_);
+    //HWC2_ALOGD_IF_DEBUG("set");
+    mAcquireFence_=acquireFence;
+  }
 
+  int WaitAcquireFence(int timeout){
+    std::lock_guard<std::mutex> lock(mtx_);
+    if(mAcquireFence_ && mAcquireFence_->isValid()){
+      //HWC2_ALOGD_IF_DEBUG("wait for %d ms",timeout);
+      return mAcquireFence_->wait(timeout);
+    }
+    return 0;
+  }
+
+  int CloseAcquireFence(){
+    std::lock_guard<std::mutex> lock(mtx_);
+    if(mAcquireFence_ && mAcquireFence_->isValid()){
+      //HWC2_ALOGD_IF_DEBUG("close");
+      mAcquireFence_=NULL;
+    }
+    return 0;
+  }
+
+  int PrintTimestamp(int display_id){
+    std::lock_guard<std::mutex> lock(mtx_);
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    int64_t mCommitFrameTimestamp_ = ts.tv_sec * 1000 * 1000 + ts.tv_nsec / 1000;
+
+    HWC2_ALOGD_IF_DEBUG("display_id=%d Queue->Acquire=%" PRIi64"us "
+                       "Queue->Commit=%" PRIi64 "us",
+                       display_id, (iAcquireTimestamp_ - iQueuedTimestamp_),
+                       (mCommitFrameTimestamp_ - iQueuedTimestamp_));
+
+    return 0;
+  }
+
+  int64_t iAcquireTimestamp_;
+  int64_t iQueuedTimestamp_;
 private:
   vt_buffer_t* pVpBuffer_;
   std::shared_ptr<DrmBuffer> mDrmBuffer_;
   sp<ReleaseFence> mReleaseFence_;
+  sp<AcquireFence> mAcquireFence_;
   std::set<int> mReleaseRefCnt_;
   mutable std::mutex mtx_;
 };
@@ -146,14 +188,30 @@ public:
   // Signal ReleaseFence
   int SignalReleaseFence(int display_id, uint64_t buffer_id);
   // Record timestamp
-  int SetTimeStamp(int64_t queue_time);
+  int SetTimeStamp(uint64_t buffer_id, int64_t queue_time);
   // Get queue timestamp
   int64_t GetQueueTime();
   // Record timestamp
   int64_t GetAcquireTime();
   // Print timestamp
-  int VpPrintTimestamp();
+  int VpPrintTimestamp(int display_id, int64_t buffer_id);
 
+  int SetAcquireFence(uint64_t buffer_id, int fence_fd);
+  int WaitAcquireFence(uint64_t buffer_id, int time);
+  int CloseAcquireFence(uint64_t buffer_id);
+
+  std::list<std::shared_ptr<DrmBuffer>> lBuffer_;
+
+  void SetProducerFps(float fps){
+    fps_=fps;
+  }
+
+  float GetProducerFps(){
+    return fps_;
+  }
+  std::vector<uint64_t> mReleaseFailedBuffer_;
+
+  void PrintReleaseFailedBuffer();
 private:
   DrmGralloc* mDrmGralloc_;
   int iTunnelId_;
@@ -168,6 +226,7 @@ private:
 
   SyncTimeline mTimeLine_;
   mutable std::mutex mtx_;
+  float fps_=60;
 };
 }; // namespace android
 

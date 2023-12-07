@@ -3356,9 +3356,11 @@ int DrmHwcTwo::HwcDisplay::UpdateSidebandMode(){
 
   // 判断是否存在Sideband图层，并保存tunnel_id信息
   int tunnel_id = 0;
+  uint64_t fps = 0;
   for (std::pair<const hwc2_layer_t, DrmHwcTwo::HwcLayer> &l : layers_){
     if(l.second.isSidebandLayer()){
       tunnel_id = l.second.getTunnelId();
+      fps= l.second.GetSidebandLayerFps();
     }
   }
 
@@ -3379,6 +3381,7 @@ int DrmHwcTwo::HwcDisplay::UpdateSidebandMode(){
       if(ret){
         HWC2_ALOGD_IF_ERR("CreateConnection display=%" PRIu64 " fail tunnel-id=%d ret=%d", handle_, tunnel_id, ret);
       }else{
+        dvp->SetProducerFps(tunnel_id,fps);
         HWC2_ALOGD_IF_INFO("CreateConnection display=%" PRIu64 " tunnel-id=%d success ret=%d", handle_, tunnel_id, ret);
       }
       iLastTunnelId_ = tunnel_id;
@@ -3771,7 +3774,7 @@ HWC2::Error DrmHwcTwo::HwcLayer::SetLayerSidebandStream(
                     sbi->modifier,
                     sbi->usage,
                     sbi->data_space,
-                    sbi->is_afbc,
+                    sbi->compress_mode,
                     sbi->fps);
           bSideband2Valid_=true;
           memcpy(&mSidebandInfo_, sbi, sizeof(vt_sideband_data_t));
@@ -3855,7 +3858,7 @@ void DrmHwcTwo::HwcLayer::PopulateSidebandLayer(DrmHwcLayer *drmHwcLayer,
         drmHwcLayer->uFourccFormat_   = drmGralloc_->hwc_get_fourcc_from_hal_format(mSidebandInfo_.format);
         drmHwcLayer->bSideband2_ = true;
         // 通过 Sideband Handle is_afbc 来判断图层是否为AFBC压缩格式
-        drmHwcLayer->uModifier_ = (mSidebandInfo_.is_afbc > 0) ? AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 : 0;
+        drmHwcLayer->uModifier_ = (mSidebandInfo_.compress_mode > 0) ? AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 : 0;
         drmHwcLayer->uGemHandle_ = 0;
         drmHwcLayer->sLayerName_ = std::string("SidebandStream-2.0");
         drmHwcLayer->eDataSpace_ = (android_dataspace_t)mSidebandInfo_.data_space;
