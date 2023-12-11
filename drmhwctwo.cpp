@@ -3666,11 +3666,16 @@ HWC2::Error DrmHwcTwo::HwcLayer::SetLayerBuffer(buffer_handle_t buffer,
    *    2.1. acquire_fence |= CACHE_SLOT << RK_BUFFER_SLOT_SHIFT
    *    2.2. acquire_fence |= (USE_CACHE or USE_UNCACHE) << RK_BUFFER_CACHE_SHIFT
    *    2.3  acquire_fence = acquire_fence * (-1)
+   * 
+   *  on Android14,
+   *    slot is counting form 0 to 64,
+   *  on pervious Android version,
+   *    slot is counting form 64 to 0.
    */
   if(acquire_fence < -1){
     bUseSlotCache = RK_DECODING_CALCULATION(acquire_fence, RK_BUFFER_CACHE_SHIFT) == RK_BUFFER_USE_CACHE_FLAG;
     uCacheSlot = RK_DECODING_CALCULATION(acquire_fence, RK_BUFFER_SLOT_SHIFT);
-    if(uCacheSlot > 0){
+    if(uCacheSlot >= 0){
       HWC2_ALOGD_IF_DEBUG("use_cache=%d cache_slot=%d",bUseSlotCache, uCacheSlot);
       return HWC2::Error::None;
     }
