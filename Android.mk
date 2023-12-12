@@ -98,6 +98,7 @@ LOCAL_SRC_FILES := \
   rockchip/compositor/drmdisplaycomposition.cpp \
   rockchip/compositor/drmdisplaycompositor.cpp \
   rockchip/utils/drmdebug.cpp \
+  rockchip/utils/rgautils.cpp \
   rockchip/common/drmfence.cpp \
   rockchip/common/drmlayer.cpp \
   rockchip/common/drmtype.cpp \

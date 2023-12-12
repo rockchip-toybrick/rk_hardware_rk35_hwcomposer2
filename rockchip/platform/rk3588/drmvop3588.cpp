@@ -43,6 +43,7 @@
 
 #include <drm_fourcc.h>
 #include <log/log.h>
+#include <rockchip/utils/rgautils.h>
 
 //XML prase
 #include <tinyxml2.h>
@@ -1682,6 +1683,11 @@ int Vop3588::TryRgaOverlayPolicy(
               rga_scale_max = true;
           }
 
+          if(!isRK3588RGA3SupportFormat(drmLayer->iFormat_)){
+            HWC2_ALOGD_IF_DEBUG("iFormat_=0x%x, rk3588 rga3 not supported, layerName:%s", drmLayer->iFormat_, drmLayer->sLayerName_.c_str());
+            continue;
+          }
+
           bool yuv_10bit = false;
           switch(drmLayer->iFormat_){
           case HAL_PIXEL_FORMAT_YUV420_10BIT_I:
@@ -1722,19 +1728,13 @@ int Vop3588::TryRgaOverlayPolicy(
           src.width   = drmLayer->iWidth_;
           src.height  = drmLayer->iHeight_;
           src.hstride = drmLayer->iHeightStride_;
-          src.format  = drmLayer->iFormat_;
+          src.format  = UnifyAndroidFormatForRK3588(drmLayer->iFormat_);
 
           // RGA 的特殊修改，需要通过 wstride
           if(drmLayer->uFourccFormat_ == DRM_FORMAT_NV15)
             src.wstride = drmLayer->iByteStride_;
           else
             src.wstride = drmLayer->iStride_;
-
-          if(drmLayer->iFormat_ == HAL_PIXEL_FORMAT_YUV420_8BIT_I){
-            src.format = HAL_PIXEL_FORMAT_YCrCb_NV12;
-          }else if(drmLayer->iFormat_ == HAL_PIXEL_FORMAT_YUV420_10BIT_I){
-            src.format = HAL_PIXEL_FORMAT_YCrCb_NV12_10;
-          }
 
           // AFBC format
           if(drmLayer->bAfbcd_)
