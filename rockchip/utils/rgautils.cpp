@@ -33,16 +33,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef __BEGIN_DECLS
-#define __BEGIN_DECLS extern "C" {
-#endif
 
-#ifndef __END_DECLS
-#define __END_DECLS }
-#endif
+#include <set>
 
-#include <hardware/hardware_rockchip.h>
+
+#include <rockchip/utils/drmdebug.h>
 #include <rockchip/utils/rgautils.h>
+#include <rockchip/utils/rgaformats.h>
+#include <drmlayer.h>
+
+#include <system/graphics.h>
+
+
+namespace hwc_rga_utils{
 
 int HwcGetRgaCompatibleFormat(int format) {
   if (format == 0) return format;
@@ -169,3 +172,5 @@ bool isRK3588RGA2SupportFormat(int format) {
     return false;
   }
 }
+
+};

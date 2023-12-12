@@ -1683,7 +1683,7 @@ int Vop3588::TryRgaOverlayPolicy(
               rga_scale_max = true;
           }
 
-          if(!isRK3588RGA3SupportFormat(drmLayer->iFormat_)){
+          if(!hwc_rga_utils::isRK3588RGA3SupportFormat(drmLayer->iFormat_)){
             HWC2_ALOGD_IF_DEBUG("iFormat_=0x%x, rk3588 rga3 not supported, layerName:%s", drmLayer->iFormat_, drmLayer->sLayerName_.c_str());
             continue;
           }
@@ -1728,7 +1728,7 @@ int Vop3588::TryRgaOverlayPolicy(
           src.width   = drmLayer->iWidth_;
           src.height  = drmLayer->iHeight_;
           src.hstride = drmLayer->iHeightStride_;
-          src.format  = UnifyAndroidFormatForRK3588(drmLayer->iFormat_);
+          src.format  = hwc_rga_utils::UnifyAndroidFormatForRK3588(drmLayer->iFormat_);
 
           // RGA 的特殊修改，需要通过 wstride
           if(drmLayer->uFourccFormat_ == DRM_FORMAT_NV15)
