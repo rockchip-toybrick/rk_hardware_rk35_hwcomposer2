@@ -315,6 +315,7 @@ uint32_t DrmBuffer::DrmFormatToPlaneNum(uint32_t drm_format) {
 }
 
 uint32_t DrmBuffer::GetFbId(){
+  std::lock_guard<std::mutex> lk(mtx_);
   if(uFbId_ > 0)
     return uFbId_;
 
@@ -406,6 +407,7 @@ uint32_t DrmBuffer::GetFbId(){
 }
 
 void* DrmBuffer::Lock(){
+  std::lock_guard<std::mutex> lk(mtx_);
   if(!buffer_){
     HWC2_ALOGI("LayerId=%" PRIu64 " Buffer is null.",uId);
     return NULL;
@@ -424,6 +426,7 @@ void* DrmBuffer::Lock(){
 }
 
 int DrmBuffer::Unlock(){
+  std::lock_guard<std::mutex> lk(mtx_);
   if(!buffer_){
     HWC2_ALOGI("LayerId=%" PRIu64 " Buffer is null.",uId);
     return -1;
@@ -442,6 +445,7 @@ int DrmBuffer::GetFinishFence(){
 }
 
 int DrmBuffer::SetFinishFence(int fence){
+  std::lock_guard<std::mutex> lk(mtx_);
   if(WaitFinishFence()){
     return -1;
   }
@@ -450,6 +454,7 @@ int DrmBuffer::SetFinishFence(int fence){
 }
 
 int DrmBuffer::WaitFinishFence(){
+  std::lock_guard<std::mutex> lk(mtx_);
   int ret = 0;
   if(iFinishFence_.get() > 0){
     ret = sync_wait(iFinishFence_.get(), 1500);
@@ -466,11 +471,13 @@ int DrmBuffer::GetReleaseFence(){
 }
 
 int DrmBuffer::SetReleaseFence(int fence){
+  std::lock_guard<std::mutex> lk(mtx_);
   iReleaseFence_.Set(fence);
   return 0;
 }
 
 int DrmBuffer::WaitReleaseFence(){
+  std::lock_guard<std::mutex> lk(mtx_);
   int ret = 0;
   if(iReleaseFence_.get() > 0){
     ret = sync_wait(iReleaseFence_.get(), 1500);
@@ -483,6 +490,7 @@ int DrmBuffer::WaitReleaseFence(){
 }
 
 int DrmBuffer::DumpData(){
+  std::lock_guard<std::mutex> lk(mtx_);
   if(!buffer_)
     HWC2_ALOGI("LayerId=%" PRIu64 " Buffer is null.",uId);
 
@@ -536,6 +544,7 @@ bool DrmBuffer::IsPreScaleBuffer(){
 }
 
 int DrmBuffer::SwitchToPreScaleBuffer(){
+  std::lock_guard<std::mutex> lk(mtx_);
   metadata_for_rkvdec_scaling_t* metadata = NULL;
 
   ptrDrmGralloc_->lock_rkvdec_scaling_metadata(buffer_, &metadata);
@@ -599,6 +608,7 @@ int DrmBuffer::SwitchToPreScaleBuffer(){
 }
 
 int DrmBuffer::ResetPreScaleBuffer(){
+  std::lock_guard<std::mutex> lk(mtx_);
   bIsPreScale_ = false;
   iFd_     = ptrDrmGralloc_->hwc_get_handle_primefd(buffer_);
   iWidth_  = ptrDrmGralloc_->hwc_get_handle_attibute(buffer_,ATT_WIDTH);
@@ -622,6 +632,7 @@ int DrmBuffer::ResetPreScaleBuffer(){
 }
 
 uint32_t DrmBuffer::GetPreScaleFbId(){
+  std::lock_guard<std::mutex> lk(mtx_);
   if(uPreScaleFbId_ > 0){
     return uPreScaleFbId_;
   }

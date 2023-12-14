@@ -118,6 +118,7 @@ private:
   buffer_handle_t buffer_;
   sp<GraphicBuffer> ptrBuffer_;
   DrmGralloc *ptrDrmGralloc_;
+  mutable std::mutex mtx_;
 };
 
 }// namespace android
