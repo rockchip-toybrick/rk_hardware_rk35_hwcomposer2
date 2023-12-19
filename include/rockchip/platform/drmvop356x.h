@@ -61,7 +61,8 @@ typedef enum tagComposeMode{
    HWC_GLES_POLICY,
    HWC_RGA_OVERLAY_LOPICY,
    HWC_3D_LOPICY,
-   HWC_DEBUG_POLICY
+   HWC_DEBUG_POLICY,
+   HWC_ACCELERATE_LOPICY
 }ComposeMode;
 
 typedef struct RequestContext{
@@ -82,6 +83,9 @@ typedef struct RequestContext{
   int iLargeYuvCnt=0;
   int iRotateCnt=0;
   int iHdrCnt=0;
+
+  //GLES accelerate info
+  bool accelerate_app_exist_=false;
 } ReqCtx;
 
 typedef struct SupportContext{
@@ -131,6 +135,9 @@ typedef struct StateContext{
   // Soc id
   int iSocId=0;
   std::set<ComposeMode> setHwcPolicy;
+
+  // GLES accelerate
+  char accelerate_app_name[100];
 } StaCtx;
 
 typedef struct DrmVop2Context{
@@ -153,6 +160,9 @@ typedef struct DrmVop2Context{
 
  protected:
   int TryOverlayPolicy(std::vector<DrmCompositionPlane> *composition,
+                        std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
+                        std::vector<PlaneGroup *> &plane_groups);
+  int TryAcceleratePolicy(std::vector<DrmCompositionPlane> *composition,
                         std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                         std::vector<PlaneGroup *> &plane_groups);
   int TryMixSkipPolicy(std::vector<DrmCompositionPlane> *composition,

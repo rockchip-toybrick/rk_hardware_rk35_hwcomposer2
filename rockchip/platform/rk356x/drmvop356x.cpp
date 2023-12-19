@@ -51,6 +51,12 @@ void Vop356x::Init(){
 
   ctx.state.bSmartScaleEnable = hwc_get_bool_property("vendor.hwc.smart_scale_enable","false");
 
+  memset(ctx.state.accelerate_app_name, 0x00, sizeof(ctx.state.accelerate_app_name));
+  hwc_get_string_property("vendor.hwc.accelerate_app_name",
+                          "rk_handwrite_sf",
+                          ctx.state.accelerate_app_name);
+
+
 }
 
 bool Vop356x::SupportPlatform(uint32_t soc_id){
@@ -95,6 +101,13 @@ int Vop356x::TryHwcPolicy(
       ALOGD_IF(LogLevel(DBG_DEBUG),"Match overlay policy fail, try to match other policy.");
       TryMix();
     }
+  }
+
+  // Try to match GLES Accelerate policy
+  if(ctx.state.setHwcPolicy.count(HWC_ACCELERATE_LOPICY)){
+    ret = TryAcceleratePolicy(composition,layers,crtc,plane_groups);
+    if(!ret)
+      return 0;
   }
 
   // Try to match mix policy
@@ -1514,6 +1527,74 @@ int Vop356x::TryMixDownPolicy(
   return ret;
 }
 
+/*************************AcceleratePolicy*************************
+   DisplayId=0, Connector 345, Type = HDMI-A-1, Connector state = DRM_MODE_CONNECTED , frame_no = 6611
+  ------+-----+-----------+-----------+--------------------+-------------+------------+--------------------------------+------------------------+------------+------------
+    id  |  z  |  sf-type  |  hwc-type |       handle       |  transform  |    blnd    |     source crop (l,t,r,b)      |          frame         | dataspace  | name
+  ------+-----+-----------+-----------+--------------------+-------------+------------+--------------------------------+------------------------+------------+------------
+   0050 | 000 |  Sideband |    Device | 000000000000000000 | None        | None       |    0.0,    0.0,   -1.0,   -1.0 |    0,    0, 1920, 1080 |          0 | allocateBuffer
+   0059 | 001 |    Device |    Client | 00b40000751ec3ec30 | None        | Premultipl | 1829.0,   20.0, 1900.0,   59.0 | 1829,   20, 1900,   59 |          0 | com.tencent.start.tv/com.tencent.start.ui.PlayActivity#0
+   0071 | 002 |    Device |    Device | 00b40000751ec403d0 | None        | Premultipl |    0.0,    0.0,  412.0, 1080.0 | 1508,    0, 1920, 1080 |          0 | rk_handwrite_sf
+  ------+-----+-----------+-----------+--------------------+-------------+------------+--------------------------------+------------------------+------------+------------
+************************************************************/
+int Vop356x::TryAcceleratePolicy(
+    std::vector<DrmCompositionPlane> *composition,
+    std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
+    std::vector<PlaneGroup *> &plane_groups) {
+  ALOGD_IF(LogLevel(DBG_DEBUG), "%s:line=%d",__FUNCTION__,__LINE__);
+  ResetLayer(layers);
+  ResetPlaneGroups(plane_groups);
+  std::vector<DrmHwcLayer *> tmp_layers;
+  //save fb into tmp_layers
+  MoveFbToTmp(layers, tmp_layers);
+
+  std::pair<int, int> layer_indices(-1, -1);
+
+  // 找到
+  int accelerate_index = -1;
+  for(auto& layer : layers){
+    if(layer->bAccelerateLayer_){
+      accelerate_index = layer->iDrmZpos_;
+      break;
+    }
+  }
+
+  // 两层及以上的手写加速图层
+  if(layers.size() >= 2){
+    // 取手写图层下一层作为 mix 初始图层
+    layer_indices.first = accelerate_index - 2;
+    if(layers.size() == 2){
+      // 若只有两个图层，则取第
+      layer_indices.second = layer_indices.first;
+    }else{
+      layer_indices.second = accelerate_index - 1;
+    }
+  }
+
+  ALOGD_IF(LogLevel(DBG_DEBUG), "%s:mix accelerate layer (%d,%d)",__FUNCTION__,layer_indices.first, layer_indices.second);
+  OutputMatchLayer(layer_indices.first, layer_indices.second, layers, tmp_layers);
+  int ret = MatchPlanes(composition,layers,crtc,plane_groups);
+  if(!ret)
+    return ret;
+  else{
+    ResetLayerFromTmpExceptFB(layers,tmp_layers);
+    for(--layer_indices.first; layer_indices.first >= 0; --layer_indices.first){
+      ALOGD_IF(LogLevel(DBG_DEBUG), "%s:mix accelerate layer (%d,%d)",__FUNCTION__,layer_indices.first, layer_indices.second);
+      OutputMatchLayer(layer_indices.first, layer_indices.second, layers, tmp_layers);
+      ret = MatchPlanes(composition,layers,crtc,plane_groups);
+      if(!ret)
+        return ret;
+      else{
+        ResetLayerFromTmpExceptFB(layers,tmp_layers);
+        continue;
+      }
+    }
+  }
+  ResetLayerFromTmp(layers,tmp_layers);
+  return ret;
+}
+
+
 int Vop356x::TryMixPolicy(
     std::vector<DrmCompositionPlane> *composition,
     std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
@@ -1855,6 +1936,8 @@ void Vop356x::InitRequestContext(std::vector<DrmHwcLayer*> &layers){
   ctx.request.iRotateCnt=0;
   ctx.request.iHdrCnt=0;
 
+  ctx.request.accelerate_app_exist_=false;
+
   for(auto &layer : layers){
     if(CheckGLESLayer(layer)){
       layer->bGlesCompose_ = true;
@@ -1868,6 +1951,11 @@ void Vop356x::InitRequestContext(std::vector<DrmHwcLayer*> &layers){
     if(layer->bSkipLayer_ || layer->bGlesCompose_){
       ctx.request.iSkipCnt++;
       continue;
+    }
+
+    if(strstr(layer->sLayerName_.c_str(), ctx.state.accelerate_app_name)){
+      ctx.request.accelerate_app_exist_ = true;
+      layer->bAccelerateLayer_ = true;
     }
 
     if(layer->bAfbcd_){
@@ -2188,6 +2276,11 @@ void Vop356x::TryMix(){
     ctx.state.setHwcPolicy.insert(HWC_MIX_VIDEO_LOPICY);
   if(ctx.request.iSkipCnt > 0)
     ctx.state.setHwcPolicy.insert(HWC_MIX_SKIP_LOPICY);
+
+  if(ctx.request.accelerate_app_exist_){
+    ALOGD_IF(LogLevel(DBG_DEBUG),"accelerate_app_exist_ , soc_id=%x", ctx.state.iSocId);
+    ctx.state.setHwcPolicy.insert(HWC_ACCELERATE_LOPICY);
+  }
 }
 
 int Vop356x::InitContext(
@@ -2208,6 +2301,12 @@ int Vop356x::InitContext(
 
   if((iMode!=1 || gles_policy) && iMode != 2){
     ctx.state.setHwcPolicy.insert(HWC_GLES_POLICY);
+
+    if(ctx.request.accelerate_app_exist_){
+      ALOGD_IF(LogLevel(DBG_DEBUG),"accelerate_app_exist_ , soc_id=%x", ctx.state.iSocId);
+      ctx.state.setHwcPolicy.insert(HWC_ACCELERATE_LOPICY);
+    }
+
     ALOGD_IF(LogLevel(DBG_DEBUG),"Force use GLES compose, iMode=%d, gles_policy=%d, soc_id=%x",iMode,gles_policy,ctx.state.iSocId);
     return 0;
   }
