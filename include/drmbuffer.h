@@ -71,7 +71,6 @@ public:
   // RK3528 解码器支持预缩小功能
   bool IsPreScaleBuffer();
   int SwitchToPreScaleBuffer();
-  int ResetPreScaleBuffer();
   uint32_t GetPreScaleFbId();
 #endif
 
@@ -110,6 +109,7 @@ private:
   bool bIsPreScale_ = false;
   metadata_for_rkvdec_scaling_t mMetadata_;
   uint32_t uPreScaleFbId_ = 0;
+  int ResetPreScaleBuffer();
 #endif
   // Init flags
   bool bInit_;

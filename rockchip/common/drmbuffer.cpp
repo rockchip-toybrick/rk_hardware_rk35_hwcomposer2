@@ -446,9 +446,17 @@ int DrmBuffer::GetFinishFence(){
 
 int DrmBuffer::SetFinishFence(int fence){
   std::lock_guard<std::mutex> lk(mtx_);
-  if(WaitFinishFence()){
-    return -1;
+
+  //if iFinishFence_ present, wait and close it.
+  if(iFinishFence_.get() > 0){
+    int ret = sync_wait(iFinishFence_.get(), 1500);
+    iFinishFence_.Close();
+    if (ret) {
+      HWC2_ALOGE("Failed to wait for finish fence %d/%d 1500ms", iFinishFence_.get(), ret);
+      return -1;
+    }
   }
+
   iFinishFence_.Set(fence);
   return 0;
 }
@@ -494,11 +502,19 @@ int DrmBuffer::DumpData(){
   if(!buffer_)
     HWC2_ALOGI("LayerId=%" PRIu64 " Buffer is null.",uId);
 
-  WaitFinishFence();
-
   void* cpu_addr = NULL;
   static int frame_cnt =0;
   int ret = 0;
+
+  //if iFinishFence_ present, wait and close it.
+  if(iFinishFence_.get() > 0){
+    ret = sync_wait(iFinishFence_.get(), 1500);
+    if (ret) {
+      HWC2_ALOGE("Failed to wait for finish fence %d/%d 1500ms", iFinishFence_.get(), ret);
+    }
+    iFinishFence_.Close();
+  }
+
   cpu_addr = ptrDrmGralloc_->hwc_get_handle_lock(buffer_,iWidth_,iHeight_);
   if (cpu_addr == NULL) {
     HWC2_ALOGE("buffer-id=%" PRIu64 " lock fail", uId);
@@ -607,8 +623,8 @@ int DrmBuffer::SwitchToPreScaleBuffer(){
     return -1;
 }
 
+//注意：如果此方法外部调用，需要修改加锁并注意死锁问题
 int DrmBuffer::ResetPreScaleBuffer(){
-  std::lock_guard<std::mutex> lk(mtx_);
   bIsPreScale_ = false;
   iFd_     = ptrDrmGralloc_->hwc_get_handle_primefd(buffer_);
   iWidth_  = ptrDrmGralloc_->hwc_get_handle_attibute(buffer_,ATT_WIDTH);
