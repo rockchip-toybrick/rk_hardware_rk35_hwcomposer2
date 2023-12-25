@@ -2704,7 +2704,7 @@ int Vop3588::TrySrPolicy(std::vector<DrmCompositionPlane> *composition,
 int Vop3588::ClearMemcJob(){
   // memc初始化
   if(svep_memc_.get() != NULL){
-    if(svep_memc_->Init(MEMC_VERSION, true)){
+    if(!bMemcReady_){
       HWC2_ALOGD_IF_DEBUG("Memc init failed.");
       return -1;
     }
