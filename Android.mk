@@ -229,12 +229,19 @@ TARGET_SOC_PLATFORM := rk356x
 endif
 
 # SR
-# BOARD_USES_LIBSVEP=true
+# BOARD_USES_LIBSVEP := true
 ifeq ($(strip $(BOARD_USES_LIBSVEP)),true)
-BOARD_USES_LIBSR=true
+BOARD_USES_LIBSVEP_SR := true
 endif
 
-ifeq ($(strip $(BOARD_USES_LIBSR)),true)
+ifeq ($(strip $(BOARD_USES_LIBSVEP_SR)),true)
+
+CHECKED_DIRECTORY := hardware/rockchip/libsvep/libsvepsr
+ifeq ($(wildcard $(CHECKED_DIRECTORY)),)
+    $(error Directory $(CHECKED_DIRECTORY) does not exist, Please upgrade the libsvepsr to V2.1.0 version!)
+else
+    $(info Directory $(CHECKED_DIRECTORY) exists)
+endif
 
 LOCAL_C_INCLUDES += \
   hardware/rockchip/libsvep/libsvepsr/lib/Android/$(TARGET_SOC_PLATFORM)/include
@@ -254,6 +261,14 @@ endif
 # MEMC
 # BOARD_USES_LIBSVEP_MEMC=true
 ifeq ($(strip $(BOARD_USES_LIBSVEP_MEMC)),true)
+
+CHECKED_DIRECTORY := hardware/rockchip/libsvep/libsvepmemc
+ifeq ($(wildcard $(CHECKED_DIRECTORY)),)
+    $(error Directory $(CHECKED_DIRECTORY) does not exist, Please upgrade the libsvep version!)
+else
+    $(info Directory $(CHECKED_DIRECTORY) exists)
+endif
+
 LOCAL_C_INCLUDES += \
   hardware/rockchip/libsvep/libsvepmemc/lib/Android/$(TARGET_SOC_PLATFORM)/include
 
