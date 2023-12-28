@@ -1638,10 +1638,13 @@ int Vop356x::TrySvepPolicy(
     ret = TrySrPolicy(composition, layers, crtc, plane_groups);
     if(ret){
       HWC2_ALOGD_IF_DEBUG("TrySrPolicy match fail.");
+      last_sr_mode = false;
     }else{
       HWC2_ALOGD_IF_DEBUG("TrySrPolicy match success.");
       return ret;
     }
+  }else{
+    last_sr_mode = false;
   }
   return -1;
 }
@@ -1676,7 +1679,6 @@ int Vop356x::TrySrPolicy(std::vector<DrmCompositionPlane> *composition,
     sr_mode = true;
   }
 
-  static bool last_sr_mode = false;
   if(!sr_mode){
     last_sr_mode = sr_mode;
     return -1;
@@ -1713,10 +1715,6 @@ int Vop356x::TrySrPolicy(std::vector<DrmCompositionPlane> *composition,
   int osd_oneline_mode = atoi(value);
   property_get(SR_OSD_VIDEO_ONELINE_WATI_SEC, value, "12");
   int osd_oneline_wait_second = atoi(value);
-  static uint64_t last_buffer_id = 0;
-  static int last_enhancement_rate = 0;
-  static int last_contrast_mode = 0;
-  static int last_contrast_offset = 0;
 
   for(auto &drmLayer : layers){
     if(SvepSrAllowedByLocalPolicy(drmLayer) &&
