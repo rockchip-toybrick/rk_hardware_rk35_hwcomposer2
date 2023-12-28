@@ -39,6 +39,12 @@
 #include "platform.h"
 #include "drmdevice.h"
 
+#include "drmbufferqueue.h"
+
+#ifdef USE_LIBSR
+#include "SvepSr.h"
+#endif
+
 #include <cutils/properties.h>
 
 namespace android {
@@ -60,12 +66,14 @@ typedef enum tagComposeMode{
    HWC_MIX_LOPICY,
    HWC_GLES_POLICY,
    HWC_RGA_OVERLAY_LOPICY,
+   HWC_SR_OVERLAY_LOPICY,
    HWC_3D_LOPICY,
    HWC_DEBUG_POLICY,
    HWC_ACCELERATE_LOPICY
 }ComposeMode;
 
 typedef struct RequestContext{
+  uint64_t frame_no_ = 0;
   int iSkipCnt=0;
 
   // Afbcd info
@@ -138,7 +146,16 @@ typedef struct StateContext{
 
   // GLES accelerate
   char accelerate_app_name[100];
+
+  // resolution mode
+  int iDisplayWidth_;
+  int iDisplayHeight_;
 } StaCtx;
+typedef enum tagHwcSvepMode{
+  HWC2_SR_NONE = 0,
+  HWC2_SR_SR   = 1,
+  HWC2_SR_MEMC = 2
+} HwcSvepMode;
 
 typedef struct DrmVop2Context{
   ReqCtx request;
@@ -146,8 +163,30 @@ typedef struct DrmVop2Context{
   StaCtx state;
 } Vop2Ctx;
 
+struct SvepXmlVersion{
+  int Major;
+  int Minor;
+  int PatchLevel;
+};
+
+struct SvepXml{
+  SvepXmlVersion mVersion;
+  bool mValid;
+  std::vector<std::string> mSvepWhitelist_;
+  std::vector<std::string> mSvepBlacklist_;
+  std::set<uint32_t> mSvepWhitelistUid_;
+};
  public:
-  Vop356x(){ Init(); }
+  Vop356x()
+#if (defined USE_LIBSR)
+    :
+#ifdef USE_LIBSR
+     svep_sr_(std::make_shared<SvepSr>()),
+     bSrReady_(false),
+     bufferQueue_((std::make_shared<DrmBufferQueue>(4)))
+#endif
+#endif
+      { Init(); }
   void Init();
   bool SupportPlatform(uint32_t soc_id);
   int TryHwcPolicy(std::vector<DrmCompositionPlane> *composition,
@@ -165,6 +204,20 @@ typedef struct DrmVop2Context{
   int TryAcceleratePolicy(std::vector<DrmCompositionPlane> *composition,
                         std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                         std::vector<PlaneGroup *> &plane_groups);
+
+#if (defined USE_LIBSR) || (defined USE_LIBSVEP_MEMC)
+  bool TrySvepOverlay();
+  int TrySvepPolicy(std::vector<DrmCompositionPlane> *composition,
+                        std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
+                        std::vector<PlaneGroup *> &plane_groups);
+#endif
+
+#ifdef USE_LIBSR
+  int TrySrPolicy(std::vector<DrmCompositionPlane> *composition,
+                        std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
+                        std::vector<PlaneGroup *> &plane_groups);
+#endif
+
   int TryMixSkipPolicy(std::vector<DrmCompositionPlane> *composition,
                         std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                         std::vector<PlaneGroup *> &plane_groups);
@@ -190,6 +243,14 @@ typedef struct DrmVop2Context{
                       std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                       std::vector<PlaneGroup *> &plane_groups);
   bool TryOverlay();
+
+  int InitSvep();
+#ifdef USE_LIBSR
+  int InitSvepSrEnv();
+  bool SvepSrAllowedByBlacklist(DrmHwcLayer *layer);
+  bool SvepSrAllowedByWhitelist(DrmHwcLayer *layer);
+  bool SvepSrAllowedByLocalPolicy(DrmHwcLayer *layer);
+#endif
   void TryMix();
   void InitCrtcMirror(std::vector<DrmHwcLayer*> &layers,std::vector<PlaneGroup *> &plane_groups,DrmCrtc *crtc);
   void UpdateResevedPlane(DrmCrtc *crtc);
@@ -240,6 +301,16 @@ typedef struct DrmVop2Context{
   void PrepareLayers(std::vector<DrmHwcLayer*> &layers);
  private:
   Vop2Ctx ctx;
+#ifdef USE_LIBSR
+  // SR
+  std::shared_ptr<SvepSr> svep_sr_;
+  bool bSrReady_;
+  std::shared_ptr<DrmBufferQueue> bufferQueue_;
+  SvepXml mSrEnv_;
+  SrMode mLastMode_;
+  bool mEnableOnelineMode_;
+  uint64_t mSrBeginTimeMs_;
+#endif
 };
 
 }  // namespace android

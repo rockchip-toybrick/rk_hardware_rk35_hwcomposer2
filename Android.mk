@@ -225,10 +225,20 @@ BOARD_USES_LIBSR=true
 endif
 
 ifeq ($(strip $(BOARD_USES_LIBSR)),true)
+
+# RK3588
+ifneq ($(filter rk3588, $(strip $(TARGET_BOARD_PLATFORM))), )
+TARGET_SOC_PLATFORM := rk3588
+endif
+
+# RK356x
+ifneq ($(filter rk356x, $(strip $(TARGET_BOARD_PLATFORM))), )
+TARGET_SOC_PLATFORM := rk356x
+endif
+
 # in order to adapter old version，need include two dir.
 LOCAL_C_INCLUDES += \
-  hardware/rockchip/libsvep/include \
-  hardware/rockchip/libsvep/include/sr
+  hardware/rockchip/libsvep/libsvepsr/lib/Android/$(TARGET_SOC_PLATFORM)/include
 
 LOCAL_SHARED_LIBRARIES += \
 	libsvepsr \

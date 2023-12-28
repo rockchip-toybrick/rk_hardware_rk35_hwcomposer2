@@ -39,9 +39,18 @@
 #include "rockchip/platform/drmvop356x.h"
 #include "drmdevice.h"
 
-#include <log/log.h>
+#include "im2d.hpp"
 
-namespace android {
+#include <log/log.h>
+//XML prase
+#include <tinyxml2.h>
+
+#define ALIGN_DOWN( value, base)	(value & (~(base-1)) )
+#ifndef ALIGN
+#define ALIGN( value, base ) (((value) + ((base) - 1)) & ~((base) - 1))
+#endif
+
+using namespace android;
 
 void Vop356x::Init(){
 
@@ -58,6 +67,244 @@ void Vop356x::Init(){
 
 
 }
+
+int Vop356x::InitSvep(){
+
+#ifdef USE_LIBSR
+  InitSvepSrEnv();
+#endif
+  return 0;
+}
+
+
+#ifdef USE_LIBSR
+int Vop356x::InitSvepSrEnv(){
+  if(mSrEnv_.mValid)
+    return 0;
+
+  char xml_path[PROPERTY_VALUE_MAX];
+  property_get("vendor.hwc.svep_xml_path", xml_path, "/vendor/etc/HwcSvepEnv.xml");
+
+  tinyxml2::XMLDocument doc;
+  int ret = doc.LoadFile(xml_path);
+  if(ret){
+    HWC2_ALOGW("Can't find %s file. ret=%d", xml_path, ret);
+    return -1;
+  }
+
+  HWC2_ALOGI("Load %s success.", xml_path);
+
+  tinyxml2::XMLElement* HwcSvepEnv = doc.RootElement();
+  /* usr tingxml2 to parse resolution.xml */
+  if (!HwcSvepEnv){
+    HWC2_ALOGW("Can't %s:RootElement fail.", xml_path);
+    return -1;
+  }
+
+  mSrEnv_.mSvepWhitelist_.clear();
+  mSrEnv_.mSvepBlacklist_.clear();
+
+  const char* verison = "1.1.1";
+  ret = HwcSvepEnv->QueryStringAttribute( "Version", &verison);
+  if(ret){
+    HWC2_ALOGW("Can't find %s verison info. ret=%d", xml_path, ret);
+    return -1;
+  }
+
+  sscanf(verison, "%d.%d.%d", &mSrEnv_.mVersion.Major,
+                              &mSrEnv_.mVersion.Minor,
+                              &mSrEnv_.mVersion.PatchLevel);
+
+
+  tinyxml2::XMLElement* pWhitelist = HwcSvepEnv->FirstChildElement("Whitelist");
+  if (!pWhitelist){
+    HWC2_ALOGW("Can't %s:Whitelist fail. Maybe not set.", xml_path);
+  }else{
+    int iLayerNameCnt = 0;
+    tinyxml2::XMLElement* pWhiteKey = pWhitelist->FirstChildElement("WhiteKeywords");
+    if (!pWhiteKey) {
+      HWC2_ALOGW("index=%d failed to parse %s\n", iLayerNameCnt, "WhiteKeywords"); \
+    }else{
+      while (pWhiteKey) {
+        mSrEnv_.mSvepWhitelist_.emplace_back(pWhiteKey->GetText());
+        HWC2_ALOGI("SR Whitelist[%d]=%s",
+                    iLayerNameCnt, mSrEnv_.mSvepWhitelist_[iLayerNameCnt].c_str());
+        iLayerNameCnt++;
+        pWhiteKey = pWhiteKey->NextSiblingElement();
+      }
+    }
+  }
+
+  tinyxml2::XMLElement* pBlacklist = HwcSvepEnv->FirstChildElement("Blacklist");
+  if (!pBlacklist){
+    HWC2_ALOGW("Can't %s:Blacklist fail. Maybe not set.", xml_path);
+  }else{
+    int iLayerNameCnt = 0;
+    tinyxml2::XMLElement* pBlackKey = pBlacklist->FirstChildElement("BlackKeywords");
+    if (!pBlackKey) {
+      HWC2_ALOGW("index=%d failed to parse %s\n", iLayerNameCnt, "BlackKeywords");
+    }else{
+      while (pBlackKey) {
+        mSrEnv_.mSvepBlacklist_.emplace_back(pBlackKey->GetText());
+
+        HWC2_ALOGI("SR Blacklist[%d]=%s",
+                    iLayerNameCnt, mSrEnv_.mSvepBlacklist_[iLayerNameCnt].c_str());
+        iLayerNameCnt++;
+        pBlackKey = pBlackKey->NextSiblingElement();
+      }
+    }
+  }
+
+  mSrEnv_.mValid = true;
+  return 0;
+}
+
+bool Vop356x::SvepSrAllowedByBlacklist(DrmHwcLayer* layer){
+  if(mSrEnv_.mValid){
+    // 此黑名单内的应用名不参与 SR 处理
+    for(auto &black_key : mSrEnv_.mSvepBlacklist_){
+      if(layer->sLayerName_.find(black_key) != std::string::npos){
+        HWC2_ALOGD_IF_DEBUG("Sr %s in BlackList! not to SR.", layer->sLayerName_.c_str());
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool Vop356x::SvepSrAllowedByWhitelist(DrmHwcLayer* layer){
+  if(mSrEnv_.mValid){
+    // 此白名单内的应用名直接参与 SR 处理
+    for(auto &white_key : mSrEnv_.mSvepWhitelist_){
+      if(layer->sLayerName_.find(white_key) != std::string::npos){
+        HWC2_ALOGD_IF_DEBUG("Sr %s in Whitelist! force to SR.", layer->sLayerName_.c_str());
+        if(mSrEnv_.mSvepWhitelistUid_.size() > 3){
+          mSrEnv_.mSvepWhitelistUid_.clear();
+        }
+        // 使用LayerId主要因为在部分场景，LayerName可能会发生变化，例如：
+        // 视频解码LayerName可能为：
+        //  SurfaceView[com.youdao.hw.videoplayer..
+        //  SurfaceTexture-1-6467-0..
+        // 测试过程发现，LayerId是没有变化的，故可以通过LayerId来找到白名单图层
+        mSrEnv_.mSvepWhitelistUid_.insert(layer->uId_);
+        return true;
+      }
+    }
+  }
+  if(mSrEnv_.mSvepWhitelistUid_.count(layer->uId_) > 0){
+        HWC2_ALOGD_IF_DEBUG("Sr uid=%d is %s in Whitelist! force to SR.", layer->uId_, layer->sLayerName_.c_str());
+        return true;
+  }
+  return false;
+}
+
+#define SVEP_SUPPORT_MAX_FPS 35
+bool Vop356x::SvepSrAllowedByLocalPolicy(DrmHwcLayer* layer){
+  // 视频大于4K则不使用 SR.
+  if(layer->iWidth_ > 4096){
+    HWC2_ALOGD_IF_DEBUG("disable-sr: intput too big, input-info (%d,%d) name=%s",
+                        layer->iWidth_,
+                        layer->iHeight_,
+                        layer->sLayerName_.c_str());
+    return false;
+  }
+
+  // 如果不是视频格式，并且不在白名单内，则不使用SR
+  if(!layer->bYuv_ && !SvepSrAllowedByWhitelist(layer)){
+    HWC2_ALOGD_IF_DEBUG("disable-sr: %s-YUV, can't find in Whitelist name=%s",
+                        (layer->bYuv_ ? "Is" : "Not"),
+                        layer->sLayerName_.c_str());
+    return false;
+  }
+
+  // 如果SurfaceFlinger 请求Client合成，则不采用SR策略
+  // 例如高斯模糊效果
+  if(layer->sf_composition == HWC2::Composition::Client){
+    HWC2_ALOGD_IF_DEBUG("disable-sr: SF request Client, name=%s",
+                        layer->sLayerName_.c_str());
+    return false;
+  }
+
+  bool yuv_10bit = false;
+  switch(layer->iFormat_){
+    case HAL_PIXEL_FORMAT_YCrCb_NV12_10 :
+    case HAL_PIXEL_FORMAT_YCbCr_422_SP_10 :
+    case HAL_PIXEL_FORMAT_YCrCb_420_SP_10 :
+    case HAL_PIXEL_FORMAT_YUV420_10BIT_I :
+      yuv_10bit = true;
+      break;
+    default:
+      yuv_10bit = false;
+      break;
+  }
+
+  // 10bit 视频不使用SR
+  if(yuv_10bit){
+    HWC2_ALOGD_IF_DEBUG("disable-sr: is 10bit YUV, SR unsupport, name=%s",
+                        layer->sLayerName_.c_str());
+    return false;
+  }
+
+  // SR 不支持所有YUV planer变种格式
+  // bool unsupport_yuv_p = false;
+  // switch(layer->uFourccFormat_){
+  //   case DRM_FORMAT_YUV420:
+  //   case DRM_FORMAT_YVU420:
+  //   case DRM_FORMAT_YUV422:
+  //   case DRM_FORMAT_YVU422:
+  //   case DRM_FORMAT_YUV444:
+  //   case DRM_FORMAT_YVU444:
+  //     unsupport_yuv_p = true;
+  //     break;
+  //   default:
+  //     break;
+  // }
+
+  // if(unsupport_yuv_p){
+  //   HWC2_ALOGD_IF_DEBUG("disable-sr: unsupport yuv p format. fourcc=%x", layer->uFourccFormat_);
+  //   return false;
+  // }
+
+  // 如果图层本身就是2倍缩小的场景，则不建议使用SR.
+  if(layer->fHScaleMul_ > 2.0 && layer->fVScaleMul_ > 2.0){
+    HWC2_ALOGD_IF_DEBUG("disable-sr: scale-rate is too big fHScaleMul_=%f fVScaleMul_=%f SR unsupport, name=%s",
+                        layer->fHScaleMul_,
+                        layer->fVScaleMul_,
+                        layer->sLayerName_.c_str());
+    return false;
+  }
+
+  // 开机动画不使用超分
+  char value[PROPERTY_VALUE_MAX];
+  property_get("service.bootanim.exit", value, "0");
+  if(atoi(value) == 0){
+    HWC2_ALOGD_IF_DEBUG("disable-sr: during bootanim disable SR, name=%s",
+                        layer->sLayerName_.c_str());
+    return false;
+  }
+
+  // // 视频屏幕占比60%以下不使用SR
+  uint64_t allow_rate = hwc_get_int_property("vendor.hwc.disable_svep_dis_area_rate","60");
+  uint64_t dis_w = layer->display_frame.right - layer->display_frame.left;
+  uint64_t dis_h = layer->display_frame.bottom - layer->display_frame.top;
+  uint64_t dis_area_size = dis_w * dis_h;
+  uint64_t screen_size = ctx.state.iDisplayWidth_ * ctx.state.iDisplayHeight_;
+  // 100 表示屏占比 100%，
+  uint64_t video_area_rate = dis_area_size * 100 / screen_size;
+  if(video_area_rate < allow_rate){
+    HWC2_ALOGD_IF_DEBUG("disable-sr: video_area_rate=%" PRIu64 "%% name=%s",video_area_rate, layer->sLayerName_.c_str());
+    return false;
+  }
+
+  // HWC内部会计算图层刷新率，若刷新率大于35帧，则关闭SR-SR功能
+  if(layer->fFps_ > SVEP_SUPPORT_MAX_FPS){
+    HWC2_ALOGD_IF_DEBUG("disable-sr: video_max_fps=%f name=%s",layer->fFps_, layer->sLayerName_.c_str());
+    return false;
+  }
+
+  return true;
+}
+#endif
 
 bool Vop356x::SupportPlatform(uint32_t soc_id){
   switch(soc_id){
@@ -91,6 +338,19 @@ int Vop356x::TryHwcPolicy(
 
   // Init context
   InitContext(layers,plane_groups,crtc,gles_policy);
+
+#ifdef USE_LIBSR
+  // Try to match rga policy
+  if(ctx.state.setHwcPolicy.count(HWC_SR_OVERLAY_LOPICY)){
+    ret = TrySvepPolicy(composition,layers,crtc,plane_groups);
+    if(!ret){
+      return 0;
+    }else{
+      ALOGD_IF(LogLevel(DBG_DEBUG),"Match rga policy fail, try to match other policy.");
+      mLastMode_ = SrMode::UN_SUPPORT;
+    }
+  }
+#endif
 
   // Try to match overlay policy
   if(ctx.state.setHwcPolicy.count(HWC_OVERLAY_LOPICY)){
@@ -1357,6 +1617,445 @@ int Vop356x::TryMixSkipPolicy(
   return ret;
 }
 
+#ifdef USE_LIBSR
+int Vop356x::TrySvepPolicy(
+    std::vector<DrmCompositionPlane> *composition,
+    std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
+    std::vector<PlaneGroup *> &plane_groups) {
+  ALOGD_IF(LogLevel(DBG_DEBUG), "%s:line=%d",__FUNCTION__,__LINE__);
+
+  DrmDevice *drm = crtc->getDrmDevice();
+  DrmConnector *conn = drm->GetConnectorForDisplay(crtc->display());
+  // 只有主屏可以享受视频 SR 效果
+  if(conn && conn->state() == DRM_MODE_CONNECTED &&
+      conn->display() != 0){
+      HWC2_ALOGD_IF_DEBUG("Only Primary Display enable SR function. display=%d", conn->display());
+      return -1;
+  }
+
+  int ret = -1;
+  if(hwc_get_int_property(SR_MODE_NAME, "0") > 0){
+    ret = TrySrPolicy(composition, layers, crtc, plane_groups);
+    if(ret){
+      HWC2_ALOGD_IF_DEBUG("TrySrPolicy match fail.");
+    }else{
+      HWC2_ALOGD_IF_DEBUG("TrySrPolicy match success.");
+      return ret;
+    }
+  }
+  return -1;
+}
+
+bool Vop356x::TrySvepOverlay(){
+  ctx.state.setHwcPolicy.insert(HWC_SR_OVERLAY_LOPICY);
+  return true;
+}
+
+#endif
+
+#ifdef USE_LIBSR
+int Vop356x::TrySrPolicy(std::vector<DrmCompositionPlane> *composition,
+                      std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
+                      std::vector<PlaneGroup *> &plane_groups){
+  ALOGD_IF(LogLevel(DBG_DEBUG), "%s:line=%d",__FUNCTION__,__LINE__);
+  std::vector<DrmHwcLayer*> tmp_layers;
+  ResetLayer(layers);
+  ResetPlaneGroups(plane_groups);
+
+  int svep_mode = HWC2_SR_SR;
+  char value[PROPERTY_VALUE_MAX];
+  // SR_RUNTIME_DISABLE_NAME 主要适用于前端系统服务判断当前场景无法使用SR模式才设置为 1
+  // 例如 30帧以上片源 或 低延迟场景
+  int svep_runtime_disable = hwc_get_int_property(SR_RUNTIME_DISABLE_NAME,"0");
+  bool sr_mode = false;
+  // Match policy first
+  HWC2_ALOGD_IF_DEBUG("%s=%d bSrReady_=%d",SR_MODE_NAME, svep_mode, bSrReady_);
+  // 只有主屏可以享受视频 SR 效果
+  if(svep_runtime_disable == 0){
+    // Match policy first
+    sr_mode = true;
+  }
+
+  static bool last_sr_mode = false;
+  if(!sr_mode){
+    last_sr_mode = sr_mode;
+    return -1;
+  }
+
+  // 0. SR模块初始化
+  if(svep_sr_.get() != NULL){
+    SrError error = svep_sr_->Init(SR_VERSION, true);
+    if (error != SrError::None){
+        HWC2_ALOGD_IF_DEBUG("Sr Init fail, plase check License.\n");
+        return -1;
+    }
+  }else{
+    bSrReady_ = true;
+  }
+
+  bool rga_layer_ready = false;
+  bool use_laster_rga_layer = false;
+  std::shared_ptr<DrmBuffer> dst_buffer;
+
+  SrImageInfo sr_src_;
+  SrImageInfo sr_dst_;
+
+  // 以下参数更新后需要强制触发svep处理更新图像数据
+  property_get(SR_ENHANCEMENT_RATE_NAME, value, "0");
+  int enhancement_rate = atoi(value);
+  property_get(SR_CONTRAST_MODE_NAME, value, "0");
+  int contrast_mode = atoi(value);
+  property_get(SR_CONTRAST_MODE_OFFSET, value, "0");
+  int contrast_offset = atoi(value);
+  property_get(SR_OSD_DISABLE_MODE, value, "0");
+  int diable_osd_mode = atoi(value);
+  property_get(SR_OSD_VIDEO_ONELINE_MODE, value, "0");
+  int osd_oneline_mode = atoi(value);
+  property_get(SR_OSD_VIDEO_ONELINE_WATI_SEC, value, "12");
+  int osd_oneline_wait_second = atoi(value);
+  static uint64_t last_buffer_id = 0;
+  static int last_enhancement_rate = 0;
+  static int last_contrast_mode = 0;
+  static int last_contrast_offset = 0;
+
+  for(auto &drmLayer : layers){
+    if(SvepSrAllowedByLocalPolicy(drmLayer) &&
+       SvepSrAllowedByBlacklist(drmLayer)){
+        ALOGD_IF(LogLevel(DBG_DEBUG), "%s:line=%d",__FUNCTION__,__LINE__);
+        // 部分参数变化后需要强制更新
+        if(last_sr_mode != sr_mode ||
+           last_buffer_id != drmLayer->uBufferId_  ||
+           last_enhancement_rate != enhancement_rate ||
+           last_contrast_mode != contrast_mode ||
+           last_contrast_offset != contrast_offset){
+          ALOGD_IF(LogLevel(DBG_DEBUG), "%s:line=%d",__FUNCTION__,__LINE__);
+
+          // 2. 设置SR强度
+          SrError error = svep_sr_->SetEnhancementRate(enhancement_rate);
+          if (error != SrError::None)
+          {
+              HWC2_ALOGE("Sr SetEnhancementRate fail.\n");
+              continue;
+          }
+
+          // 3. 设置SR对比模式为扫描模式
+          error = svep_sr_->SetContrastMode(contrast_mode, contrast_offset);
+          if (error != SrError::None)
+          {
+              HWC2_ALOGE("Sr SetContrastMode fail.\n");
+              continue;
+          }
+
+          // 4. 设置SR OSD模式与字符串
+          error = svep_sr_->SetOsdMode(SR_OSD_ENABLE_VIDEO, SR_OSD_VIDEO_STR);
+          if (error != SrError::None)
+          {
+              HWC2_ALOGE("Sr SetOsdMode fail.\n");
+              continue;
+          }
+
+          // 处理旋转
+          SrRotateMode rotate = SR_ROTATE_0;
+          switch(drmLayer->transform){
+          case DRM_MODE_ROTATE_0:
+            rotate = SR_ROTATE_0;
+            break;
+          case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_X :
+            rotate = SR_REFLECT_X;
+            break;
+          case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_Y:
+            rotate = SR_REFLECT_Y;
+            break;
+          case DRM_MODE_ROTATE_90:
+            rotate = SR_ROTATE_90;
+            break;
+          case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_X | DRM_MODE_REFLECT_Y:
+            rotate = SR_ROTATE_180;
+            break;
+          case DRM_MODE_ROTATE_270:
+            rotate = SR_ROTATE_270;
+            break;
+          // case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_X | DRM_MODE_ROTATE_90 :
+          //   usage = IM_HAL_TRANSFORM_FLIP_H | IM_HAL_TRANSFORM_ROT_90;
+          //   break;
+          // case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_Y | DRM_MODE_ROTATE_90:
+          //   usage = IM_HAL_TRANSFORM_FLIP_V | IM_HAL_TRANSFORM_ROT_90;
+          //   break;
+          default:
+            rotate = SR_ROTATE_0;
+            ALOGE_IF(LogLevel(DBG_DEBUG),"Unknow sf transform 0x%x", drmLayer->transform);
+          }
+
+          // 4. 设置SR rotate 模式
+          error = svep_sr_->SetRotateMode(rotate);
+          if (error != SrError::None)
+          {
+              HWC2_ALOGE("Sr SetOsdMode fail.\n");
+              continue;
+          }
+
+          // 2. Set buffer Info
+          sr_src_.mBufferInfo_.iFd_     = drmLayer->iFd_;
+          sr_src_.mBufferInfo_.iWidth_  = drmLayer->iWidth_;
+          sr_src_.mBufferInfo_.iHeight_ = drmLayer->iHeight_;
+          sr_src_.mBufferInfo_.iFormat_ = drmLayer->uFourccFormat_;
+          sr_src_.mBufferInfo_.iStride_ = drmLayer->iStride_;
+          sr_src_.mBufferInfo_.iHeightStride_ = drmLayer->iHeightStride_;
+          sr_src_.mBufferInfo_.iSize_   = drmLayer->iSize_;
+          sr_src_.mBufferInfo_.uBufferId_ = drmLayer->uBufferId_;
+          sr_src_.mBufferInfo_.uColorSpace_ = SR_DATASPACE_UNKNOWN;
+          if(drmLayer->bAfbcd_){
+            if(drmLayer->iFormat_ == HAL_PIXEL_FORMAT_YUV420_8BIT_I){
+              sr_src_.mBufferInfo_.iFormat_ = drmLayer->uFourccFormat_;
+            }
+            sr_src_.mBufferInfo_.uMask_ = SR_AFBC_FORMATE;
+          }
+
+          sr_src_.mCrop_.iLeft_  = (int)drmLayer->source_crop.left;
+          sr_src_.mCrop_.iTop_   = (int)drmLayer->source_crop.top;
+          sr_src_.mCrop_.iRight_ = (int)drmLayer->source_crop.right;
+          sr_src_.mCrop_.iBottom_= (int)drmLayer->source_crop.bottom;
+
+          SrMode sr_mde = SrMode::UN_SUPPORT;
+          SrError ret = svep_sr_->MatchSrMode(&sr_src_, SR_MODE_NONE, &sr_mde);
+          if(ret){
+            printf("Sr SetSrcImage fail\n");
+            continue;
+          }
+
+          // 3. Get dst info
+          SrImageInfo target_image_info;
+          error = svep_sr_->GetDetImageInfo(&target_image_info);
+          if(error){
+            printf("Sr GetDstRequireInfo fail\n");
+            continue;
+          }
+
+          // 4. Alloc dst_buffer
+            dst_buffer = bufferQueue_->DequeueDrmBuffer(target_image_info.mBufferInfo_.iWidth_,
+                                                        target_image_info.mBufferInfo_.iHeight_,
+                                                        HAL_PIXEL_FORMAT_YCrCb_NV12,
+                                                        RK_GRALLOC_USAGE_STRIDE_ALIGN_64 |
+                                                        RK_GRALLOC_USAGE_WITHIN_4G |
+                                                        MALI_GRALLOC_USAGE_NO_AFBC,
+                                                        "SR-SurfaceView",
+                                                        drmLayer->uId_);
+
+          if(dst_buffer == NULL){
+            HWC2_ALOGD_IF_DEBUG("DequeueDrmBuffer fail!, skip this policy.");
+            continue;
+          }
+
+          SrOsdMode osd_mode = SR_OSD_ENABLE_VIDEO;
+          const wchar_t* osd_str = SR_OSD_VIDEO_STR;
+          if(diable_osd_mode > 0){
+            osd_mode = SR_OSD_DISABLE;
+          }else{
+            if(osd_oneline_mode > 0){
+              // 视频播放SR若干帧后，采用oneline OSD模式
+              if(mLastMode_ != sr_mde){
+                struct timeval tp;
+                gettimeofday(&tp, NULL);
+                mLastMode_ = sr_mde;
+                mSrBeginTimeMs_ = tp.tv_sec * 1000 + tp.tv_usec / 1000;
+                mEnableOnelineMode_ = false;
+              }
+              if(!mEnableOnelineMode_){
+                struct timeval tp;
+                gettimeofday(&tp, NULL);
+                uint64_t current_time = tp.tv_sec * 1000 + tp.tv_usec / 1000;
+                if((current_time - mSrBeginTimeMs_) > osd_oneline_wait_second * 1000){
+                  mEnableOnelineMode_ = true;
+                }
+              }else{
+                osd_mode = SR_OSD_ENABLE_VIDEO_ONELINE;
+                osd_str = SR_OSD_VIDEO_ONELINE_STR;
+              }
+            }
+          }
+
+          error = svep_sr_->SetOsdMode(osd_mode, osd_str);
+          if (error != SrError::None)
+          {
+              HWC2_ALOGE("Sr SetOsdMode fail.\n");
+              continue;
+          }
+          // 5. Set buffer Info
+          sr_dst_.mBufferInfo_.iFd_     = dst_buffer->GetFd();
+          sr_dst_.mBufferInfo_.iWidth_  = dst_buffer->GetWidth();
+          sr_dst_.mBufferInfo_.iHeight_ = dst_buffer->GetHeight();
+          sr_dst_.mBufferInfo_.iFormat_ = dst_buffer->GetFourccFormat();
+          sr_dst_.mBufferInfo_.iStride_ = dst_buffer->GetStride();
+          sr_dst_.mBufferInfo_.iHeightStride_ = dst_buffer->GetHeightStride();
+          sr_dst_.mBufferInfo_.iSize_   = dst_buffer->GetSize();
+          sr_dst_.mBufferInfo_.uBufferId_ = dst_buffer->GetBufferId();
+
+          sr_dst_.mCrop_.iLeft_  = target_image_info.mCrop_.iLeft_;
+          sr_dst_.mCrop_.iTop_   = target_image_info.mCrop_.iTop_;
+          sr_dst_.mCrop_.iRight_ = target_image_info.mCrop_.iRight_;
+          sr_dst_.mCrop_.iBottom_= target_image_info.mCrop_.iBottom_;
+
+
+          hwc_frect_t source_crop;
+          source_crop.left   = target_image_info.mCrop_.iLeft_;
+          source_crop.top    = target_image_info.mCrop_.iTop_;
+          source_crop.right  = target_image_info.mCrop_.iRight_;
+          source_crop.bottom = target_image_info.mCrop_.iBottom_;
+          dst_buffer->SetCrop(target_image_info.mCrop_.iLeft_,
+                              target_image_info.mCrop_.iTop_,
+                              target_image_info.mCrop_.iRight_,
+                              target_image_info.mCrop_.iBottom_);
+          drmLayer->UpdateAndStoreInfoFromDrmBuffer(dst_buffer->GetHandle(),
+                                                    dst_buffer->GetFd(),
+                                                    dst_buffer->GetFormat(),
+                                                    dst_buffer->GetWidth(),
+                                                    dst_buffer->GetHeight(),
+                                                    dst_buffer->GetStride(),
+                                                    dst_buffer->GetHeightStride(),
+                                                    dst_buffer->GetByteStride(),
+                                                    dst_buffer->GetSize(),
+                                                    dst_buffer->GetUsage(),
+                                                    dst_buffer->GetFourccFormat(),
+                                                    dst_buffer->GetModifier(),
+                                                    dst_buffer->GetByteStridePlanes(),
+                                                    dst_buffer->GetName(),
+                                                    source_crop,
+                                                    dst_buffer->GetBufferId(),
+                                                    dst_buffer->GetGemHandle(),
+                                                    DRM_MODE_ROTATE_0);
+          rga_layer_ready = true;
+          drmLayer->bUseSr_ = true;
+          drmLayer->iBestPlaneType = PLANE_RK3588_ALL_ESMART_MASK;
+          break;
+        }else{
+          std::shared_ptr<DrmBuffer> output_buffer = bufferQueue_->BackDrmBuffer();
+          if(output_buffer == NULL){
+            HWC2_ALOGD_IF_DEBUG("DequeueDrmBuffer fail!, skip this policy.");
+            break;
+          }
+          int left = 0, top = 0, right = 0, bottom = 0;
+          output_buffer->GetCrop(&left,
+                                 &top,
+                                 &right,
+                                 &bottom);
+          hwc_frect_t source_crop;
+          source_crop.left   = left;
+          source_crop.top    = top;
+          source_crop.right  = right;
+          source_crop.bottom = bottom;
+          drmLayer->UpdateAndStoreInfoFromDrmBuffer(output_buffer->GetHandle(),
+                                                    output_buffer->GetFd(),
+                                                    output_buffer->GetFormat(),
+                                                    output_buffer->GetWidth(),
+                                                    output_buffer->GetHeight(),
+                                                    output_buffer->GetStride(),
+                                                    output_buffer->GetHeightStride(),
+                                                    output_buffer->GetByteStride(),
+                                                    output_buffer->GetSize(),
+                                                    output_buffer->GetUsage(),
+                                                    output_buffer->GetFourccFormat(),
+                                                    output_buffer->GetModifier(),
+                                                    output_buffer->GetByteStridePlanes(),
+                                                    output_buffer->GetName(),
+                                                    source_crop,
+                                                    output_buffer->GetBufferId(),
+                                                    output_buffer->GetGemHandle(),
+                                                    DRM_MODE_ROTATE_0);
+          use_laster_rga_layer = true;
+          drmLayer->bUseSr_ = true;
+          drmLayer->iBestPlaneType = PLANE_RK3588_ALL_ESMART_MASK;
+          drmLayer->pSrBuffer_ = output_buffer;
+          drmLayer->acquire_fence = sp<AcquireFence>(new AcquireFence(output_buffer->GetFinishFence()));
+          break;
+        }
+      }
+  }
+  if(rga_layer_ready){
+    ALOGD_IF(LogLevel(DBG_DEBUG), "%s:line=%d rga layer ready, to matchPlanes",__FUNCTION__,__LINE__);
+    int ret = 0;
+    if(ctx.request.iSkipCnt > 0){
+      ret = TryMixSkipPolicy(composition,layers,crtc,plane_groups);
+    }else{
+      ret = TryOverlayPolicy(composition,layers,crtc,plane_groups);
+      if(ret){
+        ret = TryMixVideoPolicy(composition,layers,crtc,plane_groups);
+      }
+    }
+    if(!ret){ // Match sucess, to call im2d interface
+      for(auto &drmLayer : layers){
+        if(drmLayer->bUseSr_){
+          int output_fence = 0;
+          // 13. RunAsync
+          SrError error = svep_sr_->RunAsync(&sr_src_, &sr_dst_, &output_fence);
+          if (error != SrError::None){
+            HWC2_ALOGD_IF_DEBUG("RunAsync fail!");
+            drmLayer->bUseSr_ = false;
+            drmLayer->ResetInfoFromStore();
+            bufferQueue_->QueueBuffer(dst_buffer);
+            return -1;
+          }else{
+            last_buffer_id = drmLayer->storeLayerInfo_.uBufferId_;
+            last_sr_mode = sr_mode;
+            last_contrast_mode = contrast_mode;
+            last_enhancement_rate = enhancement_rate;
+            last_contrast_offset = contrast_offset;
+            dst_buffer->SetFinishFence(output_fence);
+            drmLayer->pSrBuffer_ = dst_buffer;
+            drmLayer->acquire_fence = sp<AcquireFence>(new AcquireFence(dst_buffer->GetFinishFence()));
+            bufferQueue_->QueueBuffer(dst_buffer);
+            return 0;
+          }
+        }
+      }
+      ResetLayerFromTmp(layers,tmp_layers);
+      return ret;
+    }else{ // Match fail, skip rga policy
+      HWC2_ALOGD_IF_DEBUG(" MatchPlanes fail! reset DrmHwcLayer.");
+      for(auto &drmLayer : layers){
+        if(drmLayer->bUseSr_){
+          bufferQueue_->QueueBuffer(dst_buffer);
+          drmLayer->ResetInfoFromStore();
+          drmLayer->bUseSr_ = false;
+        }
+      }
+      ResetLayerFromTmp(layers,tmp_layers);
+      return -1;
+    }
+  }else if(use_laster_rga_layer){
+    ALOGD_IF(LogLevel(DBG_DEBUG), "%s:line=%d SR layer ready, to matchPlanes",__FUNCTION__,__LINE__);
+    int ret = -1;
+    if(ctx.request.iSkipCnt > 0){
+      ret = TryMixSkipPolicy(composition,layers,crtc,plane_groups);
+    }else{
+      ret = TryOverlayPolicy(composition,layers,crtc,plane_groups);
+      if(ret){
+        ret = TryMixVideoPolicy(composition,layers,crtc,plane_groups);
+      }
+    }
+    if(!ret){ // Match sucess, to call im2d interface
+      HWC2_ALOGD_IF_DEBUG("Use last SR layer.");
+      return ret;
+    }else{
+      for(auto &drmLayer : layers){
+        if(drmLayer->bUseSr_){
+          last_buffer_id = drmLayer->storeLayerInfo_.uBufferId_;
+          last_sr_mode = sr_mode;
+          last_contrast_mode = contrast_mode;
+          last_enhancement_rate = enhancement_rate;
+          last_contrast_offset = contrast_offset;
+          drmLayer->ResetInfoFromStore();
+          drmLayer->bUseSr_ = false;
+        }
+      }
+
+    }
+  }
+  HWC2_ALOGD_IF_DEBUG("fail!, No layer use SR policy.");
+  ResetLayerFromTmp(layers,tmp_layers);
+  return -1;
+}
+#endif
+
 /*************************mix video*************************
  Video ovelay
 -----------+----------+------+------+----+------+-------------+--------------------------------+------------------------+------
@@ -1920,6 +2619,7 @@ void Vop356x::PrepareLayers(std::vector<DrmHwcLayer*> &layers){
 
 void Vop356x::InitRequestContext(std::vector<DrmHwcLayer*> &layers){
 
+  ctx.request.frame_no_++;
   // Collect layer info
   ctx.request.iAfbcdCnt=0;
   ctx.request.iAfbcdScaleCnt=0;
@@ -2067,6 +2767,16 @@ void Vop356x::InitStateContext(
     DrmCrtc *crtc){
   ALOGI_IF(LogLevel(DBG_DEBUG),"%s,line=%d bMultiAreaEnable=%d, bMultiAreaScaleEnable=%d",
             __FUNCTION__,__LINE__,ctx.state.bMultiAreaEnable,ctx.state.bMultiAreaScaleEnable);
+
+  DrmDevice *drm = crtc->getDrmDevice();
+  DrmConnector *conn = drm->GetConnectorForDisplay(crtc->display());
+
+  if(conn && conn->state() == DRM_MODE_CONNECTED){
+    DrmMode mode = conn->current_mode();
+    // Story Display Mode
+    ctx.state.iDisplayWidth_ = mode.h_display();
+    ctx.state.iDisplayHeight_ = mode.v_display();
+  }
 
   // Commit mirror function
   InitCrtcMirror(layers,plane_groups,crtc);
@@ -2318,11 +3028,29 @@ int Vop356x::InitContext(
           ctx.support.iRotateCnt,ctx.support.iHdrCnt,
           __FUNCTION__,__LINE__);
 
+#ifdef USE_LIBSR
+  TrySvepOverlay();
+
+  DrmDevice *drm = crtc->getDrmDevice();
+  DrmConnector *conn = drm->GetConnectorForDisplay(crtc->display());
+  // 只有主屏可以享受视频 SR 效果
+  if(conn && conn->state() == DRM_MODE_CONNECTED &&
+      conn->display() == 0){
+      HWC2_ALOGD_IF_DEBUG("Only Primary Display enable SR function. display=%d", conn->display());
+    // YouDao need sr init.
+    if(svep_sr_.get() != NULL){
+      SrError error = svep_sr_->Init(SR_VERSION, true);
+      if (error != SrError::None){
+          HWC2_ALOGD_IF_DEBUG("Sr Init fail, plase check License.\n");
+      }
+    }
+  }
+#endif
+
   // Match policy first
   if(!TryOverlay())
     TryMix();
 
   return 0;
-}
 }
 

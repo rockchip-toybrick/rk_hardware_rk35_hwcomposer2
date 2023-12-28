@@ -2442,9 +2442,10 @@ int Vop3588::TrySrPolicy(std::vector<DrmCompositionPlane> *composition,
           sr_src_.mBufferInfo_.iHeight_ = drmLayer->iHeight_;
           sr_src_.mBufferInfo_.iFormat_ = drmLayer->uFourccFormat_;
           sr_src_.mBufferInfo_.iStride_ = drmLayer->iStride_;
+          sr_src_.mBufferInfo_.iHeightStride_ = drmLayer->iHeightStride_;
           sr_src_.mBufferInfo_.iSize_   = drmLayer->iSize_;
           sr_src_.mBufferInfo_.uBufferId_ = drmLayer->uBufferId_;
-          sr_src_.mBufferInfo_.uColorSpace_ = (uint64_t)drmLayer->eDataSpace_;
+          sr_src_.mBufferInfo_.uColorSpace_ = SR_DATASPACE_UNKNOWN;
           if(drmLayer->bAfbcd_){
             if(drmLayer->iFormat_ == HAL_PIXEL_FORMAT_YUV420_8BIT_I){
               sr_src_.mBufferInfo_.iFormat_ = drmLayer->uFourccFormat_;
@@ -2529,6 +2530,7 @@ int Vop3588::TrySrPolicy(std::vector<DrmCompositionPlane> *composition,
           sr_dst_.mBufferInfo_.iHeight_ = dst_buffer->GetHeight();
           sr_dst_.mBufferInfo_.iFormat_ = dst_buffer->GetFourccFormat();
           sr_dst_.mBufferInfo_.iStride_ = dst_buffer->GetStride();
+          sr_dst_.mBufferInfo_.iHeightStride_ = dst_buffer->GetHeightStride();
           sr_dst_.mBufferInfo_.iSize_   = dst_buffer->GetSize();
           sr_dst_.mBufferInfo_.uBufferId_ = dst_buffer->GetBufferId();
 
