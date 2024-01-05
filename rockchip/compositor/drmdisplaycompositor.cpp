@@ -2201,13 +2201,13 @@ void DrmDisplayCompositor::ClearDisplay() {
         if(ret){
           HWC2_ALOGE("SidebandStream: display-id=%d DestoryConnection old tunnel-id=%" PRIu64 " fail.",
                       display_, current_sideband2_.tunnel_id_);
-          current_sideband2_.enable_ = false;
-          current_sideband2_.buffer_ = NULL;
-          current_sideband2_.tunnel_id_ = 0;
         }else{
           HWC2_ALOGI("SidebandStream: display-id=%d DestoryConnection old tunnel-id=%" PRIu64 " Success.",
                       display_, current_sideband2_.tunnel_id_);
         }
+        current_sideband2_.enable_ = false;
+        current_sideband2_.buffer_ = NULL;
+        current_sideband2_.tunnel_id_ = 0;
       }
 
       if(drawing_sideband2_.tunnel_id_ > 0){
@@ -2215,13 +2215,13 @@ void DrmDisplayCompositor::ClearDisplay() {
         if(ret){
           HWC2_ALOGE("SidebandStream: display-id=%d DestoryConnection old tunnel-id=%" PRIu64 " fail.",
                       display_, drawing_sideband2_.tunnel_id_);
-          drawing_sideband2_.enable_ = false;
-          drawing_sideband2_.buffer_ = NULL;
-          drawing_sideband2_.tunnel_id_ = 0;
         }else{
           HWC2_ALOGI("SidebandStream: display-id=%d DestoryConnection old tunnel-id=%" PRIu64 " Success.",
                       display_, drawing_sideband2_.tunnel_id_);
         }
+        drawing_sideband2_.enable_ = false;
+        drawing_sideband2_.buffer_ = NULL;
+        drawing_sideband2_.tunnel_id_ = 0;
       }
     }
   }
