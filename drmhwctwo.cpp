@@ -2494,6 +2494,9 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateDisplay(uint32_t *num_types,
     // We can only handle layers of Device type, send everything else to SF
     if (layer.validated_type() != HWC2::Composition::Device) {
       layer.set_validated_type(HWC2::Composition::Client);
+    }
+    //num_types 应该为发生改变的图层，不仅仅是Client图层
+    if(layer.type_changed()){
       ++*num_types;
     }
     layer.StateChange();
