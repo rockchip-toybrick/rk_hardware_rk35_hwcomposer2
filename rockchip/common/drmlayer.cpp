@@ -172,6 +172,7 @@ int DrmHwcLayer::ImportBuffer(Importer *importer) {
   // F0:本地缓存 buffer_handle 比较占用CPU，故删除，仅采用
   // Fix YUV can't importBuffer bug.
   // layerCount is always 1 and pixel_stride is always 0.
+  // 另外：RK3399 NV12_10场景不能用CopyBufferHandle，gralloc会返回错误
   ret = handle.CopyBufferHandle(sf_handle, bo->width, bo->height, 1/*bo->layer_cnt*/,
                                 bo->hal_format, bo->usage, 0/*bo->pixel_stride*/);
   if (ret)

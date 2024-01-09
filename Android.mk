@@ -45,7 +45,12 @@ else  # BUILD_WITH_RK_EBOOK
         BOARD_USES_DRM_HWCOMPOSER2=true
 endif # BUILD_WITH_RK_EBOOK
 else
-        BOARD_USES_DRM_HWCOMPOSER2=false
+endif
+#rk3399 use DrmHwc2
+ifneq ($(filter rk3399, $(strip $(TARGET_BOARD_PLATFORM))), )
+ifneq (1,$(strip $(shell expr $(PLATFORM_SDK_VERSION) \< 34)))
+        BOARD_USES_DRM_HWCOMPOSER2=true
+endif
 endif
 
 ifeq ($(strip $(BOARD_USES_DRM_HWCOMPOSER2)),true)
@@ -226,6 +231,10 @@ endif
 # RK356x
 ifneq ($(filter rk356x, $(strip $(TARGET_BOARD_PLATFORM))), )
 TARGET_SOC_PLATFORM := rk356x
+endif
+
+ifneq ($(filter rk3399, $(strip $(TARGET_BOARD_PLATFORM))),)
+LOCAL_CPPFLAGS += -DRK3399=1
 endif
 
 # SR

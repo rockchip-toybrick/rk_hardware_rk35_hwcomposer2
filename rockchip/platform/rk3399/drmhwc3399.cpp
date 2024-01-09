@@ -40,7 +40,7 @@ bool Hwc3399::SupportPlatform(uint32_t soc_id){
   return false;
 }
 
-int Hwc3399::assignPlaneByPlaneMask(DrmDevice* drm){
+int Hwc3399::assignPlaneByPossibleCrtcs(DrmDevice* drm){
   std::vector<PlaneGroup*> all_plane_group = drm->GetPlaneGroups();
   // First, assign active display plane_mask
   for (auto &conn : drm->connectors()) {
@@ -50,16 +50,13 @@ int Hwc3399::assignPlaneByPlaneMask(DrmDevice* drm){
     DrmCrtc *crtc = drm->GetCrtcForDisplay(display_id);
     if(!crtc){
         ALOGE("%s,line=%d crtc is NULL.",__FUNCTION__,__LINE__);
-        return -1;
+        continue;
     }
 
     uint32_t crtc_mask = 1 << crtc->pipe();
-    uint64_t plane_mask = crtc->get_plane_mask();
-    HWC2_ALOGI("display-id=%d crtc-id=%d mask=0x%x ,plane_mask=0x%" PRIx64,
-            display_id, crtc->id(), crtc_mask, plane_mask);
     for(auto &plane_group : all_plane_group){
-      uint64_t plane_group_win_type = plane_group->win_type;
-      if(((plane_mask & plane_group_win_type) == plane_group_win_type)){
+      uint64_t possible_crtcs = plane_group->possible_crtcs;
+      if(crtc_mask & possible_crtcs){
         plane_group->set_current_crtc(crtc_mask, display_id);
       }
     }
@@ -85,7 +82,7 @@ int Hwc3399::TryAssignPlane(DrmDevice* drm){
     }
   }
 
-  assignPlaneByPlaneMask(drm);
+  ret = assignPlaneByPossibleCrtcs(drm);
 
   return ret;
 }

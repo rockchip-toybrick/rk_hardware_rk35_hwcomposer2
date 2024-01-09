@@ -167,6 +167,9 @@ int DrmPlane::Init() {
     b_sdr2hdr_   = true;
   }
 
+  if(isRK3399(soc_id_))
+      b_alpha_   = true;
+
   //ALOGD("rk-debug scale=%d alpha=%d hdr2sdr=%d sdr2hdr=%d afbdc=%d", b_scale_,b_alpha_,b_hdr2sdr_,b_sdr2hdr_,b_afbdc_);
 
   support_format_list.clear();
@@ -176,16 +179,20 @@ int DrmPlane::Init() {
 
   ret = drm_->GetPlaneProperty(*this, "alpha", &alpha_property_);
   if (ret)
+    ret = drm_->GetPlaneProperty(*this, "GLOBAL_ALPHA", &alpha_property_vop1_kernel4_19_);
+  if (ret)
     ALOGI("Could not get alpha property");
 
   ret = drm_->GetPlaneProperty(*this, "pixel blend mode", &blend_mode_property_);
+  if (ret)
+    ret = drm_->GetPlaneProperty(*this, "BLEND_MODE", &blend_mode_property_vop1_kernel4_19);
   if (ret)
     ALOGI("Could not get pixel blend mode property");
 
   rotate_ = DRM_PLANE_ROTATION_0;
   ret = drm_->GetPlaneProperty(*this, "rotation", &rotation_property_);
   if (ret)
-    ALOGE("Could not get FEATURE property");
+    ALOGE("Could not get rotation property");
   else{
     for(int i = 0; i < ARRAY_SIZE(plane_rotation_type_names); i++){
       bool find_name = false;
@@ -199,7 +206,10 @@ int DrmPlane::Init() {
 
   ret = drm_->GetPlaneProperty(*this, "NAME", &name_property_);
   if (ret)
-    ALOGE("Could not get NAME property");
+    if(isRK3399(soc_id_))
+      mark_type_by_name();
+    else
+      ALOGE("Could not get NAME property");
   else{
     mark_type_by_name();
   }
@@ -299,6 +309,7 @@ int DrmPlane::Init() {
 
   }
 
+  FixPropertyForKernelLowerThan_601();
 
   return 0;
 }
@@ -420,38 +431,81 @@ void DrmPlane::mark_type_by_name(){
   }else if(isRK3399(soc_id_)){
     struct plane_type_name_rk3399 {
       DrmPlaneTypeRK3399 type;
+      uint32_t possible_crtc;   //   -Kernel6.1之前版本(5.10,4.19)需要使用图层属性推断图层
+      uint32_t plane_type;      //  /
+      bool isScale;             // /
+      bool isArea0;             ///
       const char *name;
+      bool matched = 0;
+      bool match(uint32_t _possible_crtc,uint32_t _plane_type,bool _isScale,int _id, int _share_id){
+        bool _isArea0;
+
+        if(matched)
+          return false;
+
+        if(_id == _share_id)
+          _isArea0=true;
+        else
+          _isArea0=false;
+
+        if(_possible_crtc==possible_crtc && _plane_type==plane_type && _isScale==isScale && _isArea0==isArea0){
+          matched = true;
+          return true;
+        }else{
+          return false;
+        }
+      }
     };
+    //Kernel6.1之前版本(5.10,4.19)需要使用图层属性推断图层, Kernel6.1之后已拉齐支持使用NAME属性推断图层
     struct plane_type_name_rk3399 plane_type_names_rk3399[] = {
-      { DRM_PLANE_TYPE_VOP0_WIN0  , "VOP0-win0-0" },
-      { DRM_PLANE_TYPE_VOP0_WIN1  , "VOP0-win1-0" },
-      { DRM_PLANE_TYPE_VOP0_WIN2_0, "VOP0-win2-0" },
-      { DRM_PLANE_TYPE_VOP0_WIN2_1, "VOP0-win2-1" },
-      { DRM_PLANE_TYPE_VOP0_WIN2_2, "VOP0-win2-2" },
-      { DRM_PLANE_TYPE_VOP0_WIN2_3, "VOP0-win2-3" },
-      { DRM_PLANE_TYPE_VOP0_WIN3_0, "VOP0-win3-0" },
-      { DRM_PLANE_TYPE_VOP0_WIN3_0, "VOP0-win3-1" },
-      { DRM_PLANE_TYPE_VOP0_WIN3_0, "VOP0-win3-2" },
-      { DRM_PLANE_TYPE_VOP0_WIN3_0, "VOP0-win3-3" },
+      { DRM_PLANE_TYPE_VOP0_WIN0  , 2, DRM_PLANE_TYPE_PRIMARY,  true,   true,   "VOP0-win0-0" },
+      { DRM_PLANE_TYPE_VOP0_WIN1  , 2, DRM_PLANE_TYPE_OVERLAY,  true,   true,   "VOP0-win1-0" },
+      { DRM_PLANE_TYPE_VOP0_WIN2_0, 2, DRM_PLANE_TYPE_CURSOR,   false,  true,   "VOP0-win2-0" },
+      { DRM_PLANE_TYPE_VOP0_WIN2_1, 2, DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP0-win2-1" },
+      { DRM_PLANE_TYPE_VOP0_WIN2_2, 2, DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP0-win2-2" },
+      { DRM_PLANE_TYPE_VOP0_WIN2_3, 2, DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP0-win2-3" },
+      { DRM_PLANE_TYPE_VOP0_WIN3_0, 2, DRM_PLANE_TYPE_OVERLAY,  false,  true,   "VOP0-win3-0" },
+      { DRM_PLANE_TYPE_VOP0_WIN3_1, 2, DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP0-win3-1" },
+      { DRM_PLANE_TYPE_VOP0_WIN3_2, 2, DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP0-win3-2" },
+      { DRM_PLANE_TYPE_VOP0_WIN3_3, 2, DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP0-win3-3" },
 
-      { DRM_PLANE_TYPE_VOP1_WIN0  , "VOP1-win0-0" },
-      { DRM_PLANE_TYPE_VOP1_WIN2_0, "VOP1-win2-0" },
-      { DRM_PLANE_TYPE_VOP1_WIN2_0, "VOP1-win2-1" },
-      { DRM_PLANE_TYPE_VOP1_WIN2_0, "VOP1-win2-2" },
-      { DRM_PLANE_TYPE_VOP1_WIN2_0, "VOP1-win2-3" },
+      { DRM_PLANE_TYPE_VOP1_WIN0  , 1, DRM_PLANE_TYPE_OVERLAY,  true,   true,   "VOP1-win0-0" },
+      { DRM_PLANE_TYPE_VOP1_WIN2_0, 1, DRM_PLANE_TYPE_PRIMARY,  false,  true,   "VOP1-win2-0" },
+      { DRM_PLANE_TYPE_VOP1_WIN2_1, 1, DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP1-win2-1" },
+      { DRM_PLANE_TYPE_VOP1_WIN2_2, 1, DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP1-win2-2" },
+      { DRM_PLANE_TYPE_VOP1_WIN2_3, 1, DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP1-win2-3" },
 
-      { DRM_PLANE_TYPE_VOP1_Unknown, "unknown" },
+      { DRM_PLANE_TYPE_VOP1_Unknown,0, 0,                       0,      0,      "unknown"     },
     };
-    for(int i = 0; i < ARRAY_SIZE(plane_type_names_rk3399); i++){
-      int ret;
-      bool find_name = false;
-      std::tie(ret,find_name) = name_property_.bitmask(plane_type_names_rk3399[i].name);
-      if(find_name){
-        win_type_ = plane_type_names_rk3399[i].type;
-        name_ = plane_type_names_rk3399[i].name;
-        break;
+
+    if(name_property_.id()){
+      for(int i = 0; i < ARRAY_SIZE(plane_type_names_rk3399); i++){
+        int ret;
+        bool name_found = false;
+        std::tie(ret,name_found) = name_property_.bitmask(plane_type_names_rk3399[i].name);
+        if(name_found){
+          win_type_ = plane_type_names_rk3399[i].type;
+          name_ = plane_type_names_rk3399[i].name;
+          return;
+        }
       }
     }
+    //Kernel6.1之前版本(5.10,4.19)无NAME属性，需要使用图层属性推断图层
+    int _ret;
+    int shareid;
+    std::tie(_ret,shareid) = share_id_property_.value();
+
+    for(int i=0;i<ARRAY_SIZE(plane_type_names_rk3399);i++){
+      if(plane_type_names_rk3399[i].match(possible_crtc_mask_,type_,b_scale_,id_,shareid)){
+        win_type_=plane_type_names_rk3399[i].type;
+        name_ = plane_type_names_rk3399[i].name;
+        return;
+      }
+    }
+
+    win_type_=DRM_PLANE_TYPE_VOP1_Unknown;
+    name_ = "unknown";
+
   }else if(isRK3528(soc_id_)){
     struct plane_type_name_rk3528 {
       DrmPlaneTypeRK3528 type;
@@ -539,6 +593,42 @@ void DrmPlane::mark_type_by_name(){
 
 }
 
+void DrmPlane::FixPropertyForKernelLowerThan_601(){
+  if(isRK3399(soc_id_) && gIsDrmVerison419()){
+    if(win_type_&DRM_PLANE_TYPE_VOP0_MASK) {
+      input_w_max_=4096;
+      input_h_max_=8192;
+      output_w_max_=4096;
+      output_h_max_=8192;
+    }else if(win_type_&DRM_PLANE_TYPE_VOP1_MASK) {
+      input_w_max_=4096;
+      input_h_max_=8192;
+      output_w_max_=2560;
+      output_h_max_=8192;
+    }else{
+      HWC2_ALOGE("name:%s,UNKNOW Layer",name_);
+    }
+    HWC2_ALOGD_IF_DEBUG("name:%s,fixing input and output size:%d,%d,%d,%d",\
+                        name_,\
+                        input_w_max_,input_h_max_,\
+                        output_w_max_,output_h_max_);
+    if(win_type_&(DRM_PLANE_TYPE_VOP1_WIN0|DRM_PLANE_TYPE_VOP0_WIN0|DRM_PLANE_TYPE_VOP0_WIN1)){
+      scale_max_=8.0f;
+      scale_min_=1.0f/8.0f;
+      b_scale_=true;
+    }else{
+      scale_max_=1.0f;
+      scale_min_=1.0f;
+      b_scale_=false;
+    }
+    HWC2_ALOGD_IF_DEBUG("name:%s,fixing scale:%s(%f - %f)",name_,b_scale_?"true":"false",scale_min_,scale_max_);
+    if(win_type_&DRM_PLANE_TYPE_VOP1_MASK){
+      b_afbdc_ = false;
+      HWC2_ALOGD_IF_DEBUG("VOP_LIT,not support afbc");
+    }
+  }
+}
+
 uint64_t DrmPlane::win_type() const{
   return win_type_;
 }
@@ -595,8 +685,16 @@ const DrmProperty &DrmPlane::alpha_property() const {
   return alpha_property_;
 }
 
+const DrmProperty &DrmPlane::alpha_property_vop1_kernel4_19() const {
+  return alpha_property_vop1_kernel4_19_;
+}
+
 const DrmProperty &DrmPlane::blend_property() const {
   return blend_mode_property_;
+}
+
+const DrmProperty &DrmPlane::blend_property_vop1_kernel4_19() const {
+  return blend_mode_property_vop1_kernel4_19;
 }
 
 // RK support
@@ -780,8 +878,12 @@ bool DrmPlane::is_support_format(uint32_t format, bool afbcd){
   }else if(isRK3399(soc_id_)){
       if(afbcd && get_afbc())
         return support_format_list.count(format);
-      else if(!afbcd)
+      else if(!afbcd){
+        if(win_type_&(DRM_PLANE_TYPE_VOP0_WIN0|DRM_PLANE_TYPE_VOP0_WIN1|DRM_PLANE_TYPE_VOP1_WIN0))
+          if(format==DRM_FORMAT_P010)
+            return true;
         return support_format_list.count(format);
+      }
       else
         return false;
   }else{

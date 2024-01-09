@@ -41,6 +41,9 @@ typedef struct tagPlaneGroup{
 
   uint32_t current_crtc_ = 0;
 
+  //RK3399用于判断AFBC图层是否已使用
+  int afbc_layer_used = -1;
+
   bool acquire(uint32_t crtc_mask){
     if(bReserved)
       return false;
@@ -258,11 +261,13 @@ enum DrmPlaneTypeRK3399{
       DRM_PLANE_TYPE_VOP0_WIN2_1 = 1 << 3,
       DRM_PLANE_TYPE_VOP0_WIN2_2 = 1 << 4,
       DRM_PLANE_TYPE_VOP0_WIN2_3 = 1 << 5,
+      DRM_PLANE_TYPE_VOP0_WIN2_MASK = 0xf<<2,
 
       DRM_PLANE_TYPE_VOP0_WIN3_0 = 1 << 6,
       DRM_PLANE_TYPE_VOP0_WIN3_1 = 1 << 7,
       DRM_PLANE_TYPE_VOP0_WIN3_2 = 1 << 8,
       DRM_PLANE_TYPE_VOP0_WIN3_3 = 1 << 9,
+      DRM_PLANE_TYPE_VOP0_WIN3_MASK = 0xf<<6,
 
       DRM_PLANE_TYPE_VOP1_WIN0   = 1 << 10,
 
@@ -270,10 +275,15 @@ enum DrmPlaneTypeRK3399{
       DRM_PLANE_TYPE_VOP1_WIN2_1 = 1 << 12,
       DRM_PLANE_TYPE_VOP1_WIN2_2 = 1 << 13,
       DRM_PLANE_TYPE_VOP1_WIN2_3 = 1 << 14,
+      DRM_PLANE_TYPE_VOP1_WIN2_MASK = 0xf<<11,
 
-      DRM_PLANE_TYPE_VOP0_MASK   = 0x3ff,
-      DRM_PLANE_TYPE_VOP1_MASK   = 0x7c,
-      DRM_PLANE_TYPE_VOP1_Unknown      = 0xffffffff,
+      DRM_PLANE_TYPE_VOP0_MASK =
+                DRM_PLANE_TYPE_VOP0_WIN0      | DRM_PLANE_TYPE_VOP0_WIN1 |
+                DRM_PLANE_TYPE_VOP0_WIN2_MASK | DRM_PLANE_TYPE_VOP0_WIN3_MASK,
+      DRM_PLANE_TYPE_VOP1_MASK =
+                  DRM_PLANE_TYPE_VOP1_WIN0 | DRM_PLANE_TYPE_VOP1_WIN2_MASK,
+
+      DRM_PLANE_TYPE_VOP1_Unknown = 0xffffffff,
 };
 
 enum DrmPlaneRotationType{
@@ -345,8 +355,10 @@ class DrmPlane {
   const DrmProperty &zpos_property() const;
   const DrmProperty &rotation_property() const;
   const DrmProperty &alpha_property() const;
+  const DrmProperty &alpha_property_vop1_kernel4_19() const;
   const DrmProperty &eotf_property() const;
   const DrmProperty &blend_property() const;
+  const DrmProperty &blend_property_vop1_kernel4_19() const;
   const DrmProperty &colorspace_property() const;
   const DrmProperty &area_id_property() const;
   const DrmProperty &share_id_property() const;
@@ -436,6 +448,8 @@ class DrmPlane {
   DrmProperty async_commit_property_;
   DrmProperty kernel6_1_color_encoding_;
   DrmProperty kernel6_1_color_range_;
+  DrmProperty alpha_property_vop1_kernel4_19_;
+  DrmProperty blend_mode_property_vop1_kernel4_19;
 
   // next hdr
   DrmProperty next_hdr_layer_type_property_;
@@ -462,6 +476,7 @@ class DrmPlane {
   std::set<uint32_t> support_format_list;
   drmModePlanePtr plane_;
   int soc_id_;
+  void FixPropertyForKernelLowerThan_601();
 };
 }  // namespace android
 

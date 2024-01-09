@@ -595,6 +595,8 @@ int DrmDisplayCompositor::CommitSidebandStream(drmModeAtomicReqPtr pset,
             "None");
         break;
     }
+  }else if(plane->blend_property_vop1_kernel4_19().id()){
+    blend= (layer.blending == DrmHwcBlending::kPreMult) ? 1:0;
   }
 
   ret = drmModeAtomicAddProperty(pset, plane->id(),
@@ -634,6 +636,17 @@ int DrmDisplayCompositor::CommitSidebandStream(drmModeAtomicReqPtr pset,
     }
   }
 
+  if (plane->alpha_property_vop1_kernel4_19().id()) {
+    ret = drmModeAtomicAddProperty(pset, plane->id(),
+                                  plane->alpha_property_vop1_kernel4_19().id(),
+                                  layer.alpha) < 0;
+    if (ret) {
+      ALOGE("Failed to add alpha property %d to plane %d",
+            plane->alpha_property_vop1_kernel4_19().id(), plane->id());
+      return ret;
+    }
+  }
+
   if (plane->blend_property().id()) {
     ret = drmModeAtomicAddProperty(pset, plane->id(),
                                   plane->blend_property().id(),
@@ -641,6 +654,17 @@ int DrmDisplayCompositor::CommitSidebandStream(drmModeAtomicReqPtr pset,
     if (ret) {
       ALOGE("Failed to add pixel blend mode property %d to plane %d",
             plane->blend_property().id(), plane->id());
+      return ret;
+    }
+  }
+
+  if (plane->blend_property_vop1_kernel4_19().id()) {
+    ret = drmModeAtomicAddProperty(pset, plane->id(),
+                                  plane->blend_property_vop1_kernel4_19().id(),
+                                  blend) < 0;
+    if (ret) {
+      ALOGE("Failed to add pixel blend mode property %d to plane %d",
+            plane->blend_property_vop1_kernel4_19().id(), plane->id());
       return ret;
     }
   }
@@ -1139,6 +1163,8 @@ int DrmDisplayCompositor::CollectCommitInfo(drmModeAtomicReqPtr pset,
                 "None");
             break;
         }
+      }else if(plane->blend_property_vop1_kernel4_19().id()){
+        blend= (layer.blending == DrmHwcBlending::kPreMult) ? 1:0;
       }
 
       rotation = layer.transform;
@@ -1285,6 +1311,17 @@ int DrmDisplayCompositor::CollectCommitInfo(drmModeAtomicReqPtr pset,
       }
     }
 
+    if (plane->alpha_property_vop1_kernel4_19().id()) {
+      ret = drmModeAtomicAddProperty(pset, plane->id(),
+                                     plane->alpha_property_vop1_kernel4_19().id(), alpha>>8) < 0;
+      if (ret) {
+        ALOGE("Failed to add alpha property %d to plane %d",
+              plane->alpha_property_vop1_kernel4_19().id(), plane->id());
+        break;
+      }
+      out_log << " alpha=" << std::hex <<  alpha;
+    }
+
     if (plane->blend_property().id()) {
       ret = drmModeAtomicAddProperty(pset, plane->id(),
                                      plane->blend_property().id(), blend) < 0;
@@ -1297,6 +1334,17 @@ int DrmDisplayCompositor::CollectCommitInfo(drmModeAtomicReqPtr pset,
       if(LogLevel(DBG_DEBUG)){
         out_log << " blend mode =" << blend;
       }
+    }
+
+    if (plane->blend_property_vop1_kernel4_19().id()) {
+      ret = drmModeAtomicAddProperty(pset, plane->id(),
+                                     plane->blend_property_vop1_kernel4_19().id(), blend) < 0;
+      if (ret) {
+        ALOGE("Failed to add pixel blend mode property %d to plane %d",
+              plane->blend_property_vop1_kernel4_19().id(), plane->id());
+        break;
+      }
+      out_log << " blend mode =" << blend;
     }
 
     if(plane->get_hdr2sdr() && plane->eotf_property().id()) {
@@ -1741,6 +1789,8 @@ int DrmDisplayCompositor::CommitFrame(DrmDisplayComposition *display_comp,
                 "None");
             break;
         }
+      }else if(plane->blend_property_vop1_kernel4_19().id()){
+        blend= (layer.blending == DrmHwcBlending::kPreMult) ? 1:0;
       }
       zpos = comp_plane.get_zpos();
       if(display_comp->display() > 0xf)
@@ -1869,6 +1919,17 @@ int DrmDisplayCompositor::CommitFrame(DrmDisplayComposition *display_comp,
       out_log << " alpha=" << std::hex <<  alpha;
     }
 
+    if (plane->alpha_property_vop1_kernel4_19().id()) {
+      ret = drmModeAtomicAddProperty(pset, plane->id(),
+                                     plane->alpha_property_vop1_kernel4_19().id(), alpha>>8) < 0;
+      if (ret) {
+        ALOGE("Failed to add alpha property %d to plane %d",
+              plane->alpha_property_vop1_kernel4_19().id(), plane->id());
+        break;
+      }
+      out_log << " alpha=" << std::hex <<  alpha;
+    }
+
     if (plane->blend_property().id()) {
       ret = drmModeAtomicAddProperty(pset, plane->id(),
                                      plane->blend_property().id(), blend) < 0;
@@ -1879,6 +1940,18 @@ int DrmDisplayCompositor::CommitFrame(DrmDisplayComposition *display_comp,
       }
       out_log << " blend mode =" << blend;
     }
+
+    if (plane->blend_property_vop1_kernel4_19().id()) {
+      ret = drmModeAtomicAddProperty(pset, plane->id(),
+                                     plane->blend_property_vop1_kernel4_19().id(), blend) < 0;
+      if (ret) {
+        ALOGE("Failed to add pixel blend mode property %d to plane %d",
+              plane->blend_property_vop1_kernel4_19().id(), plane->id());
+        break;
+      }
+      out_log << " blend mode =" << blend;
+    }
+
 
     if(plane->get_hdr2sdr() && plane->eotf_property().id()) {
       ret = drmModeAtomicAddProperty(pset, plane->id(),
@@ -2607,6 +2680,8 @@ int DrmDisplayCompositor::CollectVPInfo() {
                 "None");
             break;
         }
+      }else if(plane->blend_property_vop1_kernel4_19().id()){
+        blend= (layer.blending == DrmHwcBlending::kPreMult) ? 1:0;
       }
 
       zpos = comp_plane.get_zpos();
@@ -2737,12 +2812,34 @@ int DrmDisplayCompositor::CollectVPInfo() {
       out_log << " alpha=" << std::hex <<  alpha;
     }
 
+    if (plane->alpha_property_vop1_kernel4_19().id()) {
+      ret = drmModeAtomicAddProperty(pset, plane->id(),
+                                     plane->alpha_property_vop1_kernel4_19().id(), alpha>>8) < 0;
+      if (ret) {
+        ALOGE("Failed to add alpha property %d to plane %d",
+              plane->alpha_property_vop1_kernel4_19().id(), plane->id());
+        break;
+      }
+      out_log << " alpha=" << std::hex <<  alpha;
+    }
+
     if (plane->blend_property().id()) {
       ret = drmModeAtomicAddProperty(pset, plane->id(),
                                      plane->blend_property().id(), blend) < 0;
       if (ret) {
         ALOGE("Failed to add pixel blend mode property %d to plane %d",
               plane->blend_property().id(), plane->id());
+        break;
+      }
+      out_log << " blend mode =" << blend;
+    }
+
+    if (plane->blend_property_vop1_kernel4_19().id()) {
+      ret = drmModeAtomicAddProperty(pset, plane->id(),
+                                     plane->blend_property_vop1_kernel4_19().id(), blend) < 0;
+      if (ret) {
+        ALOGE("Failed to add pixel blend mode property %d to plane %d",
+              plane->blend_property_vop1_kernel4_19().id(), plane->id());
         break;
       }
       out_log << " blend mode =" << blend;

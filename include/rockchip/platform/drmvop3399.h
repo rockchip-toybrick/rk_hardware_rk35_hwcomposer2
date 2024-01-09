@@ -38,6 +38,7 @@
 
 #include "platform.h"
 #include "drmdevice.h"
+#include "drmbufferqueue.h"
 
 #include <cutils/properties.h>
 
@@ -104,18 +105,18 @@ typedef struct SupportContext{
 } SupCtx;
 
 typedef struct StateContext{
-  // Commit mirror function
-  bool bCommitMirrorMode=false;
-  DrmCrtc *pCrtcMirror=NULL;
 
   // Multi area
   bool bMultiAreaEnable=false;
-  bool bMultiAreaScaleEnable=false;
   bool bMultiAreaMode=false;
 
   // Video state
   bool bLargeVideo=false;
   bool bDisableFBAfbcd=false;
+  bool bRgaPolicyEnable=false;
+
+  int iDisplayWidth_=0;
+  int iDisplayHeight_=0;
 
   // Soc id
   int iSocId=0;
@@ -129,7 +130,11 @@ typedef struct DrmVop2Context{
 } Vop2Ctx;
 
  public:
-  Vop3399(){ Init(); }
+  Vop3399()
+    : rgaBufferQueue_((std::make_shared<DrmBufferQueue>()))
+  { 
+    Init(); 
+  }
   void Init();
   bool SupportPlatform(uint32_t soc_id);
   int TryHwcPolicy(std::vector<DrmCompositionPlane> *composition,
@@ -150,6 +155,9 @@ typedef struct DrmVop2Context{
   int TryMixVideoPolicy(std::vector<DrmCompositionPlane> *composition,
                         std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                         std::vector<PlaneGroup *> &plane_groups);
+  int TryRgaOverlayPolicy(std::vector<DrmCompositionPlane> *composition,
+                        std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
+                        std::vector<PlaneGroup *> &plane_groups);
   int TryMixUpPolicy(std::vector<DrmCompositionPlane> *composition,
                         std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                         std::vector<PlaneGroup *> &plane_groups);
@@ -165,12 +173,9 @@ typedef struct DrmVop2Context{
   int MatchPlanes(std::vector<DrmCompositionPlane> *composition,
                       std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                       std::vector<PlaneGroup *> &plane_groups);
-  int MatchBestPlanes(std::vector<DrmCompositionPlane> *composition,
-                      std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
-                      std::vector<PlaneGroup *> &plane_groups);
+
   bool TryOverlay();
   void TryMix();
-  void InitCrtcMirror(std::vector<DrmHwcLayer*> &layers,std::vector<PlaneGroup *> &plane_groups,DrmCrtc *crtc);
   void UpdateResevedPlane(DrmCrtc *crtc);
   bool CheckGLESLayer(DrmHwcLayer* layers);
   void InitStateContext(
@@ -187,16 +192,9 @@ typedef struct DrmVop2Context{
       bool gles_policy);
 
   bool HasLayer(std::vector<DrmHwcLayer*>& layer_vector,DrmHwcLayer *layer);
-  int  IsXIntersect(hwc_rect_t* rec,hwc_rect_t* rec2);
+  int  IsYIntersect(hwc_rect_t* rec,hwc_rect_t* rec2);
   bool IsRec1IntersectRec2(hwc_rect_t* rec1, hwc_rect_t* rec2);
   bool IsLayerCombine(DrmHwcLayer *layer_one,DrmHwcLayer *layer_two);
-  bool HasGetNoAfbcUsablePlanes(DrmCrtc *crtc, std::vector<PlaneGroup *> &plane_groups);
-  bool HasGetNoYuvUsablePlanes(DrmCrtc *crtc, std::vector<PlaneGroup *> &plane_groups);
-  bool HasGetNoScaleUsablePlanes(DrmCrtc *crtc, std::vector<PlaneGroup *> &plane_groups);
-  bool HasGetNoAlphaUsablePlanes(DrmCrtc *crtc, std::vector<PlaneGroup *> &plane_groups);
-  bool HasGetNoEotfUsablePlanes(DrmCrtc *crtc, std::vector<PlaneGroup *> &plane_groups);
-  bool GetCrtcSupported(const DrmCrtc &crtc, uint32_t possible_crtc_mask);
-  bool HasPlanesWithSize(DrmCrtc *crtc, int layer_size, std::vector<PlaneGroup *> &plane_groups);
   int  CombineLayer(LayerMap& layer_map,std::vector<DrmHwcLayer*>& layers,uint32_t iPlaneSize);
   int  GetPlaneGroups(DrmCrtc *crtc, std::vector<PlaneGroup *>&out_plane_groups);
   void ResetLayerFromTmpExceptFB(std::vector<DrmHwcLayer*>& layers, std::vector<DrmHwcLayer*>& tmp_layers);
@@ -211,12 +209,9 @@ typedef struct DrmVop2Context{
                      std::vector<PlaneGroup *> &plane_groups,
                      DrmCompositionPlane::Type type, DrmCrtc *crtc,
                      std::pair<int, std::vector<DrmHwcLayer*>> layers, int zpos, bool match_best);
-  int  MatchPlaneMirror(std::vector<DrmCompositionPlane> *composition_planes,
-                     std::vector<PlaneGroup *> &plane_groups,
-                     DrmCompositionPlane::Type type, DrmCrtc *crtc,
-                     std::pair<int, std::vector<DrmHwcLayer*>> layers, int zpos, bool match_best);
  private:
   Vop2Ctx ctx;
+  std::shared_ptr<DrmBufferQueue> rgaBufferQueue_;
 };
 
 }  // namespace android

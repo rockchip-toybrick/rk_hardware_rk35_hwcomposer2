@@ -79,12 +79,12 @@ struct plane_mask_name plane_mask_names_rk3562[] = {
 
 // RK3399
 struct plane_mask_name plane_mask_names_rk3399[] = {
-  { DRM_PLANE_TYPE_VOP0_MASK, "VOP0-win0" },
-  { DRM_PLANE_TYPE_VOP0_MASK, "VOP0-win1" },
-  { DRM_PLANE_TYPE_VOP0_MASK, "VOP0-win2" },
-  { DRM_PLANE_TYPE_VOP0_MASK, "VOP0-win3" },
-  { DRM_PLANE_TYPE_VOP1_MASK, "VOP1-win0" },
-  { DRM_PLANE_TYPE_VOP1_MASK, "VOP1-win1" },
+  { DRM_PLANE_TYPE_VOP0_WIN0, "VOP0-win0" },
+  { DRM_PLANE_TYPE_VOP0_WIN1, "VOP0-win1" },
+  { DRM_PLANE_TYPE_VOP0_WIN2_MASK, "VOP0-win2" },
+  { DRM_PLANE_TYPE_VOP0_WIN3_MASK, "VOP0-win3" },
+  { DRM_PLANE_TYPE_VOP1_WIN0, "VOP1-win0" },
+  { DRM_PLANE_TYPE_VOP1_WIN2_MASK, "VOP1-win2" },
   { DRM_PLANE_TYPE_VOP1_Unknown, "unknown" },
 };
 
@@ -143,7 +143,17 @@ int DrmCrtc::Init() {
   }
   std::tie(ret, soc_id_) = soc_type_property_.value();
   if(ret)
-    ALOGE("Failed to get SOC_ID value");
+  {
+     //RK3399 平台Kernel4.19及之前无SOC_ID，5.10后有SOC_ID
+    if(drm_->getDrmVersion()<3){
+#ifdef RK3399
+      HWC2_ALOGI("SOC(RK3399...) don't have SOC_ID,force setting...");
+      soc_id_=0x3399;
+#else
+      ALOGE("Failed to get SOC_ID value");
+#endif
+    }
+  }
 
   ret = drm_->GetCrtcProperty(*this, "PORT_ID", &port_id_property_);
   if (ret) {
