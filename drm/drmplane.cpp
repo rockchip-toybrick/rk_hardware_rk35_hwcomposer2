@@ -548,6 +548,33 @@ void DrmPlane::mark_type_by_name(){
         break;
       }
     }
+  }else if(isRK3326(soc_id_)){
+    struct plane_type_name_rk3326 {
+      DrmPlaneTypeRK3399 type;
+      const char *name;
+    };
+
+    struct plane_type_name_rk3326 plane_type_names_rk3326[] = {
+      { DRM_PLANE_TYPE_VOP0_WIN0  , "VOP0-win0-0" },
+      { DRM_PLANE_TYPE_VOP0_WIN1  , "VOP0-win1-0" },
+      { DRM_PLANE_TYPE_VOP0_WIN2_0, "VOP0-win2-0" },
+      { DRM_PLANE_TYPE_VOP0_WIN2_1, "VOP0-win2-1" },
+      { DRM_PLANE_TYPE_VOP0_WIN2_2, "VOP0-win2-2" },
+      { DRM_PLANE_TYPE_VOP0_WIN2_3, "VOP0-win2-3" },
+      { DRM_PLANE_TYPE_VOP1_WIN1, "VOP1-win1-0" },
+
+      { DRM_PLANE_TYPE_VOP1_Unknown, "unknown" },
+    };
+    for(int i = 0; i < ARRAY_SIZE(plane_type_names_rk3326); i++){
+      int ret;
+      bool find_name = false;
+      std::tie(ret,find_name) = name_property_.bitmask(plane_type_names_rk3326[i].name);
+      if(find_name){
+        win_type_ = plane_type_names_rk3326[i].type;
+        name_ = plane_type_names_rk3326[i].name;
+        break;
+      }
+    }
   }else if(isRK3562(soc_id_)){
     struct plane_type_name_rk3562 {
       DrmPlaneTypeRK3562 type;
@@ -886,6 +913,10 @@ bool DrmPlane::is_support_format(uint32_t format, bool afbcd){
       }
       else
         return false;
+  }else if(isRK3326(soc_id_)){
+      if(afbcd && !get_afbc())
+        return false;
+      return support_format_list.count(format);
   }else{
       return false;
   }

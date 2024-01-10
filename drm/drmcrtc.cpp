@@ -77,14 +77,16 @@ struct plane_mask_name plane_mask_names_rk3562[] = {
   { PLANE_RK3562_Unknown, "unknown" },
 };
 
-// RK3399
+// RK3399 RK3326
 struct plane_mask_name plane_mask_names_rk3399[] = {
   { DRM_PLANE_TYPE_VOP0_WIN0, "VOP0-win0" },
   { DRM_PLANE_TYPE_VOP0_WIN1, "VOP0-win1" },
   { DRM_PLANE_TYPE_VOP0_WIN2_MASK, "VOP0-win2" },
   { DRM_PLANE_TYPE_VOP0_WIN3_MASK, "VOP0-win3" },
   { DRM_PLANE_TYPE_VOP1_WIN0, "VOP1-win0" },
+  { DRM_PLANE_TYPE_VOP1_WIN1, "VOP1-win1" },
   { DRM_PLANE_TYPE_VOP1_WIN2_MASK, "VOP1-win2" },
+  { DRM_PLANE_TYPE_VOP1_WIN3_MASK, "VOP1-win3" },
   { DRM_PLANE_TYPE_VOP1_Unknown, "unknown" },
 };
 
@@ -149,6 +151,9 @@ int DrmCrtc::Init() {
 #ifdef RK3399
       HWC2_ALOGI("SOC(RK3399...) don't have SOC_ID,force setting...");
       soc_id_=0x3399;
+#elif defined(RK3326)
+      HWC2_ALOGI("SOC(RK3326...) don't have SOC_ID,force setting...");
+      soc_id_=0x3326;
 #else
       ALOGE("Failed to get SOC_ID value");
 #endif
@@ -197,7 +202,7 @@ int DrmCrtc::Init() {
           plane_mask_ |= plane_mask_names_rk356x[i].mask;
         }
       }
-    }else if(isRK3399(soc_id_)){
+    }else if(isRK3399(soc_id_)||isRK3326(soc_id_)){
       for(int i = 0; i < ARRAY_SIZE(plane_mask_names_rk3399); i++){
         bool have_mask = false;
         std::tie(ret,have_mask) = plane_mask_property_.value_bitmask(plane_mask_names_rk3399[i].name);

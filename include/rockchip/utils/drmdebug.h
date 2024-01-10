@@ -124,6 +124,7 @@ int hwc_get_string_property(const char* pcProperty,const char* default_value,cha
 bool isRK356x(uint32_t soc_id);
 bool isRK3566(uint32_t soc_id);
 bool isRK3399(uint32_t soc_id);
+bool isRK3326(uint32_t soc_id);
 bool isRK3588(uint32_t soc_id);
 bool isRK3528(uint32_t soc_id);
 bool isRK3562(uint32_t soc_id);
@@ -138,6 +139,7 @@ void gSetDrmVersion(uint32_t drm_version);
 bool gIsRK356x();
 bool gIsRK3566();
 bool gIsRK3399();
+bool gIsRK3326();
 bool gIsRK3588();
 bool gIsRK3528();
 bool gIsRK3562();

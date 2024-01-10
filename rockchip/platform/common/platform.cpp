@@ -18,12 +18,14 @@
 
 #include "platform.h"
 #include "drmdevice.h"
+#include "rockchip/platform/drmvop3326.h"
 #include "rockchip/platform/drmvop3399.h"
 #include "rockchip/platform/drmvop356x.h"
 #include "rockchip/platform/drmvop3588.h"
 #include "rockchip/platform/drmvop3528.h"
 #include "rockchip/platform/drmvop3562.h"
 
+#include "rockchip/platform/drmhwc3326.h"
 #include "rockchip/platform/drmhwc3399.h"
 #include "rockchip/platform/drmhwc356x.h"
 #include "rockchip/platform/drmhwc3588.h"
@@ -40,6 +42,9 @@ std::unique_ptr<Planner> Planner::CreateInstance(DrmDevice *drm_device) {
   switch(drm_device->getSocId()){
     case 0x3399:
       planner->AddStage<Vop3399>();
+      break;
+    case 0x3326:
+      planner->AddStage<Vop3326>();
       break;
     case 0x3566:
     case 0x3568:
@@ -90,6 +95,9 @@ std::unique_ptr<HwcPlatform> HwcPlatform::CreateInstance(DrmDevice *drm_device) 
   switch(drm_device->getSocId()){
     case 0x3399:
       hwcPlatform->AddStage<Hwc3399>();
+      break;
+    case 0x3326:
+      hwcPlatform->AddStage<Hwc3326>();
       break;
     case 0x3566:
     // after ECO

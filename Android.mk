@@ -46,8 +46,8 @@ else  # BUILD_WITH_RK_EBOOK
 endif # BUILD_WITH_RK_EBOOK
 else
 endif
-#rk3399 use DrmHwc2
-ifneq ($(filter rk3399, $(strip $(TARGET_BOARD_PLATFORM))), )
+#rk3399 rk3326 Android14 use DrmHwc2
+ifneq ($(filter rk3399 3326, $(strip $(TARGET_BOARD_PLATFORM))), )
 ifneq (1,$(strip $(shell expr $(PLATFORM_SDK_VERSION) \< 34)))
         BOARD_USES_DRM_HWCOMPOSER2=true
 endif
@@ -111,11 +111,13 @@ LOCAL_SRC_FILES := \
   rockchip/common/drmbaseparameter.cpp \
   rockchip/platform/common/platformdrmgeneric.cpp \
   rockchip/platform/common/platform.cpp \
+  rockchip/platform/rk3326/drmvop3326.cpp \
   rockchip/platform/rk3399/drmvop3399.cpp \
   rockchip/platform/rk356x/drmvop356x.cpp \
   rockchip/platform/rk3588/drmvop3588.cpp \
   rockchip/platform/rk3528/drmvop3528.cpp \
   rockchip/platform/rk3562/drmvop3562.cpp \
+  rockchip/platform/rk3326/drmhwc3326.cpp \
   rockchip/platform/rk3399/drmhwc3399.cpp \
   rockchip/platform/rk356x/drmhwc356x.cpp \
   rockchip/platform/rk3588/drmhwc3588.cpp \
@@ -235,6 +237,9 @@ endif
 
 ifneq ($(filter rk3399, $(strip $(TARGET_BOARD_PLATFORM))),)
 LOCAL_CPPFLAGS += -DRK3399=1
+endif
+ifneq ($(filter rk3326, $(strip $(TARGET_BOARD_PLATFORM))),)
+LOCAL_CPPFLAGS += -DRK3326=1
 endif
 
 # SR

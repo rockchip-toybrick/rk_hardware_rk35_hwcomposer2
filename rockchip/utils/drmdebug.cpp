@@ -165,6 +165,15 @@ bool isRK3399(uint32_t soc_id){
   }
 }
 
+bool isRK3326(uint32_t soc_id){
+  switch(soc_id){
+    case 0x3326:
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool isRK3588(uint32_t soc_id){
   switch(soc_id){
     case 0x3588:
@@ -225,6 +234,10 @@ bool gIsRK3566(){
 
 bool gIsRK3399(){
   return isRK3399(g_soc_id);
+}
+
+bool gIsRK3326(){
+  return isRK3326(g_soc_id);
 }
 
 bool gIsRK3588(){
