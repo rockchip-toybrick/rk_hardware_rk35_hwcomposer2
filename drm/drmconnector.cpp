@@ -1494,17 +1494,27 @@ int DrmConnector::getCropInfo(int32_t *srcX, int32_t *srcY, int32_t *srcW, int32
   return 0;
 }
 
+//检查格式是否支持
+//驱动上报的color_format_caps为所有支持格式的mask，将inFormat转换为mask与之比对以确认格式是否被支持
+#define IS_CF_SUPPORT(colorCapMask, inFormat) (((1<<inFormat)&colorCapMask) > 0)
+
 int DrmConnector::FilterColorFormatWithCaps(int inFormat){
-  int outFormat = inFormat;
-  if(color_format_caps_property_.id() > 0 ){
-    int ret;
-    uint64_t uColorFormatCap;
-    std::tie(ret,uColorFormatCap) = color_format_caps_property_.value();
-    HWC2_ALOGD_IF_DEBUG("filter color format %d with caps:%" PRIx64, inFormat, uColorFormatCap);
-    if(((1<<outFormat)&uColorFormatCap)==0){
-      outFormat=RK_IF_FORMAT_YCBCR_HQ;
+  int ret = -1;
+  if(color_format_caps_property_.id() > 0){
+    uint64_t uColorFormatCapMask = 0;
+    std::tie(ret,uColorFormatCapMask) = color_format_caps_property_.value();
+    if(ret == 0){
+      if(IS_CF_SUPPORT(uColorFormatCapMask, inFormat)){
+        return inFormat;
+      }else{
+        HWC2_ALOGW("uColorFormatCapMask=0x%" PRIx64 ", inFormat_mask=0x%x (inFormat=%d) is not supported, use RK_IF_FORMAT_YCBCR_HQ instead.",
+                   uColorFormatCapMask, 1 << inFormat, inFormat);
+        return RK_IF_FORMAT_YCBCR_HQ;
+      }
     }
   }
+  
+  HWC2_ALOGW("get color format caps failed! ret=%d, use inFormat=%d", ret, inFormat);   
   return inFormat;
 }
 
