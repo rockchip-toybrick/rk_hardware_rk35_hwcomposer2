@@ -47,7 +47,7 @@ endif # BUILD_WITH_RK_EBOOK
 else
 endif
 #rk3399 rk3326 Android14 use DrmHwc2
-ifneq ($(filter rk3399 3326, $(strip $(TARGET_BOARD_PLATFORM))), )
+ifneq ($(filter rk3399 rk3326, $(strip $(TARGET_BOARD_PLATFORM))), )
 ifneq (1,$(strip $(shell expr $(PLATFORM_SDK_VERSION) \< 34)))
         BOARD_USES_DRM_HWCOMPOSER2=true
 endif

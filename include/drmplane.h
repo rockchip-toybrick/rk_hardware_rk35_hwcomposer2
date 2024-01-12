@@ -484,7 +484,7 @@ class DrmPlane {
   std::set<uint32_t> support_format_list;
   drmModePlanePtr plane_;
   int soc_id_;
-  void FixPropertyForKernelLowerThan_601();
+  void AddLocalPlaneInfo();
 };
 }  // namespace android
 

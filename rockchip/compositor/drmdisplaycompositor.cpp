@@ -1319,7 +1319,10 @@ int DrmDisplayCompositor::CollectCommitInfo(drmModeAtomicReqPtr pset,
               plane->alpha_property_vop1_kernel4_19().id(), plane->id());
         break;
       }
-      out_log << " alpha=" << std::hex <<  alpha;
+
+      if(LogLevel(DBG_DEBUG)){
+        out_log << " alpha=" << std::hex <<  alpha;
+      }
     }
 
     if (plane->blend_property().id()) {
@@ -1344,7 +1347,10 @@ int DrmDisplayCompositor::CollectCommitInfo(drmModeAtomicReqPtr pset,
               plane->blend_property_vop1_kernel4_19().id(), plane->id());
         break;
       }
-      out_log << " blend mode =" << blend;
+
+      if(LogLevel(DBG_DEBUG)){
+        out_log << " blend mode =" << blend;
+      }
     }
 
     if(plane->get_hdr2sdr() && plane->eotf_property().id()) {

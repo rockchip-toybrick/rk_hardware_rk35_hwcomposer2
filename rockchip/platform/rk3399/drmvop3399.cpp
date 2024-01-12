@@ -162,17 +162,8 @@ bool Vop3399::IsLayerCombine(DrmHwcLayer * layer_one,DrmHwcLayer * layer_two){
         || IsRec1IntersectRec2(&layer_one->display_frame,&layer_two->display_frame)
         )
     {
-
-        ALOGD_IF(LogLevel(DBG_DEBUG),"layer(%u,%u) combine failed",(unsigned int)layer_one->uId_,(unsigned int)layer_two->uId_);
-        ALOGD_IF(LogLevel(DBG_DEBUG),"%s,%s,%s,%s,%s,%s,%s",
-        layer_one->iFormat_ >= HAL_PIXEL_FORMAT_YCrCb_NV12?"true":"false",
-        layer_two->iFormat_ >= HAL_PIXEL_FORMAT_YCrCb_NV12?"true":"false",
-        (layer_one->iFormat_ != layer_two->iFormat_)?"true":"false",
-        (layer_one->bAfbcd_ != layer_two->bAfbcd_)?"true":"false",
-        layer_one->alpha!= layer_two->alpha?"true":"false",
-        (layer_one->bScale_ || layer_two->bScale_)?"true":"false",
-        IsRec1IntersectRec2(&layer_one->display_frame,&layer_two->display_frame)?"true":"false"
-        );
+        ALOGD_IF(LogLevel(DBG_DEBUG),"is_layer_combine layer one alpha=%d,is_scale=%d",layer_one->alpha,layer_one->bScale_);
+        ALOGD_IF(LogLevel(DBG_DEBUG),"is_layer_combine layer two alpha=%d,is_scale=%d",layer_two->alpha,layer_two->bScale_);
         return false;
     }
 
@@ -1269,33 +1260,27 @@ int Vop3399::TryMixDownPolicy(
   }
 
   std::pair<int, int> layer_indices(-1, -1);
-  int iPlaneSize = plane_groups.size();
+  int iPlaneSize = 0;
+  for(auto plane_group:plane_groups)
+    iPlaneSize+=plane_group->planes.size();
   layer_indices.first = 0;
-  layer_indices.second = 2;
-  ALOGD_IF(LogLevel(DBG_DEBUG), "%s:mix down (%d,%d)",__FUNCTION__,layer_indices.first, layer_indices.second);
-  OutputMatchLayer(layer_indices.first, layer_indices.second, layers, tmp_layers);
-  int ret = MatchPlanes(composition,layers,crtc,plane_groups);
-  if(!ret)
-    return ret;
+  if(layers.size()>iPlaneSize)
+    layer_indices.second = layers.size()-iPlaneSize;
   else
-    ResetLayerFromTmpExceptFB(layers,tmp_layers);
-
-  if((int)layers.size() > iPlaneSize){
-    layer_indices.first = 0;
-    layer_indices.second = layers.size() - iPlaneSize;
+    layer_indices.second = 0;
+  while(layer_indices.second<layers.size()-2){
     ALOGD_IF(LogLevel(DBG_DEBUG), "%s:mix down (%d,%d)",__FUNCTION__,layer_indices.first, layer_indices.second);
     OutputMatchLayer(layer_indices.first, layer_indices.second, layers, tmp_layers);
-    ret = MatchPlanes(composition,layers,crtc,plane_groups);
+    int ret = MatchPlanes(composition,layers,crtc,plane_groups);
     if(!ret)
       return ret;
-    else{
-      ResetLayerFromTmp(layers,tmp_layers);
-      return -1;
-    }
+    else
+      ResetLayerFromTmpExceptFB(layers,tmp_layers);
+    layer_indices.second++;
   }
 
   ResetLayerFromTmp(layers,tmp_layers);
-  return ret;
+  return -1;
 }
 
 int Vop3399::TryMixPolicy(
@@ -1478,12 +1463,34 @@ bool Vop3399::CheckGLESLayer(DrmHwcLayer *layer){
   //TODO::AFBC limit for RK3399
 
   if(layer->bAfbcd_){
-    if(layer->source_crop.left!=0 || layer->source_crop.top!=0)
+    bool disable_afbc = false;
+    if(layer->source_crop.left!=0 || layer->source_crop.top!=0){
+      HWC2_ALOGD_IF_DEBUG("[%s]source_crop =[%d,%d,%d,%d] not support offset.", 
+                          layer->sLayerName_.c_str(), 
+                          (int)layer->source_crop.left, (int)layer->source_crop.top,
+                          (int)layer->source_crop.right, (int)layer->source_crop.bottom);
+      disable_afbc = true;
+    }
+    if(act_w>2560){
+      HWC2_ALOGD_IF_DEBUG("[%s]act_w =%d too big, maximum 2560", 
+                          layer->sLayerName_.c_str(), act_w);
+      disable_afbc = true;
+    }
+    if(!layer->bFbTarget_){
+      if((layer->iStride_&(16-1)) || (layer->iHeightStride_&(8-1))){
+        HWC2_ALOGD_IF_DEBUG("[%s]stride =[%d,%d] not aligned to [16x8].", 
+                            layer->sLayerName_.c_str(), layer->iStride_, layer->iHeightStride_);
+        disable_afbc = true;
+      }
+    }
+    if(disable_afbc){
+      if(layer->bFbTarget_){
+        HWC2_ALOGD_IF_DEBUG("[%s] FB target do not meet AFBC limit, disable AFBC.", 
+                            layer->sLayerName_.c_str());
+        layer->bAfbcd_ = false;
+      }
       return true;
-    if(layer->source_crop.right>2560 || layer->source_crop.bottom>1600)
-      return true;
-    if(((int)layer->source_crop.right&(16-1)) || ((int)layer->source_crop.bottom&(8-1)))
-      return true;
+    }
   }
 
   if(layer->transform == -1){
@@ -1712,6 +1719,7 @@ bool Vop3399::TryOverlay(){
 void Vop3399::TryMix(){
   ctx.state.setHwcPolicy.insert(HWC_MIX_POLICY);
   ctx.state.setHwcPolicy.insert(HWC_MIX_UP_POLICY);
+  ctx.state.setHwcPolicy.insert(HWC_MIX_DOWN_POLICY);
   if(ctx.support.iYuvCnt > 0 || ctx.support.iAfbcdYuvCnt > 0){
     ctx.state.setHwcPolicy.insert(HWC_RGA_OVERLAY_POLICY);
     ctx.state.setHwcPolicy.insert(HWC_MIX_VIDEO_POLICY);

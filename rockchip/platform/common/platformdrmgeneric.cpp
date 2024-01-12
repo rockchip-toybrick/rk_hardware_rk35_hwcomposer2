@@ -242,7 +242,7 @@ int DrmGenericImporter::ImportBuffer(buffer_handle_t handle, hwc_drm_bo_t *bo) {
     bo->pitches[0] = bo->byte_stride;
     bo->pitches[1] = bo->pitches[0];
     bo->gem_handles[1] = gem_handle;
-    bo->offsets[1] = bo->offsets[0] + bo->pitches[1] * (bo->height);
+    bo->offsets[1] = bo->offsets[0] + bo->pitches[1] * (bo->height_stride);
     bo->width = bo->width / 1.25;
     bo->width = ALIGN_DOWN(bo->width,2);
   }

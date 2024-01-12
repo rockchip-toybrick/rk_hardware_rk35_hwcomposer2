@@ -178,16 +178,18 @@ int DrmPlane::Init() {
   }
 
   ret = drm_->GetPlaneProperty(*this, "alpha", &alpha_property_);
-  if (ret)
+  if (ret) {
     ret = drm_->GetPlaneProperty(*this, "GLOBAL_ALPHA", &alpha_property_vop1_kernel4_19_);
-  if (ret)
-    ALOGI("Could not get alpha property");
+    if (ret)
+      ALOGI("Could not get alpha property");
+  }
 
   ret = drm_->GetPlaneProperty(*this, "pixel blend mode", &blend_mode_property_);
-  if (ret)
+  if (ret) {
     ret = drm_->GetPlaneProperty(*this, "BLEND_MODE", &blend_mode_property_vop1_kernel4_19);
-  if (ret)
-    ALOGI("Could not get pixel blend mode property");
+    if (ret)
+      ALOGI("Could not get pixel blend mode property");
+  }
 
   rotate_ = DRM_PLANE_ROTATION_0;
   ret = drm_->GetPlaneProperty(*this, "rotation", &rotation_property_);
@@ -205,12 +207,12 @@ int DrmPlane::Init() {
   }
 
   ret = drm_->GetPlaneProperty(*this, "NAME", &name_property_);
-  if (ret)
+  if (ret){
     if(isRK3399(soc_id_))
       mark_type_by_name();
     else
       ALOGE("Could not get NAME property");
-  else{
+  }else{
     mark_type_by_name();
   }
 
@@ -309,7 +311,7 @@ int DrmPlane::Init() {
 
   }
 
-  FixPropertyForKernelLowerThan_601();
+  AddLocalPlaneInfo();
 
   return 0;
 }
@@ -431,13 +433,13 @@ void DrmPlane::mark_type_by_name(){
   }else if(isRK3399(soc_id_)){
     struct plane_type_name_rk3399 {
       DrmPlaneTypeRK3399 type;
-      uint32_t possible_crtc;   //   -Kernel6.1之前版本(5.10,4.19)需要使用图层属性推断图层
+      bool is_vop_big;          //     -Kernel5.10之前版本(4.19)需要使用图层属性推断图层
       uint32_t plane_type;      //  /
       bool isScale;             // /
       bool isArea0;             ///
       const char *name;
       bool matched = 0;
-      bool match(uint32_t _possible_crtc,uint32_t _plane_type,bool _isScale,int _id, int _share_id){
+      bool match(bool _is_vop_big,uint32_t _plane_type,bool _isScale,int _id, int _share_id){
         bool _isArea0;
 
         if(matched)
@@ -448,35 +450,43 @@ void DrmPlane::mark_type_by_name(){
         else
           _isArea0=false;
 
-        if(_possible_crtc==possible_crtc && _plane_type==plane_type && _isScale==isScale && _isArea0==isArea0){
+        if(_is_vop_big==is_vop_big && _plane_type==plane_type && _isScale==isScale && _isArea0==isArea0){
           matched = true;
           return true;
         }else{
           return false;
         }
+        
       }
     };
-    //Kernel6.1之前版本(5.10,4.19)需要使用图层属性推断图层, Kernel6.1之后已拉齐支持使用NAME属性推断图层
+    //Kernel5.10之前版本(4.19)需要使用图层属性推断图层, Kernel5.10之后已拉齐支持使用NAME属性推断图层
     struct plane_type_name_rk3399 plane_type_names_rk3399[] = {
-      { DRM_PLANE_TYPE_VOP0_WIN0  , 2, DRM_PLANE_TYPE_PRIMARY,  true,   true,   "VOP0-win0-0" },
-      { DRM_PLANE_TYPE_VOP0_WIN1  , 2, DRM_PLANE_TYPE_OVERLAY,  true,   true,   "VOP0-win1-0" },
-      { DRM_PLANE_TYPE_VOP0_WIN2_0, 2, DRM_PLANE_TYPE_CURSOR,   false,  true,   "VOP0-win2-0" },
-      { DRM_PLANE_TYPE_VOP0_WIN2_1, 2, DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP0-win2-1" },
-      { DRM_PLANE_TYPE_VOP0_WIN2_2, 2, DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP0-win2-2" },
-      { DRM_PLANE_TYPE_VOP0_WIN2_3, 2, DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP0-win2-3" },
-      { DRM_PLANE_TYPE_VOP0_WIN3_0, 2, DRM_PLANE_TYPE_OVERLAY,  false,  true,   "VOP0-win3-0" },
-      { DRM_PLANE_TYPE_VOP0_WIN3_1, 2, DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP0-win3-1" },
-      { DRM_PLANE_TYPE_VOP0_WIN3_2, 2, DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP0-win3-2" },
-      { DRM_PLANE_TYPE_VOP0_WIN3_3, 2, DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP0-win3-3" },
+      { DRM_PLANE_TYPE_VOP0_WIN0  , true , DRM_PLANE_TYPE_PRIMARY,  true,   true,   "VOP0-win0-0" },
+      { DRM_PLANE_TYPE_VOP0_WIN1  , true , DRM_PLANE_TYPE_OVERLAY,  true,   true,   "VOP0-win1-0" },
+      { DRM_PLANE_TYPE_VOP0_WIN2_0, true , DRM_PLANE_TYPE_CURSOR,   false,  true,   "VOP0-win2-0" },
+      { DRM_PLANE_TYPE_VOP0_WIN2_1, true , DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP0-win2-1" },
+      { DRM_PLANE_TYPE_VOP0_WIN2_2, true , DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP0-win2-2" },
+      { DRM_PLANE_TYPE_VOP0_WIN2_3, true , DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP0-win2-3" },
+      { DRM_PLANE_TYPE_VOP0_WIN3_0, true , DRM_PLANE_TYPE_OVERLAY,  false,  true,   "VOP0-win3-0" },
+      { DRM_PLANE_TYPE_VOP0_WIN3_1, true , DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP0-win3-1" },
+      { DRM_PLANE_TYPE_VOP0_WIN3_2, true , DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP0-win3-2" },
+      { DRM_PLANE_TYPE_VOP0_WIN3_3, true , DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP0-win3-3" },
 
-      { DRM_PLANE_TYPE_VOP1_WIN0  , 1, DRM_PLANE_TYPE_OVERLAY,  true,   true,   "VOP1-win0-0" },
-      { DRM_PLANE_TYPE_VOP1_WIN2_0, 1, DRM_PLANE_TYPE_PRIMARY,  false,  true,   "VOP1-win2-0" },
-      { DRM_PLANE_TYPE_VOP1_WIN2_1, 1, DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP1-win2-1" },
-      { DRM_PLANE_TYPE_VOP1_WIN2_2, 1, DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP1-win2-2" },
-      { DRM_PLANE_TYPE_VOP1_WIN2_3, 1, DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP1-win2-3" },
+      { DRM_PLANE_TYPE_VOP1_WIN0  , false, DRM_PLANE_TYPE_OVERLAY,  true,   true,   "VOP1-win0-0" },
+      { DRM_PLANE_TYPE_VOP1_WIN2_0, false, DRM_PLANE_TYPE_PRIMARY,  false,  true,   "VOP1-win2-0" },
+      { DRM_PLANE_TYPE_VOP1_WIN2_1, false, DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP1-win2-1" },
+      { DRM_PLANE_TYPE_VOP1_WIN2_2, false, DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP1-win2-2" },
+      { DRM_PLANE_TYPE_VOP1_WIN2_3, false, DRM_PLANE_TYPE_OVERLAY,  false,  false,  "VOP1-win2-3" },
 
       { DRM_PLANE_TYPE_VOP1_Unknown,0, 0,                       0,      0,      "unknown"     },
     };
+
+    uint32_t crtc_mask_big = 0;
+
+    for(auto &crtc:drm_->crtcs()){
+      if(crtc->get_afbc() == true)
+        crtc_mask_big = 1<<crtc->pipe();
+    }
 
     if(name_property_.id()){
       for(int i = 0; i < ARRAY_SIZE(plane_type_names_rk3399); i++){
@@ -490,13 +500,14 @@ void DrmPlane::mark_type_by_name(){
         }
       }
     }
-    //Kernel6.1之前版本(5.10,4.19)无NAME属性，需要使用图层属性推断图层
+    //Kernel5.10之前版本(4.19)无NAME属性，需要使用图层属性推断图层
     int _ret;
     int shareid;
     std::tie(_ret,shareid) = share_id_property_.value();
 
     for(int i=0;i<ARRAY_SIZE(plane_type_names_rk3399);i++){
-      if(plane_type_names_rk3399[i].match(possible_crtc_mask_,type_,b_scale_,id_,shareid)){
+      bool is_vop_big = possible_crtc_mask_ == crtc_mask_big;
+      if(plane_type_names_rk3399[i].match(is_vop_big ,type_,b_scale_,id_,shareid)){
         win_type_=plane_type_names_rk3399[i].type;
         name_ = plane_type_names_rk3399[i].name;
         return;
@@ -620,7 +631,7 @@ void DrmPlane::mark_type_by_name(){
 
 }
 
-void DrmPlane::FixPropertyForKernelLowerThan_601(){
+void DrmPlane::AddLocalPlaneInfo(){
   if(isRK3399(soc_id_) && gIsDrmVerison419()){
     if(win_type_&DRM_PLANE_TYPE_VOP0_MASK) {
       input_w_max_=4096;

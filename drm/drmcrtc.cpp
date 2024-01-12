@@ -146,18 +146,20 @@ int DrmCrtc::Init() {
   std::tie(ret, soc_id_) = soc_type_property_.value();
   if(ret)
   {
-     //RK3399 平台Kernel4.19及之前无SOC_ID，5.10后有SOC_ID
-    if(drm_->getDrmVersion()<3){
+    ALOGE("Failed to get SOC_ID value");
 #ifdef RK3399
+    //RK3399 平台Kernel4.19及之前无SOC_ID，5.10后有SOC_ID
+    if(isDrmVerison44(drm_version_)||isDrmVerison419(drm_version_)){
       HWC2_ALOGI("SOC(RK3399...) don't have SOC_ID,force setting...");
       soc_id_=0x3399;
+    }
 #elif defined(RK3326)
+    //RK3326 平台Kernel4.19及之前无SOC_ID，5.10后有SOC_ID
+    if(isDrmVerison44(drm_version_)||isDrmVerison419(drm_version_)){
       HWC2_ALOGI("SOC(RK3326...) don't have SOC_ID,force setting...");
       soc_id_=0x3326;
-#else
-      ALOGE("Failed to get SOC_ID value");
-#endif
     }
+#endif
   }
 
   ret = drm_->GetCrtcProperty(*this, "PORT_ID", &port_id_property_);
