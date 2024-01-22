@@ -1201,10 +1201,26 @@ int Vop3528::TryRgaOverlayPolicy(
             // Set dst rect info
             dst_rect.x = 0;
             dst_rect.y = 0;
-            dst_rect.width  = ALIGN_DOWN((int)(drmLayer->source_crop.right
-                                                - drmLayer->source_crop.left) / scale_max_rate,2);
-            dst_rect.height = ALIGN_DOWN((int)(drmLayer->source_crop.bottom
-                                                - drmLayer->source_crop.top) / scale_max_rate,2);
+            int src_w_rotated,src_h_rotated;
+            if((drmLayer->transform & DRM_MODE_ROTATE_90)  == DRM_MODE_ROTATE_90 ||
+               (drmLayer->transform & DRM_MODE_ROTATE_270) == DRM_MODE_ROTATE_270){
+              src_w_rotated = (int)(drmLayer->source_crop.bottom - drmLayer->source_crop.top);
+              src_h_rotated = (int)(drmLayer->source_crop.right - drmLayer->source_crop.left);
+            }else{
+              src_w_rotated = (int)(drmLayer->source_crop.right - drmLayer->source_crop.left);
+              src_h_rotated = (int)(drmLayer->source_crop.bottom - drmLayer->source_crop.top);
+            }
+            //判断当前是缩小还是放大
+            if(drmLayer->fHScaleMul_ > scale_max_rate){
+              dst_rect.width  = ALIGN_DOWN(src_w_rotated / scale_max_rate,2);
+            }else if(drmLayer->fHScaleMul_< 1.0/scale_max_rate){
+              dst_rect.width  = ALIGN_DOWN(src_w_rotated * scale_max_rate,2);
+            }
+            if(drmLayer->fVScaleMul_ > scale_max_rate){
+              dst_rect.height = ALIGN_DOWN(src_h_rotated / scale_max_rate,2);
+            }else if(drmLayer->fVScaleMul_< 1.0/scale_max_rate){
+              dst_rect.height = ALIGN_DOWN(src_h_rotated * scale_max_rate,2);
+            }
           }else{
             // Set dst rect info
             dst_rect.x = 0;
