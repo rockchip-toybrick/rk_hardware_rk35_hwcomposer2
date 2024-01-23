@@ -656,7 +656,11 @@ uint64_t DrmGralloc::hwc_get_handle_format_modifier(buffer_handle_t hnd)
     }
 
     if((internal_format & MALI_GRALLOC_INTFMT_EXT_MASK) == MALI_GRALLOC_INTFMT_AFBC_BASIC){
-      return DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_16x16);
+      if(gIsRK3576()){
+        return DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_32x8);
+      }else{
+        return DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_16x16);
+      }
     }
 
     return internal_format & MALI_GRALLOC_INTFMT_EXT_MASK;

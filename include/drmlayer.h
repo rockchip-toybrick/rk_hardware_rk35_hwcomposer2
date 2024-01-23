@@ -221,6 +221,7 @@ struct DrmHwcLayer {
   int  iDrmZpos_;
   bool bFbTarget_=false;
   bool bAfbcd_=false;
+  bool bRfbcd_=false;
   bool bYuv_;
   bool bScale_;
   bool bHdr_;
@@ -340,6 +341,7 @@ struct DrmHwcLayer {
   bool Is10bitYuv(int format,uint32_t fourcc_format);
   bool IsScale(hwc_frect_t &source_crop, hwc_rect_t &display_frame, int transform);
   bool IsAfbcModifier(uint64_t modifier);
+  bool IsRfbcModifier(uint64_t modifier);
   bool IsSkipLayer();
 #ifdef RK3528
   void ModifyDisplayFrame();

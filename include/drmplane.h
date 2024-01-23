@@ -140,6 +140,53 @@ enum DrmPlaneTypeRK3588{
       PLANE_RK3588_Unknown      = 0xffffffff,
 };
 
+// RK3576
+enum DrmPlaneTypeRK3576{
+      // Cluster 0
+      PLANE_RK3576_CLUSTER0_WIN0 = 1 << 0,
+      PLANE_RK3576_CLUSTER0_WIN1 = 1 << 1,
+      // Cluster 1
+      PLANE_RK3576_CLUSTER1_WIN0 = 1 << 2,
+      PLANE_RK3576_CLUSTER1_WIN1 = 1 << 3,
+      // Esmart 0
+      PLANE_RK3576_ESMART0_WIN0 = 1 << 4,
+      PLANE_RK3576_ESMART0_WIN1 = 1 << 5,
+      PLANE_RK3576_ESMART0_WIN2 = 1 << 6,
+      PLANE_RK3576_ESMART0_WIN3 = 1 << 7,
+      // Esmart 1
+      PLANE_RK3576_ESMART1_WIN0 = 1 << 8,
+      PLANE_RK3576_ESMART1_WIN1 = 1 << 9,
+      PLANE_RK3576_ESMART1_WIN2 = 1 << 10,
+      PLANE_RK3576_ESMART1_WIN3 = 1 << 11,
+      // Esmart 2
+      PLANE_RK3576_ESMART2_WIN0 = 1 << 12,
+      PLANE_RK3576_ESMART2_WIN1 = 1 << 13,
+      PLANE_RK3576_ESMART2_WIN2 = 1 << 14,
+      PLANE_RK3576_ESMART2_WIN3 = 1 << 15,
+      // Esmart 3
+      PLANE_RK3576_ESMART3_WIN0 = 1 << 16,
+      PLANE_RK3576_ESMART3_WIN1 = 1 << 17,
+      PLANE_RK3576_ESMART3_WIN2 = 1 << 18,
+      PLANE_RK3576_ESMART3_WIN3 = 1 << 19,
+      // Cluster mask
+      PLANE_RK3576_ALL_CLUSTER0_MASK= PLANE_RK3576_CLUSTER0_WIN0 | PLANE_RK3576_CLUSTER0_WIN1,
+      PLANE_RK3576_ALL_CLUSTER1_MASK= PLANE_RK3576_CLUSTER1_WIN0 | PLANE_RK3576_CLUSTER1_WIN1,
+
+      PLANE_RK3576_ALL_CLUSTER_MASK = PLANE_RK3576_ALL_CLUSTER0_MASK | PLANE_RK3576_ALL_CLUSTER1_MASK,
+      // Esmart mask
+      PLANE_RK3576_ALL_ESMART0_MASK = PLANE_RK3576_ESMART0_WIN0 | PLANE_RK3576_ESMART0_WIN1 |
+                                      PLANE_RK3576_ESMART0_WIN2 | PLANE_RK3576_ESMART0_WIN3,
+      PLANE_RK3576_ALL_ESMART1_MASK = PLANE_RK3576_ESMART1_WIN0 | PLANE_RK3576_ESMART1_WIN1 |
+                                      PLANE_RK3576_ESMART1_WIN2 | PLANE_RK3576_ESMART1_WIN3,
+      PLANE_RK3576_ALL_ESMART2_MASK = PLANE_RK3576_ESMART2_WIN0 | PLANE_RK3576_ESMART2_WIN1 |
+                                      PLANE_RK3576_ESMART2_WIN2 | PLANE_RK3576_ESMART2_WIN3,
+      PLANE_RK3576_ALL_ESMART3_MASK = PLANE_RK3576_ESMART3_WIN0 | PLANE_RK3576_ESMART3_WIN1 |
+                                      PLANE_RK3576_ESMART3_WIN2 | PLANE_RK3576_ESMART3_WIN3,
+      PLANE_RK3576_ALL_ESMART_MASK =  PLANE_RK3576_ALL_ESMART0_MASK | PLANE_RK3576_ALL_ESMART2_MASK |
+                                      PLANE_RK3576_ALL_ESMART2_MASK | PLANE_RK3576_ALL_ESMART3_MASK,
+      PLANE_RK3576_Unknown      = 0xffffffff,
+};
+
 // Rk356x
 enum DrmPlaneTypeRK356x{
       DRM_PLANE_TYPE_CLUSTER0_WIN0 = 1 << 0,
@@ -400,7 +447,7 @@ class DrmPlane {
   bool is_support_scale(float scale_rate);
   bool is_support_input(int input_w, int input_h);
   bool is_support_output(int output_w, int output_h);
-  bool is_support_format(uint32_t format, bool afbcd);
+  bool is_support_format(uint32_t format, bool afbcd, bool rfbcd=false);
   bool is_support_transform(int transform);
   inline uint32_t get_possible_crtc_mask() const{ return possible_crtc_mask_; }
   inline void set_current_crtc_bit(uint32_t current_crtc) { current_crtc_ = current_crtc;}

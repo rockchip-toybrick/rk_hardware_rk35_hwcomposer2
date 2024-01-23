@@ -1353,8 +1353,8 @@ bool SortByZpos(const DrmHwcLayer &drmHwcLayer1, const DrmHwcLayer &drmHwcLayer2
 HWC2::Error DrmHwcTwo::HwcDisplay::ModifyHwcLayerDisplayFrame(bool only_fb_scale) {
 
   bool need_overscan_by_scale = false;
-  // RK3588 不支持Overscan
-  if(gIsRK3588()){
+  // RK3588 RK3576不支持Overscan
+  if(gIsRK3588()||gIsRK3576()){
     need_overscan_by_scale = true;
   }
 
@@ -1416,7 +1416,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidatePlanes() {
   InitDrmHwcLayer();
 
   // 需要修改 HwcLayer display frame 的情况列举：
-  // 1. RK3588 不支持Overscan
+  // 1. RK3588 RK3576不支持Overscan
   // 2. 隔行扫描分辨率 overscan 效果较差
   // 3. RK3528 运营商版本需要提供视频显示区域修改接口
   ModifyHwcLayerDisplayFrame(false);
@@ -3865,8 +3865,17 @@ void DrmHwcTwo::HwcLayer::PopulateSidebandLayer(DrmHwcLayer *drmHwcLayer,
         drmHwcLayer->iHeightStride_ = mSidebandInfo_.crop.bottom - mSidebandInfo_.crop.top;
         drmHwcLayer->uFourccFormat_   = drmGralloc_->hwc_get_fourcc_from_hal_format(mSidebandInfo_.format);
         drmHwcLayer->bSideband2_ = true;
-        // 通过 Sideband Handle is_afbc 来判断图层是否为AFBC压缩格式
-        drmHwcLayer->uModifier_ = (mSidebandInfo_.compress_mode > 0) ? AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 : 0;
+        // 通过 Sideband Handle compress_mode 来判断图层是否为AFBC压缩格式
+        if(mSidebandInfo_.compress_mode > 0){
+          if(gIsRK3576()){
+            HWC2_ALOGD_IF_DEBUG("TODO: AFBC/RFBC Need to be updated for RK3576!!!");
+            drmHwcLayer->uModifier_ = AFBC_FORMAT_MOD_BLOCK_SIZE_32x8;
+          }else{
+            drmHwcLayer->uModifier_ = AFBC_FORMAT_MOD_BLOCK_SIZE_16x16;
+          }
+        }else{
+          drmHwcLayer->uModifier_ = 0;
+        }
         drmHwcLayer->uGemHandle_ = 0;
         drmHwcLayer->sLayerName_ = std::string("SidebandStream-2.0");
         drmHwcLayer->eDataSpace_ = (android_dataspace_t)mSidebandInfo_.data_space;

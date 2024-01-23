@@ -265,7 +265,13 @@ uint64_t get_format_modifier(buffer_handle_t handle)
 #endif
 
 uint32_t FourccConvertToHalFormat(uint32_t fourcc, uint64_t modifier){
-  bool afbc = (AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 == (modifier & AFBC_FORMAT_MOD_BLOCK_SIZE_16x16));
+  bool afbc = false;
+  if(android::gIsRK3576()){
+    afbc = AFBC_FORMAT_MOD_BLOCK_SIZE_32x8 == (modifier & AFBC_FORMAT_MOD_BLOCK_SIZE_32x8);
+    afbc = afbc || IS_ROCKCHIP_RFBC_MOD(modifier);
+  }else{
+    afbc = AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 == (modifier & AFBC_FORMAT_MOD_BLOCK_SIZE_16x16);
+  }
   switch (fourcc) {
     case DRM_FORMAT_ABGR2101010:
       return HAL_PIXEL_FORMAT_RGBA_1010102;

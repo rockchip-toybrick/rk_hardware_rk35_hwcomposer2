@@ -38,7 +38,7 @@ LOCAL_PATH := $(call my-dir)
 BOARD_USES_DRM_HWCOMPOSER2=false
 BOARD_USES_DRM_HWCOMPOSER=false
 # rk356x rk3588 rk3528 rk3562 use DrmHwc2
-ifneq ($(filter rk356x rk3588 rk3528 rk3562, $(strip $(TARGET_BOARD_PLATFORM))), )
+ifneq ($(filter rk356x rk3588 rk3528 rk3562 rk3576, $(strip $(TARGET_BOARD_PLATFORM))), )
 ifeq ($(strip $(BUILD_WITH_RK_EBOOK)),true)
         BOARD_USES_DRM_HWCOMPOSER2=false
 else  # BUILD_WITH_RK_EBOOK
@@ -115,12 +115,14 @@ LOCAL_SRC_FILES := \
   rockchip/platform/rk3399/drmvop3399.cpp \
   rockchip/platform/rk356x/drmvop356x.cpp \
   rockchip/platform/rk3588/drmvop3588.cpp \
+  rockchip/platform/rk3576/drmvop3576.cpp \
   rockchip/platform/rk3528/drmvop3528.cpp \
   rockchip/platform/rk3562/drmvop3562.cpp \
   rockchip/platform/rk3326/drmhwc3326.cpp \
   rockchip/platform/rk3399/drmhwc3399.cpp \
   rockchip/platform/rk356x/drmhwc356x.cpp \
   rockchip/platform/rk3588/drmhwc3588.cpp \
+  rockchip/platform/rk3576/drmhwc3576.cpp \
   rockchip/platform/rk3528/drmhwc3528.cpp \
   rockchip/platform/rk3562/drmhwc3562.cpp \
   rockchip/common/drmbufferqueue.cpp \

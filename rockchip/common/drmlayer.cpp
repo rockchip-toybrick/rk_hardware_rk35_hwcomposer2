@@ -189,6 +189,7 @@ int DrmHwcLayer::Init() {
   bScale_  = IsScale(source_crop, display_frame, transform);
   iSkipLine_  = GetSkipLine();
   bAfbcd_ = IsAfbcModifier(uModifier_);
+  bRfbcd_ = IsRfbcModifier(uModifier_);
   bSkipLayer_ = IsSkipLayer();
 
   // HDR
@@ -770,8 +771,21 @@ bool DrmHwcLayer::IsHdr(uint64_t usage, android_dataspace_t dataspace){
 bool DrmHwcLayer::IsAfbcModifier(uint64_t modifier){
   if(bFbTarget_){
     return hwc_get_int_property("vendor.gralloc.no_afbc_for_fb_target_layer","0") == 0;
-  }else
-    return AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 == (modifier & AFBC_FORMAT_MOD_BLOCK_SIZE_16x16);             // for Midgard gralloc r14
+  }else{
+    if(gIsRK3576()){
+      if(fourcc_mod_is_vendor(modifier,ARM)){
+        return modifier & AFBC_FORMAT_MOD_BLOCK_SIZE_32x8;
+      }else{
+        return false;
+      }
+    }else{
+      return AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 == (modifier & AFBC_FORMAT_MOD_BLOCK_SIZE_16x16);             // for Midgard gralloc r14
+    }
+  }
+}
+
+bool DrmHwcLayer::IsRfbcModifier(uint64_t modifier){
+      return IS_ROCKCHIP_RFBC_MOD(modifier);
 }
 
 bool DrmHwcLayer::IsSkipLayer(){
