@@ -288,13 +288,6 @@ LOCAL_CFLAGS += \
 	-DUSE_HWC_PROXY_SERVICE=1
 endif
 
-# GKI compile is true
-# BOARD_BUILD_GKI=true
-ifeq ($(strip $(BOARD_BUILD_GKI)),true)
-LOCAL_CFLAGS += \
-	-DBOARD_BUILD_GKI=1
-endif
-
 # LOCAL_SANITIZE:=address
 
 LOCAL_MODULE := hwcomposer.$(TARGET_BOARD_HARDWARE)
