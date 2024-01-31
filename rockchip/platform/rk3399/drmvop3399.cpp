@@ -79,7 +79,7 @@ int Vop3399::TryHwcPolicy(
   InitContext(layers,plane_groups,crtc,gles_policy);
 
   // Try to match overlay policy
-  if(ctx.state.setHwcPolicy.count(HWC_OVERLAY_LOPICY)){
+  if(ctx.state.setHwcPolicy.count(HWC_OVERLAY_POLICY)){
     ret = TryOverlayPolicy(composition,layers,crtc,plane_groups);
     if(!ret)
       return 0;
@@ -90,7 +90,7 @@ int Vop3399::TryHwcPolicy(
   }
 
   // Try to match mix policy
-  if(ctx.state.setHwcPolicy.count(HWC_MIX_LOPICY)){
+  if(ctx.state.setHwcPolicy.count(HWC_MIX_POLICY)){
     ret = TryMixPolicy(composition,layers,crtc,plane_groups);
     if(!ret)
       return 0;
@@ -1372,7 +1372,7 @@ int Vop3399::TryMixPolicy(
     std::vector<PlaneGroup *> &plane_groups) {
   ALOGD_IF(LogLevel(DBG_DEBUG), "%s:line=%d",__FUNCTION__,__LINE__);
   int ret;
-  if(ctx.state.setHwcPolicy.count(HWC_MIX_SKIP_LOPICY)){
+  if(ctx.state.setHwcPolicy.count(HWC_MIX_SKIP_POLICY)){
     ret = TryMixSkipPolicy(composition,layers,crtc,plane_groups);
     if(!ret)
       return 0;
@@ -1380,18 +1380,18 @@ int Vop3399::TryMixPolicy(
       return ret;
   }
 
-  if(ctx.state.setHwcPolicy.count(HWC_MIX_VIDEO_LOPICY)){
+  if(ctx.state.setHwcPolicy.count(HWC_MIX_VIDEO_POLICY)){
     ret = TryMixVideoPolicy(composition,layers,crtc,plane_groups);
     if(!ret)
       return 0;
   }
-  if(ctx.state.setHwcPolicy.count(HWC_MIX_UP_LOPICY)){
+  if(ctx.state.setHwcPolicy.count(HWC_MIX_UP_POLICY)){
     ret = TryMixUpPolicy(composition,layers,crtc,plane_groups);
     if(!ret)
       return 0;
 
   }
-  if(ctx.state.setHwcPolicy.count(HWC_MIX_DOWN_LOPICY)){
+  if(ctx.state.setHwcPolicy.count(HWC_MIX_DOWN_POLICY)){
     ret = TryMixDownPolicy(composition,layers,crtc,plane_groups);
     if(!ret)
       return 0;
@@ -1960,19 +1960,19 @@ bool Vop3399::TryOverlay(){
      ctx.request.iYuvCnt <= ctx.support.iYuvCnt &&
      ctx.request.iRotateCnt <= ctx.support.iRotateCnt &&
      ctx.request.iSkipCnt == 0){
-    ctx.state.setHwcPolicy.insert(HWC_OVERLAY_LOPICY);
+    ctx.state.setHwcPolicy.insert(HWC_OVERLAY_POLICY);
     return true;
   }
   return false;
 }
 
 void Vop3399::TryMix(){
-  ctx.state.setHwcPolicy.insert(HWC_MIX_LOPICY);
-  ctx.state.setHwcPolicy.insert(HWC_MIX_UP_LOPICY);
+  ctx.state.setHwcPolicy.insert(HWC_MIX_POLICY);
+  ctx.state.setHwcPolicy.insert(HWC_MIX_UP_POLICY);
   if(ctx.support.iYuvCnt > 0 || ctx.support.iAfbcdYuvCnt > 0)
-    ctx.state.setHwcPolicy.insert(HWC_MIX_VIDEO_LOPICY);
+    ctx.state.setHwcPolicy.insert(HWC_MIX_VIDEO_POLICY);
   if(ctx.request.iSkipCnt > 0)
-    ctx.state.setHwcPolicy.insert(HWC_MIX_SKIP_LOPICY);
+    ctx.state.setHwcPolicy.insert(HWC_MIX_SKIP_POLICY);
 }
 
 int Vop3399::InitContext(

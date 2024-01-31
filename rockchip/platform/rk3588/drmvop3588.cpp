@@ -513,7 +513,7 @@ int Vop3588::TryHwcPolicy(
 
 #if (defined USE_LIBSR) || (defined USE_LIBSVEP_MEMC)
   // Try to match rga policy
-  if(ctx.state.setHwcPolicy.count(HWC_SR_OVERLAY_LOPICY)){
+  if(ctx.state.setHwcPolicy.count(HWC_SR_OVERLAY_POLICY)){
     ret = TrySvepPolicy(composition,layers,crtc,plane_groups);
     if(!ret){
       return 0;
@@ -528,7 +528,7 @@ int Vop3588::TryHwcPolicy(
 #endif
 
   // Try to match overlay policy
-  if(ctx.state.setHwcPolicy.count(HWC_OVERLAY_LOPICY)){
+  if(ctx.state.setHwcPolicy.count(HWC_OVERLAY_POLICY)){
     ret = TryOverlayPolicy(composition,layers,crtc,plane_groups);
     if(!ret)
       return 0;
@@ -539,14 +539,14 @@ int Vop3588::TryHwcPolicy(
   }
 
   // Try to match GLES Accelerate policy
-  if(ctx.state.setHwcPolicy.count(HWC_ACCELERATE_LOPICY)){
+  if(ctx.state.setHwcPolicy.count(HWC_ACCELERATE_POLICY)){
     ret = TryAcceleratePolicy(composition,layers,crtc,plane_groups);
     if(!ret)
       return 0;
   }
 
   // Try to match mix policy
-  if(ctx.state.setHwcPolicy.count(HWC_MIX_LOPICY)){
+  if(ctx.state.setHwcPolicy.count(HWC_MIX_POLICY)){
     ret = TryMixPolicy(composition,layers,crtc,plane_groups);
     if(!ret)
       return 0;
@@ -557,7 +557,7 @@ int Vop3588::TryHwcPolicy(
   }
 
   // Try to match GLES policy
-  if(ctx.state.setHwcPolicy.count(HWC_GLES_SIDEBAND_LOPICY)){
+  if(ctx.state.setHwcPolicy.count(HWC_GLES_SIDEBAND_POLICY)){
     ret = TryGlesSidebandPolicy(composition,layers,crtc,plane_groups);
     if(!ret)
       return 0;
@@ -2292,7 +2292,7 @@ int Vop3588::TrySvepPolicy(
 }
 
 bool Vop3588::TrySvepOverlay(){
-  ctx.state.setHwcPolicy.insert(HWC_SR_OVERLAY_LOPICY);
+  ctx.state.setHwcPolicy.insert(HWC_SR_OVERLAY_POLICY);
   return true;
 }
 
@@ -3242,7 +3242,7 @@ int Vop3588::TryMixPolicy(
   ALOGD_IF(LogLevel(DBG_DEBUG), "%s:line=%d",__FUNCTION__,__LINE__);
   int ret;
 
-  if(ctx.state.setHwcPolicy.count(HWC_SIDEBAND_LOPICY)){
+  if(ctx.state.setHwcPolicy.count(HWC_SIDEBAND_POLICY)){
     ret = TryMixSidebandPolicy(composition,layers,crtc,plane_groups);
     if(!ret)
       return 0;
@@ -3250,7 +3250,7 @@ int Vop3588::TryMixPolicy(
       return ret;
   }
 
-  if(ctx.state.setHwcPolicy.count(HWC_MIX_SKIP_LOPICY)){
+  if(ctx.state.setHwcPolicy.count(HWC_MIX_SKIP_POLICY)){
     ret = TryMixSkipPolicy(composition,layers,crtc,plane_groups);
     if(!ret)
       return 0;
@@ -3258,31 +3258,31 @@ int Vop3588::TryMixPolicy(
       return ret;
   }
 
-  if(ctx.state.setHwcPolicy.count(HWC_MIX_VIDEO_LOPICY)){
+  if(ctx.state.setHwcPolicy.count(HWC_MIX_VIDEO_POLICY)){
     ret = TryMixVideoPolicy(composition,layers,crtc,plane_groups);
     if(!ret)
       return 0;
   }
 
-  if(ctx.state.setHwcPolicy.count(HWC_RGA_OVERLAY_LOPICY)){
+  if(ctx.state.setHwcPolicy.count(HWC_RGA_OVERLAY_POLICY)){
     ret = TryRgaOverlayPolicy(composition,layers,crtc,plane_groups);
     if(!ret)
       return 0;
   }
 
-  if(ctx.state.setHwcPolicy.count(HWC_MIX_UP_LOPICY)){
+  if(ctx.state.setHwcPolicy.count(HWC_MIX_UP_POLICY)){
     ret = TryMixUpPolicy(composition,layers,crtc,plane_groups);
     if(!ret)
       return 0;
 
   }
-  if(ctx.state.setHwcPolicy.count(HWC_MIX_DOWN_LOPICY)){
+  if(ctx.state.setHwcPolicy.count(HWC_MIX_DOWN_POLICY)){
     ret = TryMixDownPolicy(composition,layers,crtc,plane_groups);
     if(!ret)
       return 0;
   }
 
-  if(ctx.state.setHwcPolicy.count(HWC_MIX_DOWN_LOPICY)){
+  if(ctx.state.setHwcPolicy.count(HWC_MIX_DOWN_POLICY)){
     ret = TryMixDownPolicy(composition,layers,crtc,plane_groups);
     if(!ret)
       return 0;
@@ -3763,28 +3763,28 @@ bool Vop3588::TryOverlay(){
      ctx.request.iYuvCnt <= ctx.support.iYuvCnt &&
      ctx.request.iRotateCnt <= ctx.support.iRotateCnt &&
      ctx.request.iSkipCnt == 0){
-    ctx.state.setHwcPolicy.insert(HWC_OVERLAY_LOPICY);
+    ctx.state.setHwcPolicy.insert(HWC_OVERLAY_POLICY);
     return true;
   }
   return false;
 }
 
 void Vop3588::TryMix(){
-  ctx.state.setHwcPolicy.insert(HWC_MIX_LOPICY);
-  ctx.state.setHwcPolicy.insert(HWC_MIX_UP_LOPICY);
+  ctx.state.setHwcPolicy.insert(HWC_MIX_POLICY);
+  ctx.state.setHwcPolicy.insert(HWC_MIX_UP_POLICY);
   if(ctx.support.iYuvCnt > 0 || ctx.support.iAfbcdYuvCnt > 0){
-    ctx.state.setHwcPolicy.insert(HWC_RGA_OVERLAY_LOPICY);
-    ctx.state.setHwcPolicy.insert(HWC_MIX_VIDEO_LOPICY);
+    ctx.state.setHwcPolicy.insert(HWC_RGA_OVERLAY_POLICY);
+    ctx.state.setHwcPolicy.insert(HWC_MIX_VIDEO_POLICY);
   }
 
   if(ctx.request.iSkipCnt > 0)
-    ctx.state.setHwcPolicy.insert(HWC_MIX_SKIP_LOPICY);
+    ctx.state.setHwcPolicy.insert(HWC_MIX_SKIP_POLICY);
   if(ctx.request.bSidebandStreamMode)
-    ctx.state.setHwcPolicy.insert(HWC_SIDEBAND_LOPICY);
+    ctx.state.setHwcPolicy.insert(HWC_SIDEBAND_POLICY);
 
   if(ctx.request.accelerate_app_exist_){
     ALOGD_IF(LogLevel(DBG_DEBUG),"accelerate_app_exist_ , soc_id=%x", ctx.state.iSocId);
-    ctx.state.setHwcPolicy.insert(HWC_ACCELERATE_LOPICY);
+    ctx.state.setHwcPolicy.insert(HWC_ACCELERATE_POLICY);
   }
 }
 
@@ -3807,11 +3807,11 @@ int Vop3588::InitContext(
   if((iMode!=1 || gles_policy) && iMode != 2){
     ctx.state.setHwcPolicy.insert(HWC_GLES_POLICY);
     if(ctx.request.bSidebandStreamMode){
-        ctx.state.setHwcPolicy.insert(HWC_GLES_SIDEBAND_LOPICY);
+        ctx.state.setHwcPolicy.insert(HWC_GLES_SIDEBAND_POLICY);
     }
     if(ctx.request.accelerate_app_exist_){
       ALOGD_IF(LogLevel(DBG_DEBUG),"accelerate_app_exist_ , soc_id=%x", ctx.state.iSocId);
-      ctx.state.setHwcPolicy.insert(HWC_ACCELERATE_LOPICY);
+      ctx.state.setHwcPolicy.insert(HWC_ACCELERATE_POLICY);
     }
     ALOGD_IF(LogLevel(DBG_DEBUG),"Force use GLES compose, iMode=%d, gles_policy=%d, soc_id=%x",iMode,gles_policy,ctx.state.iSocId);
     return 0;
@@ -3855,12 +3855,12 @@ int Vop3588::InitContext(
   //   DrmConnector *conn = drm->GetConnectorForDisplay(crtc->display());
     ctx.state.setHwcPolicy.insert(HWC_GLES_POLICY);
     if(ctx.request.bSidebandStreamMode){
-      ctx.state.setHwcPolicy.insert(HWC_GLES_SIDEBAND_LOPICY);
+      ctx.state.setHwcPolicy.insert(HWC_GLES_SIDEBAND_POLICY);
     }
 
     if(ctx.request.accelerate_app_exist_){
       ALOGD_IF(LogLevel(DBG_DEBUG),"accelerate_app_exist_ , soc_id=%x", ctx.state.iSocId);
-      ctx.state.setHwcPolicy.insert(HWC_ACCELERATE_LOPICY);
+      ctx.state.setHwcPolicy.insert(HWC_ACCELERATE_POLICY);
     }
     return 0;
   }

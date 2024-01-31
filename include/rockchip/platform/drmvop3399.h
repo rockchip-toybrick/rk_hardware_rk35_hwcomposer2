@@ -52,15 +52,15 @@ class Vop3399 : public Planner::PlanStage {
 typedef std::map<int, std::vector<DrmHwcLayer*>> LayerMap;
 
 typedef enum tagComposeMode{
-   HWC_OVERLAY_LOPICY,
-   HWC_MIX_SKIP_LOPICY,
-   HWC_MIX_VIDEO_LOPICY,
-   HWC_MIX_UP_LOPICY,
-   HWC_MIX_DOWN_LOPICY,
-   HWC_MIX_LOPICY,
+   HWC_OVERLAY_POLICY,
+   HWC_MIX_SKIP_POLICY,
+   HWC_MIX_VIDEO_POLICY,
+   HWC_MIX_UP_POLICY,
+   HWC_MIX_DOWN_POLICY,
+   HWC_MIX_POLICY,
    HWC_GLES_POLICY,
-   HWC_RGA_OVERLAY_LOPICY,
-   HWC_3D_LOPICY,
+   HWC_RGA_OVERLAY_POLICY,
+   HWC_3D_POLICY,
    HWC_DEBUG_POLICY
 }ComposeMode;
 
