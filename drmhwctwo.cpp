@@ -4588,7 +4588,6 @@ void DrmHwcTwo::DrmHotplugHandler::HdmiTvOnlyOne(PLUG_EVENT_TYPE hdmi_hotplug_st
 
 void DrmHwcTwo::DrmHotplugHandler::HandleEvent(uint64_t timestamp_us) {
   int32_t ret = 0;
-  bool primary_change = true;
   PLUG_EVENT_TYPE event_type = DRM_HOTPLUG_NONE;
   for (auto &conn : drm_->connectors()) {
     ret = 0;
@@ -4625,7 +4624,6 @@ void DrmHwcTwo::DrmHotplugHandler::HandleEvent(uint64_t timestamp_us) {
       HdmiTvOnlyOne(event_type);
 
     int display_id = conn->display();
-    primary_change = (display_id == 0);
     auto &display = hwc2_->displays_.at(display_id);
     if (cur_state == DRM_MODE_CONNECTED) {
       ret |= (int32_t)display.HoplugEventTmeline();
@@ -4703,27 +4701,6 @@ void DrmHwcTwo::DrmHotplugHandler::HandleEvent(uint64_t timestamp_us) {
         hwc2_->HandleDisplayHotplug(display_id, cur_state);
       }
     }
-    }
-  }
-
-
-  if(primary_change){
-    for (auto &conn : drm_->connectors()) {
-      // RK3528 不需要此功能
-      if(gIsRK3528()){
-        continue;
-      }
-      // 多屏拼接不需要重新注册屏幕
-      if(conn->isCropSpilt()){
-        continue;
-      }
-      int display_id = conn->display();
-      drmModeConnection state = conn->state();
-      if (display_id != 0 && state == DRM_MODE_CONNECTED) {
-        HWC2_ALOGI("hwc_hotplug: primary_change Plug connector %u type=%s type_id=%d send hotplug event to SF.",
-                  conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
-        hwc2_->HandleDisplayHotplug(display_id, state);
-      }
     }
   }
 
