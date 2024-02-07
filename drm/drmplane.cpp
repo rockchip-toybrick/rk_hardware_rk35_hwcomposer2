@@ -312,6 +312,7 @@ int DrmPlane::Init() {
   }
 
   AddLocalPlaneInfo();
+  boot_time_crtc_ = plane_->crtc_id;
 
   return 0;
 }

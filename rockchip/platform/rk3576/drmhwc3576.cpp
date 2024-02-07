@@ -46,9 +46,9 @@ struct assign_plane_group_3576{
   bool have_assigin;
 };
 struct assign_plane_group_3576 assign_mask_default_3576[] = {
-  { -1 , PLANE_RK3576_ALL_CLUSTER0_MASK | PLANE_RK3576_ALL_ESMART0_MASK| PLANE_RK3576_ALL_ESMART1_MASK, false},
-  { -1 , PLANE_RK3576_ALL_CLUSTER1_MASK | PLANE_RK3576_ALL_ESMART2_MASK, false},
-  { -1 , PLANE_RK3576_ALL_ESMART3_MASK, false},
+  { -1 , PLANE_RK3576_ALL_CLUSTER0_MASK | PLANE_RK3576_ALL_ESMART0_MASK, false},
+  { -1 , PLANE_RK3576_ALL_CLUSTER1_MASK | PLANE_RK3576_ALL_ESMART1_MASK, false},
+  { -1 , PLANE_RK3576_ALL_ESMART2_MASK  | PLANE_RK3576_ALL_ESMART3_MASK, false},
 };
 
 int Hwc3576::assignPlaneByHWC(DrmDevice* drm){
@@ -67,7 +67,7 @@ int Hwc3576::assignPlaneByHWC(DrmDevice* drm){
 
     uint64_t plane_mask=0;
     for(int i = 0; i < ARRAY_SIZE(assign_mask_default_3576);i++){
-      if(display_id == assign_mask_default_3576[i].display_type){
+      if(crtc->id() == assign_mask_default_3576[i].display_type){
         plane_mask = assign_mask_default_3576[i].drm_type_mask;
         break;
       }
@@ -75,8 +75,21 @@ int Hwc3576::assignPlaneByHWC(DrmDevice* drm){
 
     if(plane_mask == 0){
       for(int i = 0; i < ARRAY_SIZE(assign_mask_default_3576);i++){
+        if(assign_mask_default_3576[i].have_assigin == false &&
+           (crtc->get_plane_mask() & assign_mask_default_3576[i].drm_type_mask)){
+            assign_mask_default_3576[i].display_type = crtc->id();
+            plane_mask = assign_mask_default_3576[i].drm_type_mask;
+            assign_mask_default_3576[i].have_assigin = true;
+          break;
+        }
+      }
+    }
+
+
+    if(plane_mask == 0){
+      for(int i = 0; i < ARRAY_SIZE(assign_mask_default_3576);i++){
         if(assign_mask_default_3576[i].have_assigin == false){
-          assign_mask_default_3576[i].display_type = display_id;
+          assign_mask_default_3576[i].display_type = crtc->id();
           plane_mask = assign_mask_default_3576[i].drm_type_mask;
           assign_mask_default_3576[i].have_assigin = true;
           break;
@@ -89,8 +102,10 @@ int Hwc3576::assignPlaneByHWC(DrmDevice* drm){
              crtc->id(),crtc_mask,plane_mask);
     for(auto &plane_group : all_plane_group){
       uint64_t plane_group_win_type = plane_group->win_type;
-      if((plane_mask & plane_group_win_type) && (plane_mask & plane_group_win_type) == plane_group_win_type){
+      if((plane_mask & plane_group_win_type) == plane_group_win_type){
         plane_group->set_current_crtc(crtc_mask, display_id);
+      }else{
+        plane_group->current_crtc_ &= ~crtc_mask;
       }
     }
   }

@@ -717,6 +717,18 @@ std::tuple<int, int> DrmDevice::Init(int num_displays) {
       plane_group->share_id = share_id;
       plane_group->win_type = plane->win_type();
       plane_group->planes.push_back(plane.get());
+      plane_group->boot_crtc_ = plane->get_boot_crtc();
+      if(plane_group->boot_crtc_){
+        for(auto &crtc:crtcs_){
+          if(crtc->id()==plane_group->boot_crtc_){
+            plane_group->current_crtc_ = 1 << crtc->pipe();
+            if(crtc->get_plane_mask()==0)
+              crtc->set_plane_mask(plane_group->win_type);
+          }
+        }
+      }else{
+        plane_group->current_crtc_ = 0;
+      }
       plane_groups_.push_back(plane_group);
     }
 

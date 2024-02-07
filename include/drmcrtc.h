@@ -56,6 +56,7 @@ class DrmCrtc {
   uint64_t get_output_width() const { return output_width_; }
   uint64_t get_output_dlck() const { return output_dclk_; }
   uint64_t get_plane_mask() const { return plane_mask_; }
+  void set_plane_mask(uint64_t plane_mask) { plane_mask_ = plane_mask; }
   void  set_hwc_plane_mask(uint64_t hwc_plane_mask) { hwc_plane_mask_ =  hwc_plane_mask; }
   uint64_t get_hwc_plane_mask() const { return hwc_plane_mask_; }
 
