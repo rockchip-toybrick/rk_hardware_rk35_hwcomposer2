@@ -3488,12 +3488,6 @@ void Vop3576::InitStateContext(
       break;
     }
   }
-  //为三屏优化。三屏情况下肯定有一个屏幕没有Cluster图层，直接走GLES合成
-  if(ctx.request.ifbcdCnt > ctx.support.ifbcdCnt){
-    HWC2_ALOGD_IF_DEBUG("too much fbcd layer, use GLES. request:%d , support:%d", ctx.request.ifbcdCnt, ctx.support.ifbcdCnt);
-    ctx.state.bRequireGLESMode=true;
-  }
-  return;
 }
 
 bool Vop3576::TryOverlay(){
