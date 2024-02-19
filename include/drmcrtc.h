@@ -100,6 +100,7 @@ class DrmCrtc {
   bool b_can_afbc_; // RK3399
   bool b_can_hdr10_;
   bool b_can_next_hdr_;
+  bool b_can_vivid_hdr_;
 
   DrmProperty active_property_;
   DrmProperty mode_property_;

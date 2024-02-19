@@ -335,6 +335,11 @@ int DrmCrtc::Init() {
     std::tie(ret,b_can_alpha_scale_) = feature_property_.value_bitmask("ALPHA_SCALE");
     std::tie(ret,b_can_hdr10_) = feature_property_.value_bitmask("HDR10");
     std::tie(ret,b_can_next_hdr_) = feature_property_.value_bitmask("NEXT_HDR");
+    std::tie(ret,b_can_vivid_hdr_) = feature_property_.value_bitmask("VIVID_HDR");
+    //RK3528 RK3576 支持VIVID_HDR
+    //VIVID_HDR为新一代HDR 其中包含HDR10支持
+    if(b_can_vivid_hdr_)
+      b_can_hdr10_ = true;
   }
 
   // Workround: rk3528
@@ -382,8 +387,8 @@ int DrmCrtc::Init() {
   if (ret)
     ALOGE("Could not get IS_VIRTUAL property");
 
-  HWC2_ALOGD_IF_DEBUG("crtc-id=%d b_can_alpha_scale_=%d b_can_hdr10_=%d b_can_next_hdr_=%d",
-    id_, b_can_alpha_scale_, b_can_hdr10_, b_can_next_hdr_);
+  HWC2_ALOGD_IF_DEBUG("crtc-id=%d b_can_alpha_scale_=%d b_can_hdr10_=%d b_can_next_hdr_=%d b_can_vivid_hdr_=%d",
+    id_, b_can_alpha_scale_, b_can_hdr10_, b_can_next_hdr_, b_can_vivid_hdr_);
   return 0;
 }
 
