@@ -717,18 +717,8 @@ std::tuple<int, int> DrmDevice::Init(int num_displays) {
       plane_group->share_id = share_id;
       plane_group->win_type = plane->win_type();
       plane_group->planes.push_back(plane.get());
-      plane_group->boot_crtc_ = plane->get_boot_crtc();
-      if(plane_group->boot_crtc_){
-        for(auto &crtc:crtcs_){
-          if(crtc->id()==plane_group->boot_crtc_){
-            plane_group->current_crtc_ = 1 << crtc->pipe();
-            if(crtc->get_plane_mask()==0)
-              crtc->set_plane_mask(plane_group->win_type);
-          }
-        }
-      }else{
-        plane_group->current_crtc_ = 0;
-      }
+      plane_group->uboot_bind_crtc_id = plane->get_uboot_bind_crtc_id();
+      plane_group->current_crtc_ = 0;
       plane_groups_.push_back(plane_group);
     }
 
@@ -760,8 +750,8 @@ std::tuple<int, int> DrmDevice::Init(int num_displays) {
   for (std::vector<PlaneGroup *> ::const_iterator iter = plane_groups_.begin();
          iter != plane_groups_.end(); ++iter)
   {
-      ALOGD_IF(LogLevel(DBG_DEBUG),"Plane groups: zpos=%d,share_id=%" PRIu64 ",plane size=%zu",
-          (*iter)->zpos,(*iter)->share_id,(*iter)->planes.size());
+      ALOGD_IF(LogLevel(DBG_DEBUG),"Plane groups:%s zpos=%d,share_id=%" PRIu64 ",plane size=%zu",
+          (*iter)->planes.front()->name(),(*iter)->zpos,(*iter)->share_id,(*iter)->planes.size());
       for(std::vector<DrmPlane*> ::const_iterator iter_plane = (*iter)->planes.begin();
          iter_plane != (*iter)->planes.end(); ++iter_plane)
       {
@@ -773,8 +763,8 @@ std::tuple<int, int> DrmDevice::Init(int num_displays) {
   for (std::vector<PlaneGroup *> ::const_iterator iter = plane_groups_.begin();
          iter != plane_groups_.end(); ++iter)
   {
-      ALOGD_IF(LogLevel(DBG_DEBUG),"Plane groups: zpos=%d,share_id=%" PRIu64 ",plane size=%zu,possible_crtcs=0x%x",
-          (*iter)->zpos,(*iter)->share_id,(*iter)->planes.size(),(*iter)->possible_crtcs);
+      ALOGD_IF(LogLevel(DBG_DEBUG),"Plane groups:%s zpos=%d,share_id=%" PRIu64 ",plane size=%zu,possible_crtcs=0x%x",
+          (*iter)->planes.front()->name(),(*iter)->zpos,(*iter)->share_id,(*iter)->planes.size(),(*iter)->possible_crtcs);
       std::sort((*iter)->planes.begin(),(*iter)->planes.end(), PlaneSortByArea);
       for(std::vector<DrmPlane*> ::const_iterator iter_plane = (*iter)->planes.begin();
          iter_plane != (*iter)->planes.end(); ++iter_plane)

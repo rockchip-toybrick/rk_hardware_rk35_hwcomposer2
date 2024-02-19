@@ -40,7 +40,7 @@ typedef struct tagPlaneGroup{
 	std::vector<DrmPlane*> planes;
 
   uint32_t current_crtc_ = 0;
-  uint32_t boot_crtc_ = 0;
+  uint32_t uboot_bind_crtc_id = 0;
 
   //RK3399用于判断AFBC图层是否已使用
   int afbc_layer_used = -1;
@@ -183,7 +183,7 @@ enum DrmPlaneTypeRK3576{
                                       PLANE_RK3576_ESMART2_WIN2 | PLANE_RK3576_ESMART2_WIN3,
       PLANE_RK3576_ALL_ESMART3_MASK = PLANE_RK3576_ESMART3_WIN0 | PLANE_RK3576_ESMART3_WIN1 |
                                       PLANE_RK3576_ESMART3_WIN2 | PLANE_RK3576_ESMART3_WIN3,
-      PLANE_RK3576_ALL_ESMART_MASK =  PLANE_RK3576_ALL_ESMART0_MASK | PLANE_RK3576_ALL_ESMART2_MASK |
+      PLANE_RK3576_ALL_ESMART_MASK =  PLANE_RK3576_ALL_ESMART0_MASK | PLANE_RK3576_ALL_ESMART1_MASK |
                                       PLANE_RK3576_ALL_ESMART2_MASK | PLANE_RK3576_ALL_ESMART3_MASK,
       PLANE_RK3576_Unknown      = 0xffffffff,
 };
@@ -453,7 +453,7 @@ class DrmPlane {
   inline uint32_t get_possible_crtc_mask() const{ return possible_crtc_mask_; }
   inline void set_current_crtc_bit(uint32_t current_crtc) { current_crtc_ = current_crtc;}
   inline uint32_t get_current_crtc_bit() const{ return current_crtc_; }
-  inline uint32_t get_boot_crtc() const{ return boot_time_crtc_; }
+  inline uint32_t get_uboot_bind_crtc_id() const{ return uboot_bind_crtc_id_; }
 
   // 8K
   int get_input_w_max_8k();
@@ -472,7 +472,7 @@ class DrmPlane {
   uint32_t id_;
 
   uint32_t possible_crtc_mask_;
-  uint64_t boot_time_crtc_ = 0;
+  uint64_t uboot_bind_crtc_id_ = 0;
   uint32_t current_crtc_;
 
   uint32_t type_;

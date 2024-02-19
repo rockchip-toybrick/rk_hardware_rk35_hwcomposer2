@@ -41,14 +41,14 @@ bool Hwc3576::SupportPlatform(uint32_t soc_id){
 }
 
 struct assign_plane_group_3576{
-	int display_type;
+  int assigned_crtc_id;
   uint64_t drm_type_mask;
   bool have_assigin;
 };
 struct assign_plane_group_3576 assign_mask_default_3576[] = {
-  { -1 , PLANE_RK3576_ALL_CLUSTER0_MASK | PLANE_RK3576_ALL_ESMART0_MASK, false},
-  { -1 , PLANE_RK3576_ALL_CLUSTER1_MASK | PLANE_RK3576_ALL_ESMART2_MASK, false},
-  { -1 , PLANE_RK3576_ALL_ESMART1_MASK  | PLANE_RK3576_ALL_ESMART3_MASK, false},
+  { -1, PLANE_RK3576_ALL_CLUSTER0_MASK | PLANE_RK3576_ALL_ESMART0_MASK, false},
+  { -1, PLANE_RK3576_ALL_CLUSTER1_MASK | PLANE_RK3576_ALL_ESMART1_MASK, false},
+  { -1, PLANE_RK3576_ALL_ESMART2_MASK  | PLANE_RK3576_ALL_ESMART3_MASK, false},
 };
 
 int Hwc3576::assignPlaneByHWC(DrmDevice* drm){
@@ -68,75 +68,55 @@ int Hwc3576::assignPlaneByHWC(DrmDevice* drm){
     uint32_t crtc_mask = 1<<crtc->pipe();
 
     uint64_t plane_mask=0;
+    //热插拔等二次分配流程
     for(int i = 0; i < ARRAY_SIZE(assign_mask_default_3576);i++){
-      if(crtc->id() == assign_mask_default_3576[i].display_type){
+      if(crtc->id() == assign_mask_default_3576[i].assigned_crtc_id){
         plane_mask = assign_mask_default_3576[i].drm_type_mask;
         break;
       }
     }
 
+    // 1. 将所有存在 uboot_bind_crtc_id 的 PlaneGroup 进行分配
     if(plane_mask == 0){
-      for(int i = 0; i < ARRAY_SIZE(assign_mask_default_3576);i++){
-        if(assign_mask_default_3576[i].have_assigin == false &&
-           (crtc->get_plane_mask() & assign_mask_default_3576[i].drm_type_mask)){
-            bool plane_can_assign = true;
-            for(auto &plane:drm->planes()){
-              if((plane->win_type()&assign_mask_default_3576[i].drm_type_mask) &&((plane->get_possible_crtc_mask()&crtc_mask)==0)){
-                plane_can_assign = false;
-                HWC2_ALOGD_IF_DEBUG("plane %s can not assign to this crtc %" PRIu32", pass",plane->name(),crtc_mask);
-              }
-            }
-            if(!plane_can_assign)
-              continue;
-            assign_mask_default_3576[i].display_type = crtc->id();
-            plane_mask = assign_mask_default_3576[i].drm_type_mask;
-            assign_mask_default_3576[i].have_assigin = true;
-          break;
-        }
-      }
-    }
-
-
-    if(plane_mask == 0){
-      for(int i = 0; i < ARRAY_SIZE(assign_mask_default_3576);i++){
-        if(assign_mask_default_3576[i].have_assigin == false &&
-           (crtc->get_plane_mask() & assign_mask_default_3576[i].drm_type_mask)){
-            assign_mask_default_3576[i].display_type = crtc->id();
-            plane_mask = assign_mask_default_3576[i].drm_type_mask;
-            assign_mask_default_3576[i].have_assigin = true;
-          break;
-        }
-      }
-    }
-
-    if(plane_mask == 0){
-      for(int i = 0; i < ARRAY_SIZE(assign_mask_default_3576);i++){
-        if(assign_mask_default_3576[i].have_assigin == false){
-          bool plane_can_assign = true;
-          for(auto &plane:drm->planes()){
-            if((plane->win_type()&assign_mask_default_3576[i].drm_type_mask) && ((plane->get_possible_crtc_mask()&crtc_mask)==0)){
-              plane_can_assign = false;
-              HWC2_ALOGD_IF_DEBUG("plane %s can not assign to this crtc %" PRIu32", pass",plane->name(),crtc_mask);
+      for(auto &plane_group : all_plane_group){
+        // 获取 uboot 阶段绑定的 crtc id
+        if(plane_group->uboot_bind_crtc_id == crtc->id()){
+          for(int i = 0; i < ARRAY_SIZE(assign_mask_default_3576);i++){
+            // 将绑定的crtc id 对应的一组DrmPlane分配给对应的crtc
+            if(assign_mask_default_3576[i].have_assigin == false && 
+              (plane_group->win_type & assign_mask_default_3576[i].drm_type_mask)>0){
+              plane_mask = assign_mask_default_3576[i].drm_type_mask;
+              assign_mask_default_3576[i].assigned_crtc_id = crtc->id();
+              assign_mask_default_3576[i].have_assigin = true;
+              break;
             }
           }
-          if(!plane_can_assign)
-            continue;
-          assign_mask_default_3576[i].display_type = crtc->id();
-          plane_mask = assign_mask_default_3576[i].drm_type_mask;
-          assign_mask_default_3576[i].have_assigin = true;
-          break;
         }
       }
     }
 
-
+    // 2. 上一步未分配的 DrmPlane 组进行最终分配
     if(plane_mask == 0){
       for(int i = 0; i < ARRAY_SIZE(assign_mask_default_3576);i++){
+
+        // 找到还未分配的 DrmPlane 组
         if(assign_mask_default_3576[i].have_assigin == false){
-          assign_mask_default_3576[i].display_type = crtc->id();
-          plane_mask = assign_mask_default_3576[i].drm_type_mask;
-          assign_mask_default_3576[i].have_assigin = true;
-          break;
+          uint64_t allow_assigin_mask = 0;
+          // 遍历所有可分配到 crtc 的 drmplane, 获得 allow_assigin_mask
+          for(auto &plane_group : all_plane_group){
+            if((crtc_mask & plane_group->possible_crtcs) > 0){
+              for(auto& drm_plane : plane_group->planes){
+                allow_assigin_mask |= drm_plane->win_type();
+              }
+            }
+          }
+          uint64_t will_assigin_mask = assign_mask_default_3576[i].drm_type_mask;
+          if((allow_assigin_mask & will_assigin_mask) == will_assigin_mask){
+              plane_mask = assign_mask_default_3576[i].drm_type_mask;
+              assign_mask_default_3576[i].assigned_crtc_id = crtc->id();
+              assign_mask_default_3576[i].have_assigin = true;
+              break;
+          }
         }
       }
     }

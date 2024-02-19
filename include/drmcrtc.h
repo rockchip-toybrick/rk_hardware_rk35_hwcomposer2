@@ -56,7 +56,8 @@ class DrmCrtc {
   uint64_t get_output_width() const { return output_width_; }
   uint64_t get_output_dlck() const { return output_dclk_; }
   uint64_t get_plane_mask() const { return plane_mask_; }
-  void set_plane_mask(uint64_t plane_mask) { plane_mask_ = plane_mask; }
+  uint64_t get_boot_plane_mask() const { return boot_plane_mask_; }
+  void set_boot_plane_mask(uint64_t plane_mask) { boot_plane_mask_ = plane_mask; }
   void  set_hwc_plane_mask(uint64_t hwc_plane_mask) { hwc_plane_mask_ =  hwc_plane_mask; }
   uint64_t get_hwc_plane_mask() const { return hwc_plane_mask_; }
 
@@ -136,6 +137,7 @@ class DrmCrtc {
   uint64_t output_dclk_=0;
   // Plane_mask must limit crtc and plane binding relationship
   // If the Plane mask is specified, only the mask plane is allowed to be bound for crtc
+  uint64_t boot_plane_mask_=0;
   uint64_t plane_mask_=0;
   // hwc_plane_mask_ will be set by DrmHwc
   uint64_t hwc_plane_mask_=0;

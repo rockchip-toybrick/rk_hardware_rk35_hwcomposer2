@@ -312,7 +312,9 @@ int DrmPlane::Init() {
   }
 
   AddLocalPlaneInfo();
-  boot_time_crtc_ = plane_->crtc_id;
+
+  // Plane::crtc_id 即表示对应的 Plane 在uboot logo显示阶段被设置到对应的crtc_id上
+  uboot_bind_crtc_id_ = plane_->crtc_id;
 
   return 0;
 }
