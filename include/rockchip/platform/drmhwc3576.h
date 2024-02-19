@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Rockchip Electronics Co.Ltd.
+ * Copyright (C) 2024 Rockchip Electronics Co.Ltd.
  *
  * Modification based on code covered by the Apache License, Version 2.0 (the "License").
  * You may not use this software except in compliance with the License.
