@@ -237,6 +237,11 @@ ifneq ($(filter rk356x, $(strip $(TARGET_BOARD_PLATFORM))), )
 TARGET_SOC_PLATFORM := rk356x
 endif
 
+# RK356x
+ifneq ($(filter rk3576, $(strip $(TARGET_BOARD_PLATFORM))), )
+TARGET_SOC_PLATFORM := rk3576
+endif
+
 ifneq ($(filter rk3399, $(strip $(TARGET_BOARD_PLATFORM))),)
 LOCAL_CPPFLAGS += -DRK3399=1
 endif
@@ -264,8 +269,7 @@ LOCAL_C_INCLUDES += \
 
 LOCAL_SHARED_LIBRARIES += \
 	libsvepsr \
-	librknnrt-svep \
-	libOpenCL
+	librknnrt-svep
 
 LOCAL_CFLAGS += \
 	-DUSE_LIBSR=1

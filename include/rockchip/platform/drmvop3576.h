@@ -366,6 +366,11 @@ struct SvepXml{
   SrMode mLastMode_;
   bool mEnableOnelineMode_;
   uint64_t mSrBeginTimeMs_;
+  bool last_sr_mode = false;
+  uint64_t last_buffer_id = 0;
+  int last_enhancement_rate = 0;
+  int last_contrast_mode = 0;
+  int last_contrast_offset = 0;
 #endif
 
 #ifdef USE_LIBSVEP_MEMC

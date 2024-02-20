@@ -2457,9 +2457,7 @@ int Vop3588::TrySrPolicy(std::vector<DrmCompositionPlane> *composition,
           sr_src_.mCrop_.iBottom_= (int)drmLayer->source_crop.bottom;
 
           SrMode sr_mde = SrMode::UN_SUPPORT;
-          SrError ret = svep_sr_->MatchSrMode(&sr_src_,
-                                   (ctx.state.b8kMode_ ? SR_OUTPUT_8K_MODE : SR_MODE_NONE),
-                                   &sr_mde);
+          SrError ret = svep_sr_->MatchSrMode(&sr_src_, SR_MODE_NONE, &sr_mde);
           if(ret){
             printf("Sr SetSrcImage fail\n");
             continue;
