@@ -2678,6 +2678,7 @@ int Vop3576::TryMemcPolicy(std::vector<DrmCompositionPlane> *composition,
                                                     DRM_MODE_ROTATE_0);
           memc_layer_ready = true;
           drmLayer->bUseMemc_ = true;
+          drmLayer->iBestPlaneType = PLANE_RK3576_ALL_ESMART_MASK;
           break;
         }else{
           // set src info
