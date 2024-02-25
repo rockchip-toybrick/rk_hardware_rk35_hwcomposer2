@@ -2546,12 +2546,38 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetActiveConfigWithConstraints(
   if (vsyncPeriodChangeConstraints == nullptr || outTimeline == nullptr) {
     return HWC2::Error::BadParameter;
   }
-
-  if(config > 0){
-    return HWC2::Error::BadConfig;
-  }else{
-    return HWC2::Error::None;
+  //HDMI等接口切换分辨率和帧率会闪黑，暂时不支持seamless切换模式
+  if (vsyncPeriodChangeConstraints->seamlessRequired) {
+      HWC2_ALOGE("Not Support change seamlessly, configi= %u ", config);
+      return HWC2::Error::SeamlessNotAllowed;
   }
+  //设置分辨率
+  HWC2::Error err = SetActiveConfig(config);
+  if(err != HWC2::Error::None){
+    return HWC2::Error::BadConfig;
+  }
+  //获取新的单帧时长
+  DrmMode const &mode = connector_->current_mode();
+  if (mode.id() == 0)
+    return HWC2::Error::BadConfig;
+
+  hwc2_vsync_period_t currentVsyncPeriod = 1E9 / mode.v_refresh();
+
+  //上报帧率切换时间，
+  //这里刷新时间设定为当前时刻后一帧，应用时间为当前时刻后60帧
+  //屏幕应该在这个时间里面可以同步好时序显示出画面
+  const auto now = systemTime(SYSTEM_TIME_MONOTONIC);
+  auto delta = (vsyncPeriodChangeConstraints->desiredTimeNanos - now) % currentVsyncPeriod;
+
+  outTimeline->refreshTimeNanos = now + delta;
+  outTimeline->newVsyncAppliedTimeNanos = now + delta + 60 * currentVsyncPeriod;
+
+  if(outTimeline->newVsyncAppliedTimeNanos < vsyncPeriodChangeConstraints->desiredTimeNanos)
+    outTimeline->newVsyncAppliedTimeNanos = vsyncPeriodChangeConstraints->desiredTimeNanos;
+
+  outTimeline->refreshRequired = true;
+
+  return HWC2::Error::None;
 }
 
 HWC2::Error DrmHwcTwo::HwcDisplay::SetAutoLowLatencyMode(bool /*on*/) {
