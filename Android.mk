@@ -294,7 +294,7 @@ LOCAL_C_INCLUDES += \
 
 LOCAL_SHARED_LIBRARIES += \
 	libsvepmemc \
-	libOpenCL
+	librknnrt-memc
 
 LOCAL_CFLAGS += \
 	-DUSE_LIBSVEP_MEMC=1

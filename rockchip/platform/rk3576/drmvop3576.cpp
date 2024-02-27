@@ -2593,7 +2593,7 @@ int Vop3576::TryMemcPolicy(std::vector<DrmCompositionPlane> *composition,
           memcSrcInfo.mBufferInfo_.iFormat_ = drmLayer->iFormat_;
           memcSrcInfo.mBufferInfo_.iStride_ = drmLayer->iStride_;
           memcSrcInfo.mBufferInfo_.uBufferId_ = drmLayer->uBufferId_;
-          memcSrcInfo.mBufferInfo_.uColorSpace_ = SR_DATASPACE_UNKNOWN;
+          memcSrcInfo.mBufferInfo_.uColorSpace_ = HAL_DATASPACE_UNKNOWN;
 
           if(drmLayer->iFormat_ == HAL_PIXEL_FORMAT_YUV420_8BIT_I){
             memcSrcInfo.mBufferInfo_.iFormat_ = HAL_PIXEL_FORMAT_YCrCb_NV12;
