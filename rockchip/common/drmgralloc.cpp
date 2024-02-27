@@ -1152,7 +1152,7 @@ int DrmGralloc::hwc_fbid_dec_layer_ref_count(uint64_t buffer_id){
 
     if(mapFbIdCacheMap_[buffer_id].mapCacheInfo.size()==0){
       mapFbIdCacheMap_.erase(buffer_id);
-      HWC2_ALOGD_IF_DEBUG("FbIdCache: remove buffer_id:%" PRIu64 ,buffer_id);
+      HWC2_ALOGD_IF_DEBUG("FbIdCache: remove buffer_id:0x%" PRIx64 ,buffer_id);
     }
   }
 
