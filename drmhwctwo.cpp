@@ -3013,9 +3013,20 @@ bool DrmHwcTwo::HwcDisplay::DisableHdrModeRK3588(){
 }
 
 bool DrmHwcTwo::HwcDisplay::DisableHdrMode(){
+
+  // 判断 当前屏幕的 crtc 是否支持 HDR
+  if(connector_ != NULL && connector_->encoder() != NULL &&
+     connector_->encoder()->crtc() != NULL){
+      DrmCrtc* crtc = connector_->encoder()->crtc();
+      // 不支持则关闭HDR
+      if(crtc != NULL && crtc->get_hdr() == false){
+        HWC2_ALOGD_IF_DEBUG("crtc-id=%d port-id=%d unsupport hdr.", crtc->id(), crtc->get_port_id());
+        return true;
+      }
+  }
+
   bool exist_hdr_layer = false;
   int  hdr_area_ratio = 0;
-
   for(auto &drmHwcLayer : drm_hwc_layers_){
     if(drmHwcLayer.bHdr_){
       exist_hdr_layer = true;
