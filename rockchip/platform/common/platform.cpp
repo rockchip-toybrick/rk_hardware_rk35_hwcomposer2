@@ -147,56 +147,6 @@ int HwcPlatform::TryAssignPlane(DrmDevice* drm){
       }
     }
   }
-  //Disable Unused Plane
-  std::vector<PlaneGroup*> all_plane_group = drm->GetPlaneGroups();
-  auto pset_ = drmModeAtomicAlloc();
-  for(auto &plane_group : all_plane_group){
-    if(plane_group->current_crtc_==0){
-      for(auto plane:plane_group->planes){
-        ret = drmModeAtomicAddProperty(pset_, plane->id(),
-                                        plane->fb_property().id(), 0) < 0;
-        if(plane->async_commit_property().id())
-          ret |= drmModeAtomicAddProperty(pset_, plane->id(),
-                                      plane->async_commit_property().id(),
-                                      0) < 0;
-        if (ret) {
-          ALOGE("Failed to add plane %d disable to pset", plane->id());
-          break;
-        }
-      }
-    }
-  }
-  ret = drmModeAtomicCommit(drm->fd(), pset_, DRM_MODE_ATOMIC_ALLOW_MODESET, drm);
-  if (ret) {
-    ALOGE("Failed to commit pset ret=%d\n", ret);
-    drmModeAtomicFree(pset_);
-    pset_=NULL;
-  }
-  drmModeAtomicFree(pset_);
-  pset_ = drmModeAtomicAlloc();
-  for(auto &plane_group : all_plane_group){
-    if(plane_group->current_crtc_==0){
-      for(auto plane:plane_group->planes){
-        ret = drmModeAtomicAddProperty(pset_, plane->id(),
-                                       plane->crtc_property().id(), 0) < 0;
-        if(plane->async_commit_property().id())
-          ret |= drmModeAtomicAddProperty(pset_, plane->id(),
-                                      plane->async_commit_property().id(),
-                                      0) < 0;
-        if (ret) {
-          ALOGE("Failed to add plane %d disable to pset", plane->id());
-          break;
-        }
-      }
-    }
-  }
-  ret = drmModeAtomicCommit(drm->fd(), pset_, DRM_MODE_ATOMIC_ALLOW_MODESET, drm);
-  if (ret) {
-    ALOGE("Failed to commit pset ret=%d\n", ret);
-    drmModeAtomicFree(pset_);
-    pset_=NULL;
-  }
-  drmModeAtomicFree(pset_);
   return ret;
 }
 
