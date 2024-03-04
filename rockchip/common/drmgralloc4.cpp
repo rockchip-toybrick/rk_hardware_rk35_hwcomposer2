@@ -68,6 +68,7 @@
 
 #include "rockchip/drmtype.h"
 #include "rockchip/utils/drmdebug.h"
+#include "3rd/drm/drmhwc2_fourcc.h"
 
 using android::hardware::graphics::mapper::V4_0::Error;
 using android::hardware::graphics::mapper::V4_0::IMapper;

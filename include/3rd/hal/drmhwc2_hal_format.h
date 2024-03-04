@@ -33,5 +33,13 @@
 #define HAL_PIXEL_FORMAT_NV30 30
 #endif
 
+// RFBC FORMAT from
+// hardware/rockchip/libhardware_rockchip/include/hardware/hardware_rockchip.h
+#ifndef HAL_PIXEL_FORMAT_YUV420_8BIT_RFBC
+#define HAL_PIXEL_FORMAT_YUV420_8BIT_RFBC   0x200
+#define HAL_PIXEL_FORMAT_YUV420_10BIT_RFBC  0x201
+#define HAL_PIXEL_FORMAT_YUV422_8BIT_RFBC   0x202
+#define HAL_PIXEL_FORMAT_YUV422_10BIT_RFBC  0x203
+#endif
 
 #endif

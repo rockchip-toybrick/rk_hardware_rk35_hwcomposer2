@@ -1112,7 +1112,10 @@ int Vop3576::MatchPlane(std::vector<DrmCompositionPlane> *composition_planes,
                           bool hdr_layer = (*iter_layer)->bHdr_;
                           b_hdr2sdr = crtc->get_hdr();
                           if(hdr_layer){
-                              if(!b_hdr2sdr){
+                              //对于HDR图层，
+                              //若电视不支持HDR或vp不支持HDR2SDR，且不是RFBC格式，则退回GPU合成，保证色彩准确
+                              //若是RFBC格式，强制Overlay至vop输出，没有其他通路可处理RFBC+HDR，RGA不支持HDR2SDR，GPU合成会花屏。
+                              if(!b_hdr2sdr && !(*iter_layer)->bRfbcd_){
                                   ALOGV("layer id=%d, %s",(*iter_layer)->uId_,(*iter_plane)->name());
                                   ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support hdr layer,layer hdr=%d, crtc can_hdr=%d",
                                           (*iter_plane)->name(),hdr_layer,b_hdr2sdr);
@@ -1124,14 +1127,17 @@ int Vop3576::MatchPlane(std::vector<DrmCompositionPlane> *composition_planes,
 
                           // Only YUV use Cluster rotate
                           if((*iter_plane)->is_support_transform((*iter_layer)->transform)){
-
-                            if(((*iter_plane)->win_type() & PLANE_RK3576_ALL_CLUSTER_MASK) &&
-                               !((*iter_layer)->bAfbcd_ || (*iter_layer)->bRfbcd_) &&
-                               !((*iter_layer)->transform == DRM_MODE_ROTATE_0 || (*iter_layer)->transform == DRM_MODE_REFLECT_Y)){
-                              // Cluster only rotate afbc format
-                              ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support nofbc(A:%d,R%d) layer transform",
-                                        (*iter_plane)->name(), (*iter_layer)->bAfbcd_, (*iter_layer)->bRfbcd_);
-                              continue;
+                            if(((*iter_plane)->win_type() & PLANE_RK3576_ALL_CLUSTER_MASK)){
+                            //Cluster图层，
+                              if(!((*iter_layer)->bAfbcd_ || (*iter_layer)->bRfbcd_)){
+                              //非FBCD格式
+                                if(!((*iter_layer)->transform == DRM_MODE_ROTATE_0 || (*iter_layer)->transform == DRM_MODE_REFLECT_Y)){
+                                //如果不是0旋转或者Y-Mirror，则不支持（非FBCD只支持Y-Mirror）
+                                  ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support nofbc(A:%d,R%d) layer transform",
+                                            (*iter_plane)->name(), (*iter_layer)->bAfbcd_, (*iter_layer)->bRfbcd_);
+                                  continue;
+                                }
+                              }
                             }
                           }else{
                               ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support layer transform 0x%x, support 0x%x",
@@ -1470,67 +1476,43 @@ int Vop3576::TryRgaOverlayPolicy(
   for(auto &drmLayer : layers){
     if(drmLayer->bYuv_){
         if(last_buffer_id != drmLayer->uBufferId_){
-          // TODO: afbc 暂时不支持 crop 裁剪，目前会出现RGA输出花屏问题
-          // 2023/08/24 删除这部分限制, 最新版本可能已经支持
-          // if(drmLayer->bAfbcd_){
-          //   int crop_w =  (int)(drmLayer->source_crop.right - drmLayer->source_crop.left);
-          //   if(crop_w != drmLayer->iStride_){
-          //     HWC2_ALOGD_IF_DEBUG("RGA can't handle crop_w=%d stride=%d afbc yuv layer.",
-          //                crop_w, drmLayer->iStride_);
-          //     continue;
-          //   }
-          // }
+          if(drmLayer->bAfbcd_){
+            HWC2_ALOGD_IF_DEBUG("RGA Do not support Afbc YUV");
+            continue;
+          }
 
-          // TODO: RGA 最大宽度仅支持8176
-          if(drmLayer->iWidth_ > 8176){
-            HWC2_ALOGD_IF_DEBUG("RGA can't handle iWidth_=%d yuv layer, rga max is 8176.",
+          // TODO: RGA 最大宽度仅支持8192
+          if(drmLayer->iWidth_ > 8192){
+            HWC2_ALOGD_IF_DEBUG("RGA can't handle iWidth_=%d yuv layer, rga max is 8192.",
                         drmLayer->iWidth_);
             continue;
           }
 
           bool rga_scale_max = false;
           // RGA 有缩放倍数限制
-          if((drmLayer->fHScaleMul_ < 0.125 ||
-              drmLayer->fHScaleMul_ > 8.0   ||
-              drmLayer->fVScaleMul_ < 0.125 ||
-              drmLayer->fVScaleMul_ > 8.0)){
+          if((drmLayer->fHScaleMul_ < 1.0/16.0 ||
+              drmLayer->fHScaleMul_ > 16.0   ||
+              drmLayer->fVScaleMul_ < 1.0/16.0 ||
+              drmLayer->fVScaleMul_ > 16.0)){
               rga_scale_max = true;
           }
 
           if(!hwc_rga_utils::isRK3576RGA2SupportFormat(drmLayer->iFormat_)){
-            HWC2_ALOGD_IF_DEBUG("iFormat_=0x%x, rk3576 rga3 not supported, layerName:%s", drmLayer->iFormat_, drmLayer->sLayerName_.c_str());
+            HWC2_ALOGD_IF_DEBUG("iFormat_=0x%x, rk3576 rga2.5 not supported, layerName:%s", drmLayer->iFormat_, drmLayer->sLayerName_.c_str());
             continue;
           }
 
-          bool yuv_10bit = false;
-          switch(drmLayer->iFormat_){
-          case HAL_PIXEL_FORMAT_YUV420_10BIT_I:
-          case HAL_PIXEL_FORMAT_YCrCb_NV12_10:
-            yuv_10bit = true;
-            break;
-          default:
-            break;
+          //NV15支持GPU合成，使用GPU合成色彩更准确
+          if(drmLayer->uFourccFormat_ == DRM_FORMAT_NV15){
+            HWC2_ALOGD_IF_DEBUG("iFormat_=0x%x,NV15 fallback to GPU for better color accuracy. layerName:%s", drmLayer->iFormat_, drmLayer->sLayerName_.c_str());
+            continue;
           }
-
-          if(yuv_10bit){
-            // RGA 内部特殊修改，需要满足byte_stride 64对齐，width 2对齐
-            dst_buffer = rgaBufferQueue_->DequeueDrmBuffer(ALIGN(ctx.state.iDisplayWidth_, 2),
-                                                           ctx.state.iDisplayHeight_,
-                                                           HAL_PIXEL_FORMAT_YCrCb_NV12_10,
-                                                           RK_GRALLOC_USAGE_STRIDE_ALIGN_64 |
-                                                           MALI_GRALLOC_USAGE_NO_AFBC |
-                                                           RK_GRALLOC_USAGE_WITHIN_4G,
-                                                           "RGA-SurfaceView");
-          }else{
-            dst_buffer = rgaBufferQueue_->DequeueDrmBuffer(ctx.state.iDisplayWidth_,
-                                                           ctx.state.iDisplayHeight_,
-                                                           HAL_PIXEL_FORMAT_YCrCb_NV12,
-                                                           RK_GRALLOC_USAGE_STRIDE_ALIGN_16 |
-                                                           MALI_GRALLOC_USAGE_NO_AFBC |
-                                                           RK_GRALLOC_USAGE_WITHIN_4G,
-                                                           "RGA-SurfaceView");
-
-          }
+          dst_buffer = rgaBufferQueue_->DequeueDrmBuffer(ctx.state.iDisplayWidth_,
+                                                          ctx.state.iDisplayHeight_,
+                                                          HAL_PIXEL_FORMAT_YCrCb_NV12,
+                                                          RK_GRALLOC_USAGE_STRIDE_ALIGN_16 |
+                                                          MALI_GRALLOC_USAGE_NO_AFBC,
+                                                          "RGA-SurfaceView");
 
           if(dst_buffer == NULL){
             HWC2_ALOGD_IF_DEBUG("DequeueDrmBuffer fail!, skip this policy.");
@@ -1552,7 +1534,10 @@ int Vop3576::TryRgaOverlayPolicy(
 
           // AFBC format
           if(drmLayer->bAfbcd_)
-            src.rd_mode = IM_FBC_MODE;
+            src.rd_mode = IM_AFBC32x8_MODE;
+          // RFBC format
+          if(drmLayer->bRfbcd_)
+            src.rd_mode = IM_RKFBC64x4_MODE;
 
           // Set src rect info
           src_rect.x = ALIGN_DOWN((int)drmLayer->source_crop.left,2);
@@ -1564,22 +1549,14 @@ int Vop3576::TryRgaOverlayPolicy(
           dst.fd      = dst_buffer->GetFd();
           dst.width   = dst_buffer->GetWidth();
           dst.height  = dst_buffer->GetHeight();
-          // RGA 的特殊修改，需要通过 wstride
-          if(dst_buffer->GetFourccFormat() == DRM_FORMAT_NV15)
-            dst.wstride = dst_buffer->GetByteStride();
-          else
-            dst.wstride = dst_buffer->GetStride();
+          dst.wstride = dst_buffer->GetStride();
 
           dst.hstride = dst_buffer->GetHeightStride();
           dst.format  = dst_buffer->GetFormat();
 
-          // AFBC format
-          if(0)
-            dst.rd_mode = IM_FBC_MODE;
-
-          // 若缩放倍数超出RGA最大缩小倍数，则进行二次缩放，倍率设置为6
+          // 若缩放倍数超出RGA最大缩小倍数，则进行二次缩放，倍率设置为12(RGA2.5硬件最高可支持16倍)
           if(rga_scale_max){
-            int scale_max_rate = 4;
+            int scale_max_rate = 12;
 
             // Set dst rect info
             dst_rect.x = 0;
@@ -1666,6 +1643,7 @@ int Vop3576::TryRgaOverlayPolicy(
           drmLayer->iBestPlaneType = PLANE_RK3576_ALL_ESMART_MASK;
           drmLayer->pRgaBuffer_ = dst_buffer;
           drmLayer->bUseRga_ = true;
+          drmLayer->bHdr_ = false;
           break;
         }else{
           dst_buffer = rgaBufferQueue_->BackDrmBuffer();
@@ -1700,6 +1678,7 @@ int Vop3576::TryRgaOverlayPolicy(
                                                     DRM_MODE_ROTATE_0);
           use_laster_rga_layer = true;
           drmLayer->bUseRga_ = true;
+          drmLayer->bHdr_ = false;
           drmLayer->iBestPlaneType = PLANE_RK3576_ALL_ESMART_MASK;
           drmLayer->pRgaBuffer_ = dst_buffer;
           break;
@@ -1722,7 +1701,7 @@ int Vop3576::TryRgaOverlayPolicy(
         if(drmLayer->bUseRga_){
           im_opt_t imOpt;
           memset(&imOpt, 0x00, sizeof(im_opt_t));
-          imOpt.core = IM_SCHEDULER_RGA2_CORE0;
+          imOpt.core = IM_SCHEDULER_RGA2_CORE0|IM_SCHEDULER_RGA2_CORE1;
 
           IM_STATUS im_state = improcess(src, dst, pat, src_rect, dst_rect, pat_rect, 0, &releaseFence, &imOpt, usage | IM_ASYNC);
           if(im_state != IM_STATUS_SUCCESS){

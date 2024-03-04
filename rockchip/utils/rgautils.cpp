@@ -40,6 +40,7 @@
 #include <rockchip/utils/drmdebug.h>
 #include <rockchip/utils/rgautils.h>
 #include <rockchip/utils/rgaformats.h>
+#include <3rd/hal/drmhwc2_hal_format.h>
 #include <drmlayer.h>
 
 #include <system/graphics.h>
@@ -183,6 +184,14 @@ int UnifyAndroidFormatForRK3576(int format){
         input_format = HAL_PIXEL_FORMAT_YCrCb_NV12_10;
     } else if (input_format == HAL_PIXEL_FORMAT_YCBCR_420_888) {
         input_format = HAL_PIXEL_FORMAT_YCrCb_NV12;
+    } else if (input_format == HAL_PIXEL_FORMAT_YUV420_8BIT_RFBC) {
+        input_format = HAL_PIXEL_FORMAT_YCrCb_NV12;
+    } else if (input_format == HAL_PIXEL_FORMAT_YUV420_10BIT_RFBC) {
+        input_format = HAL_PIXEL_FORMAT_YCrCb_NV12_10;
+    } else if (input_format == HAL_PIXEL_FORMAT_YUV422_8BIT_RFBC) {
+        input_format = RK_FORMAT_YCbCr_422_SP;
+    } else if (input_format == HAL_PIXEL_FORMAT_YUV422_10BIT_RFBC) {
+        input_format = RK_FORMAT_YCbCr_422_SP_10B;
     }
     return input_format;
 }
