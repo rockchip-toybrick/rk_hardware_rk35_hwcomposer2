@@ -48,6 +48,8 @@
 
 namespace hwc_rga_utils{
 
+using android::DBG_ERROR;
+
 int HwcGetRgaCompatibleFormat(int format) {
   if (format == 0) return format;
 
@@ -80,7 +82,7 @@ int HwcGetRgaFormatFromAndroid(int format) {
     case HAL_PIXEL_FORMAT_YCrCb_NV12_10:
       return RK_FORMAT_YCbCr_420_SP_10B;  // 0x20
     default:
-      ALOGE("%x is unsupport format now,pilese fix.", format);
+      HWC2_ALOGD_IF_ERR("%x is not supported, please fix.", format);
       return -1;
   }
 }
@@ -98,7 +100,7 @@ int HwcGetRgaFormat(int format) {
     if (format & 0xFF00 || format == 0) return format;
   }
 
-  ALOGE("%x is unsupport format now,pilese fix.", format);
+  HWC2_ALOGD_IF_ERR("%x is not supported, please fix.", format);
   return -1;
 }
 
@@ -192,6 +194,11 @@ int UnifyAndroidFormatForRK3576(int format){
         input_format = RK_FORMAT_YCbCr_422_SP;
     } else if (input_format == HAL_PIXEL_FORMAT_YUV422_10BIT_RFBC) {
         input_format = RK_FORMAT_YCbCr_422_SP_10B;
+    } else if (input_format == HAL_PIXEL_FORMAT_YUV444_8BIT_RFBC) {
+        input_format = RK_FORMAT_YCbCr_444_SP;
+    } else if (input_format == HAL_PIXEL_FORMAT_YUV444_10BIT_RFBC) {
+        HWC2_ALOGD_IF_ERR("librga do not support this Format: YUV444_10BIT_RFBC");
+      // input_format = RK_FORMAT_YCbCr_444_SP_10B;
     }
     return input_format;
 }

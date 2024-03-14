@@ -379,6 +379,14 @@ bool DrmHwcLayer::IsYuvFormat(int format, uint32_t fourcc_format){
     case DRM_FORMAT_YVYU:
     case DRM_FORMAT_YUV420_8BIT:
     case DRM_FORMAT_YUV420_10BIT:
+    case DRM_FORMAT_NV24:
+    case DRM_FORMAT_NV42:
+    case DRM_FORMAT_NV15:
+    case DRM_FORMAT_NV20:
+    case DRM_FORMAT_NV30:
+    case DRM_FORMAT_Y210:
+    case DRM_FORMAT_VUY888:
+    case DRM_FORMAT_VUY101010:
       return true;
     default:
       break;
@@ -404,6 +412,11 @@ bool DrmHwcLayer::Is10bitYuv(int format,uint32_t fourcc_format){
   switch(fourcc_format){
     case DRM_FORMAT_NV12_10:
     case DRM_FORMAT_YUV420_10BIT:
+    case DRM_FORMAT_VUY101010:
+    case DRM_FORMAT_Y210:
+    case DRM_FORMAT_NV30:
+    case DRM_FORMAT_NV20:
+    case DRM_FORMAT_NV15:
       return true;
     default:
       break;
