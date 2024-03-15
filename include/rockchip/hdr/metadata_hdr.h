@@ -10,6 +10,7 @@
 #define     RK_SDR2HDR_SMGAIN_LENGTH            64
 
 #define     RK_HDRVIVID_TONE_SCA_AXI_TAB_LENGTH 264
+#define		RK_HDR_REG_BUF_BYTES_MAX			4096
 
 #define     RK_MAGIC_WORD 318
 enum rk_video_format
@@ -22,7 +23,7 @@ enum rk_video_format
 
 enum rk_hdr_format
 {
-	  NONE = 0,
+	NONE = 0,
     HDR10 = 1,
     HLGSTATIC = 2,
 //	RESERVED3 = 3, //reserved for more future static hdr format
@@ -37,6 +38,14 @@ enum rk_hdr_format
 //	RESERVED12 = 12, //reserved for other dynamic hdr format
 //	RESERVED13 = 13, //reserved for  other dynamic hdr format
     HDR_FORMAT_MAX
+};
+
+enum rk_hdr_platform
+{
+	HDR_PLAT_DEFAULT = 0,
+	HDR_PLAT_RK356x  = 1,
+	HDR_PLAT_RK3576  = 2,
+	HDR_PLAT_MAX
 };
 
 
@@ -271,48 +280,19 @@ typedef struct{
     float           s2h_sm_ratio;       // S2h Sat Modify, Default 1.0, range [0.5, 1.5]
     float           s2h_scale_ratio;    // S2h Luma Scalling Ratio, Default 1.0, range [0.5, 1.5]
     unsigned char   s2h_sdr_color_space;// S2h Color Space 0: bt601-NTSC525, 1: bt601-PAL625, 2: bt709, Default 2
+
+	unsigned int	hdr_prop_set[3];	// Hdr properties settings for further differentiation of parser_lib use cases. hdr_prop_set[0]: enum rk_hdr_platform; 
 }rk_hdr_user_cfg_t;
 
-typedef struct{
+typedef struct 
+{
 	// Header
-	// Hdr protocol (enum rk_hdr_format NONE, HDR10, HLGSTATIC, HDRVIVID, etc.)
-	unsigned int hdr_type;
+	// Hdr protocol (enum rk_hdr_format NONE, HDR10, HLGSTATIC, HDRVIVID, etc.) and hardware platform ID
+	unsigned int hdr_plat_prot;	//Bits 0~7 for hdr protocal and bits 8~15 for hdr hardware platform id
 	// Payload length of HdrVivid Register
 	unsigned int length;
-
-	// Payload
-    // Params for HDR and Sdr2hdr Hardware Register
-    unsigned int sdr2hdr_ctrl;
-    unsigned int sdr2hdr_coe0;
-    unsigned int sdr2hdr_coe1;
-    unsigned int sdr2hdr_csc_coe00_01;
-    unsigned int sdr2hdr_csc_coe02_10;
-    unsigned int sdr2hdr_csc_coe11_12;
-    unsigned int sdr2hdr_csc_coe20_21;
-    unsigned int sdr2hdr_csc_coe22;
-    unsigned int hdrvivid_ctrl;
-    unsigned int hdr_pq_gamma;
-    unsigned int hlg_rfix_scalefac;
-    unsigned int hlg_maxluma;
-    unsigned int hlg_r_tm_lin2non;
-    unsigned int hdr_csc_coe00_01;
-    unsigned int hdr_csc_coe02_10;
-    unsigned int hdr_csc_coe11_12;
-    unsigned int hdr_csc_coe20_21;
-    unsigned int hdr_csc_coe22;
-    unsigned int hdr_tone_sca[RK_HDRVIVID_TONE_SCA_TAB_LENGTH];
-    unsigned int hdrgamma_curve[RK_HDRVIVID_GAMMA_CURVE_LENGTH];
-    unsigned int hdrgamma_mdfvalue[RK_HDRVIVID_GAMMA_MDFVALUE_LENGTH];
-    unsigned int sdrinvgamma_curve[RK_SDR2HDR_INVGAMMA_CURVE_LENGTH];
-    unsigned int sdrinvgamma_startidx[RK_SDR2HDR_INVGAMMA_S_IDX_LENGTH];
-    unsigned int sdrinvgamma_changeidx[RK_SDR2HDR_INVGAMMA_C_IDX_LENGTH];
-    unsigned int sdr_smgain[RK_SDR2HDR_SMGAIN_LENGTH];
-
-    // HDR-Mode
-    unsigned char hdr_mode; // 0-5: Mode0-5, 6: bypass, 7: Hdr10 to Sdr
-
-    // AXI-Tab
-    unsigned int tone_sca_axi_tab[RK_HDRVIVID_TONE_SCA_AXI_TAB_LENGTH];
+	// hdr registers' value
+	unsigned char register_buf[RK_HDR_REG_BUF_BYTES_MAX]; 
 }rk_hdr_reg_t;
 
 typedef struct{

@@ -3289,6 +3289,13 @@ int DrmHwcTwo::HwcDisplay::EnableMetadataHdrMode(DrmHwcLayer& hdrLayer){
   hdrLayer.metadataHdrParam_.hdr_user_cfg.s2h_sdr_color_space = 2;
   hdrLayer.metadataHdrParam_.hdr_user_cfg.hdr_debug_cfg.print_input_meta = 0;
   hdrLayer.metadataHdrParam_.hdr_user_cfg.hdr_debug_cfg.hdr_log_level = 0;
+  hdrLayer.metadataHdrParam_.hdr_user_cfg.hdr_prop_set[0] = HDR_PLAT_DEFAULT;
+  if(isRK3528(ctx_.soc_id))
+    hdrLayer.metadataHdrParam_.hdr_user_cfg.hdr_prop_set[0] = HDR_PLAT_DEFAULT;
+  if(isRK356x(ctx_.soc_id))
+    hdrLayer.metadataHdrParam_.hdr_user_cfg.hdr_prop_set[0] = HDR_PLAT_RK356x;
+  if(isRK3576(ctx_.soc_id))
+    hdrLayer.metadataHdrParam_.hdr_user_cfg.hdr_prop_set[0] = HDR_PLAT_RK3576;
 
   if(hwc_get_int_property("vendor.hwc.vivid_hdr_debug", "0") > 0){
     hdrLayer.uEOTF = hwc_get_int_property("vendor.hwc.vivid_layer_eotf", "0");
@@ -3445,30 +3452,31 @@ int DrmHwcTwo::HwcDisplay::SwitchHdrMode(){
   // 需要HDR模式,找到 HDR layer,判断当前采用HDR模式
   for(auto &drmHwcLayer : drm_hwc_layers_){
     if(drmHwcLayer.bYuv_){
-      // RK3528 HDR 模式特殊处理
-      if(gIsRK3528()){
+      // MetadataHdr 模式特殊处理
+#if defined(USE_VIVID_HDR) && USE_VIVID_HDR
+      if(crtc_ && crtc_->hdr_ext_data().id() > 0){
         if(EnableMetadataHdrMode(drmHwcLayer) == 0){
           return 0;
         }
+      }
+#endif
       // 其他平台的 HDR 模式处理
-      }else{
-        if(drmHwcLayer.bHdr_){
-          // 其他平台通用的判断是否需要进入HDR模式逻辑
-          if(DisableHdrMode()){
-            ctx_.hdr_mode = DRM_HWC_SDR;
-            ctx_.dataspace = HAL_DATASPACE_UNKNOWN;
-            return 0;
-          }
-          // RK3588 平台特殊的判断逻辑
-          if(DisableHdrModeRK3588()){
-            ctx_.hdr_mode = DRM_HWC_SDR;
-            ctx_.dataspace = HAL_DATASPACE_UNKNOWN;
-            return 0;
-          }
+      if(drmHwcLayer.bHdr_){
+        // 其他平台通用的判断是否需要进入HDR模式逻辑
+        if(DisableHdrMode()){
+          ctx_.hdr_mode = DRM_HWC_SDR;
+          ctx_.dataspace = HAL_DATASPACE_UNKNOWN;
+          return 0;
+        }
+        // RK3588 平台特殊的判断逻辑
+        if(DisableHdrModeRK3588()){
+          ctx_.hdr_mode = DRM_HWC_SDR;
+          ctx_.dataspace = HAL_DATASPACE_UNKNOWN;
+          return 0;
+        }
 
-          if(!EnableHdrMode(drmHwcLayer)){
-            return 0;
-          }
+        if(!EnableHdrMode(drmHwcLayer)){
+          return 0;
         }
       }
     }

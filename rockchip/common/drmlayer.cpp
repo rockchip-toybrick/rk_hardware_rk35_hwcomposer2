@@ -743,23 +743,23 @@ bool DrmHwcLayer::IsScale(hwc_frect_t &source_crop, hwc_rect_t &display_frame, i
 bool DrmHwcLayer::IsMetadataHdr(uint64_t usage){
   // RK3528 usage 0x02000000 认为是 MetadataHdr 图层
   // 定义位于 Android 9.0 libhardware/../gralloc.h GRALLOC_USAGE_DYNAMIC_HDR
-  if(gIsRK3528()){
-    if(((usage & 0x02000000) > 0)){
-      return true;
-    }
+#if defined(USE_VIVID_HDR) && USE_VIVID_HDR
+  if(((usage & 0x02000000) > 0)){
+    return true;
   }
+#endif
   return false;
 }
 
 bool DrmHwcLayer::IsHdr(uint64_t usage, android_dataspace_t dataspace){
   // RK3528 usage 0x02000000 为 GRALLOC_USAGE_DYNAMIC_HDR
   // 与其他平台存在冲突，故排除RK3528平台
-  if(!gIsRK3528()){
-    if(((usage & 0x0F000000) == HDR_ST2084_USAGE ||
-        (usage & 0x0F000000) == HDR_HLG_USAGE)){
-      return true;
-    }
+#if defined(RK3528) && defined(USE_VIVID_HDR)
+  if(((usage & 0x0F000000) == HDR_ST2084_USAGE ||
+      (usage & 0x0F000000) == HDR_HLG_USAGE)){
+    return true;
   }
+#endif
 
   if(((dataspace & HAL_DATASPACE_TRANSFER_ST2084) == HAL_DATASPACE_TRANSFER_ST2084) ||
      ((dataspace & HAL_DATASPACE_TRANSFER_HLG) == HAL_DATASPACE_TRANSFER_HLG)){

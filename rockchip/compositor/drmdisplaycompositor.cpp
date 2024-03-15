@@ -703,10 +703,12 @@ int DrmDisplayCompositor::CollectModeSetInfo(drmModeAtomicReqPtr pset,
   int ret = 0;
 
   // RK3528 平台 Sideband 后续流程会处理
-  if(gIsRK3528() && IsSidebandMode() && !is_sideband_collect){
+#if defined(USE_VIVID_HDR) && USE_VIVID_HDR
+  if( IsSidebandMode() && !is_sideband_collect){
     HWC2_ALOGD_IF_INFO("SidebandMode skip normal hdr modeset");
     return 0;
   }
+#endif
 
   DrmDevice *drm = resource_manager_->GetDrmDevice(display_);
   //uint64_t out_fences[drm->crtcs().size()];
@@ -2106,7 +2108,7 @@ void DrmDisplayCompositor::SingalCompsition(std::unique_ptr<DrmDisplayCompositio
   composition.reset(NULL);
 }
 
-#ifdef RK3528
+#ifdef USE_VIVID_HDR
 void DrmDisplayCompositor::ClearDisplayHdrState() {
   if(current_mode_set_.hdr_.mode_ != DRM_HWC_SDR){
     drmModeAtomicReqPtr pset = drmModeAtomicAlloc();
@@ -2234,7 +2236,7 @@ void DrmDisplayCompositor::ClearDisplay() {
   }
 
   // 重置HDR状态
-#ifdef RK3528
+#ifdef USE_VIVID_HDR
   ClearDisplayHdrState();
 #endif
 
@@ -2639,14 +2641,14 @@ int DrmDisplayCompositor::CollectVPInfo() {
         current_sideband2_.buffer_ = buffer;
 
         // RK3528 更新HDR信息, 若无报错，则使用 metadata Hdr模式
-        if(gIsRK3528()){
+#if defined(USE_VIVID_HDR) && USE_VIVID_HDR
           if(comp_plane.get_zpos() == 0 && !CollectVPHdrInfo(layer)){
             current_composition->SetDisplayHdrMode(DRM_HWC_METADATA_HDR, layer.eDataSpace_);
           }else{
             current_composition->SetDisplayHdrMode(DRM_HWC_SDR, HAL_DATASPACE_UNKNOWN);
           }
           CollectModeSetInfo(pset, current_composition, true);
-        }
+#endif
       }else{
         fb_id = layer.buffer->fb_id;
         afbcd = layer.bAfbcd_;

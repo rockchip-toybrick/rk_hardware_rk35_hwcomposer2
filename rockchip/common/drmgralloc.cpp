@@ -862,6 +862,7 @@ int64_t DrmGralloc::hwc_get_offset_of_dynamic_hdr_metadata(buffer_handle_t hnd){
   std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
   int64_t offset = -1;
 #if USE_GRALLOC_4
+  offset = gralloc4::get_video_metadata_offset(hnd);
   return offset;
 #else // #if USE_GRALLOC_4
 	int ret = 0;

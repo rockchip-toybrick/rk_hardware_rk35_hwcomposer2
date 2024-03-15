@@ -212,12 +212,7 @@ endif
 # RK3528 config:
 ifneq ($(filter rk3528, $(strip $(TARGET_BOARD_PLATFORM))),)
 LOCAL_CPPFLAGS += -DRK3528=1
-USE_HDR_PARSER=true
-# Android 启用 HDR 功能
-LOCAL_SHARED_LIBRARIES += \
-	libhdr_params_parser
-LOCAL_CPPFLAGS += \
-	-DUSE_HDR_PARSER=1
+BOARD_USES_VIVID_HDR = true
 # API 28 -> Android 9.0
 ifeq (0,$(strip $(shell expr $(PLATFORM_SDK_VERSION) \> 29)))
 LOCAL_CPPFLAGS += -DANDROID_P=1
@@ -225,6 +220,11 @@ LOCAL_C_INCLUDES += \
   hardware/rockchip/libgralloc/ \
   system/core/liblog/include/
 endif
+endif
+
+ifneq ($(filter rk3576, $(strip $(TARGET_BOARD_PLATFORM))),)
+LOCAL_CPPFLAGS += -DRK3576=1
+BOARD_USES_VIVID_HDR = true
 endif
 
 # RK3588
@@ -247,6 +247,18 @@ LOCAL_CPPFLAGS += -DRK3399=1
 endif
 ifneq ($(filter rk3326, $(strip $(TARGET_BOARD_PLATFORM))),)
 LOCAL_CPPFLAGS += -DRK3326=1
+endif
+
+
+
+ifeq ($(strip $(BOARD_USES_VIVID_HDR)),true)
+USE_HDR_PARSER=true
+# Android 启用 HDR 功能
+LOCAL_SHARED_LIBRARIES += \
+	libhdr_params_parser
+LOCAL_CPPFLAGS += \
+	-DUSE_HDR_PARSER=1 \
+	-DUSE_VIVID_HDR=1
 endif
 
 # SR

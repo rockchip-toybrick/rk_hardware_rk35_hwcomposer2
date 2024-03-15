@@ -258,6 +258,36 @@ uint64_t get_format_modifier(buffer_handle_t handle)
   return modifier;
 }
 
+static android::status_t decodeRkOffsetOfVideoMetadata(const hidl_vec<uint8_t>& input, int64_t* offset_of_metadata)
+{
+	int64_t offset = 0;
+
+	memcpy(&offset, input.data(), sizeof(offset));
+
+	*offset_of_metadata = offset;
+
+	return android::NO_ERROR;
+}
+
+#ifndef OFFSET_OF_DYNAMIC_HDR_METADATA
+#define OFFSET_OF_DYNAMIC_HDR_METADATA	(1)
+#define GRALLOC_RK_METADATA_TYPE_NAME "rk.graphics.RkMetadataType"
+const static IMapper::MetadataType RkMetadataType_OFFSET_OF_DYNAMIC_HDR_METADATA{ GRALLOC_RK_METADATA_TYPE_NAME,
+										  OFFSET_OF_DYNAMIC_HDR_METADATA };
+#endif
+
+int64_t get_video_metadata_offset(buffer_handle_t handle)
+{
+  auto &mapper = get_service();
+  int64_t offset;
+
+  /* 获取 format_modifier. */
+  int err = get_metadata(mapper, handle, RkMetadataType_OFFSET_OF_DYNAMIC_HDR_METADATA, decodeRkOffsetOfVideoMetadata, &offset);
+  assert(err == android::NO_ERROR);
+
+  return offset;
+}
+
 // HAL_PIXEL_FORMAT_BGR_888 定义在 Android 12
 // hardware/rockchip/libhardware_rockchip/include/hardware/hardware_rockchip.h 文件
 // 其他平台可能存在缺少定义的问题
