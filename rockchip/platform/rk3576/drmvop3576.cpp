@@ -1115,14 +1115,19 @@ int Vop3576::MatchPlane(std::vector<DrmCompositionPlane> *composition_planes,
                               //对于HDR图层，
                               //若电视不支持HDR或vp不支持HDR2SDR，且不是RFBC格式，则退回GPU合成，保证色彩准确
                               //若是RFBC格式，强制Overlay至vop输出，没有其他通路可处理RFBC+HDR，RGA不支持HDR2SDR，GPU合成会花屏。
-                              if(!b_hdr2sdr && !(*iter_layer)->bRfbcd_){
-                                  ALOGV("layer id=%d, %s",(*iter_layer)->uId_,(*iter_plane)->name());
-                                  ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support hdr layer,layer hdr=%d, crtc can_hdr=%d",
-                                          (*iter_plane)->name(),hdr_layer,b_hdr2sdr);
-                                  continue;
+                              //RK3576 GPU性能不足，无法满足4K60 色域转换，默认强制Overlay
+                              if(ctx.state.bHDRVideoForceOverlay){
+                                HWC2_ALOGD_IF_DEBUG("vendor.hwc.hdr_video_force_overlay > 0, force overlay.");
+                              }else{
+                                if(!b_hdr2sdr && !(*iter_layer)->bRfbcd_){
+                                    ALOGV("layer id=%d, %s",(*iter_layer)->uId_,(*iter_plane)->name());
+                                    ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support hdr layer,layer hdr=%d, crtc can_hdr=%d",
+                                            (*iter_plane)->name(),hdr_layer,b_hdr2sdr);
+                                    continue;
+                                }
                               }
-                              else
-                                  bNeed = true;
+                              bNeed = true;
+
                           }
 
                           // Only YUV use Cluster rotate
@@ -1502,10 +1507,15 @@ int Vop3576::TryRgaOverlayPolicy(
             continue;
           }
 
-          //NV15支持GPU合成，使用GPU合成色彩更准确
-          if(drmLayer->uFourccFormat_ == DRM_FORMAT_NV15){
-            HWC2_ALOGD_IF_DEBUG("iFormat_=0x%x,NV15 fallback to GPU for better color accuracy. layerName:%s", drmLayer->iFormat_, drmLayer->sLayerName_.c_str());
-            continue;
+          //RK3576 GPU性能不足，无法满足4K60 色域转换，默认强制Overlay
+          if(ctx.state.bHDRVideoForceOverlay){
+            HWC2_ALOGD_IF_DEBUG("vendor.hwc.hdr_video_force_overlay > 0, force overlay.");
+          }else{
+            //NV15支持GPU合成，使用GPU合成色彩更准确
+            if(drmLayer->uFourccFormat_ == DRM_FORMAT_NV15){
+              HWC2_ALOGD_IF_DEBUG("iFormat_=0x%x,NV15 fallback to GPU for better color accuracy. layerName:%s", drmLayer->iFormat_, drmLayer->sLayerName_.c_str());
+              continue;
+            }
           }
           dst_buffer = rgaBufferQueue_->DequeueDrmBuffer(ctx.state.iDisplayWidth_,
                                                           ctx.state.iDisplayHeight_,
@@ -3419,6 +3429,7 @@ void Vop3576::InitStateContext(
 
   ctx.state.iVopMaxOverlay4KPlane = hwc_get_int_property("vendor.hwc.vop_max_overlay_4k_plane","0");
   ctx.state.bRgaPolicyEnable = hwc_get_int_property("vendor.hwc.enable_rga_policy","1") > 0;
+  ctx.state.bHDRVideoForceOverlay = hwc_get_int_property("vendor.hwc.hdr_video_force_overlay","1") > 0;
 
   HWC2_ALOGD_IF_DEBUG("bMultiAreaEnable=%d, bMultiAreaScaleEnable=%d iVopMaxOverlay4KPlane=%d bRgaPolicyEnable=%d",
             ctx.state.bMultiAreaEnable,

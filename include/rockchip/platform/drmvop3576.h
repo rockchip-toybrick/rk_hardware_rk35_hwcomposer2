@@ -187,6 +187,7 @@ typedef struct StateContext{
   int iDisplayHeight_;
 
   bool bRequireGLESMode;
+  bool bHDRVideoForceOverlay;
 } StaCtx;
 
 typedef struct DrmVop2Context{
