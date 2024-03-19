@@ -817,7 +817,7 @@ int DrmGralloc::hwc_get_gemhandle_from_fd(uint64_t buffer_fd,
   std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
   auto mapGemHandle = mapGemHandles_.find(buffer_id);
   if(mapGemHandle == mapGemHandles_.end()){
-    HWC2_ALOGD_IF_VERBOSE("Call drmPrimeFDToHandle buf_fd=%" PRIu64 " buf_id=%" PRIx64, buffer_fd, buffer_id);
+    HWC2_ALOGD_IF_VERBOSE("Call drmPrimeFDToHandle buf_fd=%" PRIu64 " buf_id=0x%" PRIx64, buffer_fd, buffer_id);
     uint32_t gem_handle;
     int ret = drmPrimeFDToHandle(drmDeviceFd_, buffer_fd, &gem_handle);
     if (ret) {
@@ -827,15 +827,15 @@ int DrmGralloc::hwc_get_gemhandle_from_fd(uint64_t buffer_fd,
     auto ptrGemHandle = std::make_shared<GemHandle>(drmDeviceFd_,gem_handle);
     auto res = mapGemHandles_.insert(std::pair<uint64_t, std::shared_ptr<GemHandle>>(buffer_id, ptrGemHandle));
     if(res.second==false){
-        HWC2_ALOGE("mapGemHandles_ insert fail. maybe buffer_id %" PRIu64 " has existed", buffer_id);
+        HWC2_ALOGE("mapGemHandles_ insert fail. maybe buffer_id 0x%" PRIx64 " has existed", buffer_id);
         return -1;
     }
-    HWC2_ALOGD_IF_VERBOSE("Get GemHandle buf_fd=%" PRIu64 " buf_id=%" PRIx64 " GemHandle=%d", buffer_fd, buffer_id, gem_handle);
+    HWC2_ALOGD_IF_VERBOSE("Get GemHandle buf_fd=%" PRIu64 " buf_id=0x%" PRIx64 " GemHandle=%d", buffer_fd, buffer_id, gem_handle);
     *out_gem_handle = gem_handle;
     return 0;
   }
 
-  HWC2_ALOGD_IF_VERBOSE("Cache GemHandle buf_fd=%" PRIu64 " buf_id=%" PRIx64 " GemHandle=%d", buffer_fd, buffer_id,mapGemHandle->second->GetGemHandle());
+  HWC2_ALOGD_IF_VERBOSE("Cache GemHandle buf_fd=%" PRIu64 " buf_id=0x%" PRIx64 " GemHandle=%d", buffer_fd, buffer_id,mapGemHandle->second->GetGemHandle());
   mapGemHandle->second->AddRefCnt();
   *out_gem_handle = mapGemHandle->second->GetGemHandle();
   return 0;
@@ -845,16 +845,16 @@ int DrmGralloc::hwc_free_gemhandle(uint64_t buffer_id){
   std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
   auto mapGemHandle = mapGemHandles_.find(buffer_id);
   if(mapGemHandle == mapGemHandles_.end()){
-    HWC2_ALOGI("Can't find buf_id=%" PRIx64 " GemHandle.", buffer_id);
+    HWC2_ALOGI("Can't find buf_id=0x%" PRIx64 " GemHandle.", buffer_id);
     return -1;
   }
 
   if(mapGemHandle->second->CanRelease()){
     mapGemHandles_.erase(mapGemHandle);
-    HWC2_ALOGD_IF_VERBOSE("Release GemHandle buf_id=%" PRIx64 " success!", buffer_id);
+    HWC2_ALOGD_IF_VERBOSE("Release GemHandle buf_id=0x%" PRIx64 " success!", buffer_id);
     return 0;
   }
-  HWC2_ALOGD_IF_VERBOSE("Sub GemHandle RefCnt buf_id=%" PRIx64 " success!", buffer_id);
+  HWC2_ALOGD_IF_VERBOSE("Sub GemHandle RefCnt buf_id=0x%" PRIx64 " success!", buffer_id);
   return 0;
 }
 
@@ -1042,6 +1042,14 @@ int DrmGralloc::hwc_fbid_get_and_cached(buffer_id_t buffer_id,
     return ret;
   }
 
+  // 增加对GemHandle的引用计数
+  uint32_t out_gem_handle = 0;
+  ret = hwc_get_gemhandle_from_fd(0, buffer_id, &out_gem_handle);
+  if(ret){
+    HWC2_ALOGD_IF_ERR("GemHandle RefCnt++: buffer_id=0x%" PRIx64 ", fb_id:%u fail!", buffer_id,
+                        fb_id);
+  }
+
   HWC2_ALOGD_IF_DEBUG("FbIdCache: Import buffer_id=0x%" PRIx64 ", fb_id:%u", buffer_id,
                       fb_id);
   DrmFbIdCache cache_info(fb_id_info, fb_id);
@@ -1093,14 +1101,19 @@ int DrmGralloc::hwc_fbid_rm_cache(int fd, uint32_t fb_id){
     if(ret){
       HWC2_ALOGE("FbIdCache: drmModeRmFB fail ret = %d, fb_id=%d ", ret, fb_id);
     }
-
+    // 减少GemHandle的引用计数
+    ret = hwc_free_gemhandle(buffer_id);
+    if(ret){
+      HWC2_ALOGD_IF_ERR("GemHandle RefCnt--: buffer_id=0x%" PRIx64 ", fb_id:%u fail!", buffer_id,
+                          fb_id);
+    }
     fb_id_caches.mapCacheInfo.erase(fb_id);
     mapFbIdBufferId_.erase(fb_id);
 
     if(fb_id_caches.mapCacheInfo.size() == 0){
       //如果无图层引用此buffer_id且此buffer_id下无有效fb_id，则删除buffer_id
       mapFbIdCacheMap_.erase(buffer_id);
-      HWC2_ALOGD_IF_DEBUG("FbIdCache: remove buffer_id=0x%" PRIx64 , buffer_id);
+            HWC2_ALOGD_IF_DEBUG("FbIdCache: remove buffer_id=0x%" PRIx64 , buffer_id);
     }
   }
 
@@ -1144,8 +1157,16 @@ int DrmGralloc::hwc_fbid_dec_layer_ref_count(uint64_t buffer_id){
         int ret = drmModeRmFB(get_drm_device(), fb_id);
         if(ret){
           HWC2_ALOGE("FbIdCache: drmModeRmFB failed, ret = %d",ret);
+        }else{
+          HWC2_ALOGD_IF_DEBUG("FbIdCache: drmModeRmFB fbid = %u success", fb_id);
         }
-        HWC2_ALOGD_IF_DEBUG("FbIdCache: drmModeRmFB fbid = %u", fb_id);
+
+        // 减少GemHandle的引用计数
+        ret = hwc_free_gemhandle(buffer_id);
+        if(ret){
+          HWC2_ALOGD_IF_ERR("GemHandle RefCnt--: buffer_id=0x%" PRIx64 ", fb_id:%u fail!", buffer_id,
+                              fb_id);
+        }
         mapFbIdCacheMap_[buffer_id].mapCacheInfo.erase(fb_id);
         mapFbIdBufferId_.erase(fb_id);
       }
