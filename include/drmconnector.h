@@ -194,6 +194,7 @@ class DrmConnector {
   const std::vector<int> &vrr_modes() const {
     return vrr_modes_;
   }
+  uint8_t* MakeFakeEDID();
 
  private:
   DrmDevice *drm_;
@@ -290,6 +291,11 @@ class DrmConnector {
   std::map<DrmCrtc*, std::vector<int>> mMapCrtcDisplays_;
 
   uint32_t blob_id_ = 0;
+  struct dummyEdid{
+    uint8_t data[128];
+    const uint32_t len=sizeof(data);
+  };
+  std::shared_ptr<dummyEdid> mDummyEDID_ = NULL;
 
   mutable std::recursive_mutex mRecursiveMutex;
 };

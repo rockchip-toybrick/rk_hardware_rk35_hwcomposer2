@@ -2622,14 +2622,21 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayIdentificationData(
   supported(__func__);
 
   auto blob = connector_->GetEdidBlob();
+  uint8_t* dummyEDID = NULL;
+  uint32_t dummySize = 0;
   if (blob == nullptr) {
-    ALOGD("Failed to get blob");
-    return HWC2::Error::Unsupported;
+    HWC2_ALOGD_IF_DEBUG("Failed to get blob, HWC generate one.");
+    dummyEDID = connector_->MakeFakeEDID();
+    if(dummyEDID == nullptr){
+      HWC2_ALOGW("Failed to get blob, HWC generate Failed.");
+      return HWC2::Error::Unsupported;
+    }
+    dummySize = 128;
   }
 
   *outPort = connector_->id();
 
-  if (!blob) {
+  if (!blob && !dummyEDID) {
     if (outData == nullptr) {
       *outDataSize = 0;
     }
@@ -2637,10 +2644,19 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayIdentificationData(
   }
 
   if (outData) {
-    *outDataSize = std::min(*outDataSize, blob->length);
-    memcpy(outData, blob->data, *outDataSize);
+    if(blob){
+      *outDataSize = std::min(*outDataSize, blob->length);
+      memcpy(outData, blob->data, *outDataSize);
+    }else{
+      *outDataSize = std::min(*outDataSize, dummySize);
+      memcpy(outData, dummyEDID, *outDataSize);
+    }
   } else {
-    *outDataSize = blob->length;
+    if(blob){
+      *outDataSize = blob->length;
+    }else{
+      *outDataSize = dummySize;
+    }
   }
 
   return HWC2::Error::None;

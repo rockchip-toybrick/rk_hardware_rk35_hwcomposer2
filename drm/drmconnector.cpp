@@ -1518,4 +1518,153 @@ int DrmConnector::FilterColorFormatWithCaps(int inFormat){
   return inFormat;
 }
 
+const uint8_t dummyEDID[128] = {
+  0x00,0xff,0xff,0xff,0xff,0xff,0xff,0x00,
+  0x3a,0xac,0x00,0x00,0x00,0x00,0x00,0x00,
+  0xff,0x22,0x01,0x04,0x80,0x00,0x00,0x78,
+  0x07,0xee,0x95,0xa3,0x54,0x4c,0x99,0x26,
+  0x0f,0x50,0x54,0x00,0x00,0x00,0x01,0x01,
+  0x01,0x01,0x01,0x01,0x01,0x01,0x01,0x01,
+  0x01,0x01,0x01,0x01,0x01,0x01,0x02,0x3a,
+  0x80,0xa0,0x70,0x38,0x1f,0x40,0x30,0x20,
+  0x35,0x00,0x63,0xc8,0x10,0x00,0x00,0x02,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x8e
+};
+
+uint8_t* DrmConnector::MakeFakeEDID(){
+
+  if(mDummyEDID_ == NULL)
+    mDummyEDID_ = std::make_shared<dummyEdid>();
+  uint8_t* buffer = mDummyEDID_.get()->data;
+
+  //查找prefermode，若没有prefer，则使用current
+  DrmMode preferred_mode=current_mode_;
+  for(auto &mode :raw_modes_){
+    if(mode.type() & DRM_MODE_TYPE_PREFERRED){
+      preferred_mode = mode;
+      break;
+    }
+  }
+
+  //显示mode基本信息
+  int h_act_pix  =   preferred_mode.h_display();
+  int h_blk_pix  =   preferred_mode.h_total()-preferred_mode.h_display();
+  int v_act_pix  =   preferred_mode.v_display();
+  int v_blk_pix  =   preferred_mode.v_total()-preferred_mode.v_display();
+
+  int h_syn_off  =   preferred_mode.h_sync_start()-preferred_mode.h_display();
+  int H_syn_w    =   preferred_mode.h_sync_end()-preferred_mode.h_sync_start();
+  int v_syn_off  =   preferred_mode.v_sync_start()-preferred_mode.v_display();
+  int v_syn_w    =   preferred_mode.v_sync_end()-preferred_mode.v_sync_start();
+
+  int x_size     =   mm_width();
+  int y_size     =   mm_height();
+  //EDID以10KHz为单位，drm以KHz为单位，需要转换
+  uint16_t clk   =   preferred_mode.clock()/10;
+  //复制样板
+  memcpy(buffer,dummyEDID,sizeof(dummyEDID));
+
+  //定位至Detailed Timing Definition
+  uint8_t *dtd_ptr = buffer+0x36;
+
+  //Pixel clock / 10,000
+  dtd_ptr[0]=clk&0xff;
+  dtd_ptr[1]=(clk&0xff00)>>8;
+
+  //Horizontal Addressable Video in pixels
+  //Horizontal Blanking in pixels
+  dtd_ptr[2]=h_act_pix&0xff;
+  dtd_ptr[3]=h_blk_pix&0xff;
+  dtd_ptr[4]=(h_act_pix&0xf00)>>4;
+  dtd_ptr[4]|=(h_blk_pix&0xf00)>>8;
+
+  //Vertical Addressable Video in lines
+  //Vertical Blanking in lines
+  dtd_ptr[5]=v_act_pix&0xff;
+  dtd_ptr[6]=v_blk_pix&0xff;
+  dtd_ptr[7]=(v_act_pix&0xf00)>>4;
+  dtd_ptr[7]|=(v_blk_pix&0xf00)>>8;
+
+  //Horizontal Front Porch in pixels lower 8bit
+  dtd_ptr[8]=h_syn_off&0xff;
+  //Horizontal Sync Pulse Width in pixels lower 8bit
+  dtd_ptr[9]=H_syn_w&0xff;
+  //Vertical Front Porch in Lines lower 4bit
+  dtd_ptr[10]=(v_syn_off&0xf)<<4;
+  //Vertical Sync Pulse Width in Lines lower 4bit
+  dtd_ptr[10]|=(v_syn_w&0xf);
+
+  //[7,6] Horizontal Front Porch in pixels upper 2bit
+  //[5,4] Horizontal Sync Pulse Width in Pixels upper 2bit
+  //[3,2] Vertical Front Porch in lines upper 2 bits
+  //[1,0] Vertical Sync Pulse Width in lines upper 2 bits
+  dtd_ptr[11]=(h_syn_off&0x300)>>2;
+  dtd_ptr[11]|=(H_syn_w&0x300)>>4;
+  dtd_ptr[11]|=(v_syn_off&0x30)>>2;
+  dtd_ptr[11]|=(v_syn_w&0x30)>>4;
+
+  //Horizontal Addressable Video Image Size in mm
+  //Vertical Addressable Video Image Size in mm
+  dtd_ptr[12]=x_size&0xff;
+  dtd_ptr[13]=y_size&0xff;
+  dtd_ptr[14]=(x_size&0xf00)>>4;
+  dtd_ptr[14]|=(y_size&0xf00);
+
+  //0x18:Digital Separate Sync
+  dtd_ptr[17]=0x18;
+
+  if(preferred_mode.interlaced())
+    dtd_ptr[17] |= 0x80;
+  if (preferred_mode.flags() & DRM_MODE_FLAG_PHSYNC)
+		dtd_ptr[17] |= 0x2;
+	if (preferred_mode.flags() & DRM_MODE_FLAG_PVSYNC)
+		dtd_ptr[17] |= 0x4;
+
+  //在第二个块中，填入显示器名，根据接口类型和type生成
+  const char* type_name= drm_->connector_type_str(type());
+  //Display Product Name标志
+  dtd_ptr+=18;
+  dtd_ptr[3]=0xFC;
+  dtd_ptr+=5;
+  //生成字符串，最大13字节长度，填满13字节无需结束标志，不满13字节以\n结尾
+  char product_name[13+1]={0};
+  snprintf(product_name,13,"Dummy-%s-%d\n",type_name,type_id());
+  memcpy(dtd_ptr,product_name,13);
+
+  //生成制造商信息，vop驱动用的是
+  uint16_t *mfc_name = (uint16_t*)(buffer+0x08);
+  *mfc_name=0;
+  char a = 'D';
+  char b = 'M';
+  char c = 'Y';
+  *mfc_name|=((a-'A'+1)&0x1f)<<10;
+  *mfc_name|=((b-'A'+1)&0x1f)<<5;
+  *mfc_name|=((c-'A'+1)&0x1f)<<0;
+  std::swap(buffer[8],buffer[9]);
+
+  //生成产品型号，使用type_id^mfc_name方式
+  uint16_t *id_product_code = (uint16_t*)(buffer+0x0a);
+  *id_product_code=(*mfc_name)^type_id();
+
+  //生成序列号，使用type_id+mfc_name方式
+  uint16_t *id_serial_no = (uint16_t*)(buffer+0x0c);
+  id_serial_no[0] = type_id();
+  id_serial_no[1] = *mfc_name;
+
+  //CheckSum
+  uint8_t sum = 0;
+  for(int i=0;i<127;i++){
+      sum+=buffer[i];
+  }
+  buffer[127]=0x100-sum;
+  
+  return buffer;
+}
+
 }  // namespace android
