@@ -542,5 +542,12 @@ const DrmMode &DrmCrtc::kernel_mode() const {
   return mode_;
 }
 
+bool DrmCrtc::need_sync_kernel_mode() {
+  return sync_kernel_mode;
+}
+
+void DrmCrtc::has_sync_kernel_mode() {
+  sync_kernel_mode = false;
+}
 
 }  // namespace android

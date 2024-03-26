@@ -52,6 +52,7 @@ enum HwcConnnectorStete{
   HOLD_CRTC      = 2,  // 从其他已连接的 Connector 竞争获得状态
   RELEASE_CRTC   = 3,  // 被其他高优先级或者热插拔设备抢走的状态
   MIRROR_CRTC    = 4,  // Mirror Crtc 状态
+  MIRROR_TO_PRI_CRTC    = 5,  // Mirror 转正 Crtc 状态
 };
 
 class DrmDevice;
@@ -190,13 +191,17 @@ class DrmConnector {
   const std::vector<DrmHdr> &get_hdr_support_list() const { return drmHdr_; }
   struct drm_hdr_static_metadata_infoframe* get_hdr_metadata_ptr(){ return &hdr_metadata_; };
   const struct disp_info* baseparameter_info(){ return baseparameter_ready_ ? &baseparameter_ : NULL; }
-  int FilterColorFormatWithCaps(int inFormat); 
+  int FilterColorFormatWithCaps(int inFormat);
 
   // VRR
   const std::vector<int> &vrr_modes() const {
     return vrr_modes_;
   }
   uint8_t* MakeFakeEDID();
+
+  int32_t get_kernel_crtc_id() const { return mKernelCrtcId_;}
+  void reset_kernel_crtc_id() { mKernelCrtcId_ = 0; }
+
 
  private:
   DrmDevice *drm_;
@@ -299,6 +304,8 @@ class DrmConnector {
     const uint32_t len=sizeof(data);
   };
   std::shared_ptr<dummyEdid> mDummyEDID_ = NULL;
+
+  int32_t mKernelCrtcId_;
 
   mutable std::recursive_mutex mRecursiveMutex;
   int UpdateOutputFormat(drmModeAtomicReqPtr pset);

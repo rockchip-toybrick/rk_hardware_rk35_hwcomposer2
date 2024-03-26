@@ -49,6 +49,8 @@ class DrmCrtc {
   bool get_next_hdr() const;
 
   const DrmMode &kernel_mode() const;
+  bool need_sync_kernel_mode();
+  void has_sync_kernel_mode();
 
   uint32_t get_soc_id() const { return soc_id_; }
   uint32_t get_port_id() const { return port_id_; }
@@ -151,10 +153,10 @@ class DrmCrtc {
   uint64_t plane_mask_=0;
   // hwc_plane_mask_ will be set by DrmHwc
   uint64_t hwc_plane_mask_=0;
-
   uint64_t variable_refresh_rate_value_ = 0;
   uint64_t max_refresh_rate_value_ = 0;
   uint64_t min_refresh_rate_value_ = 0;
+  bool sync_kernel_mode = true;
 };
 }  // namespace android
 

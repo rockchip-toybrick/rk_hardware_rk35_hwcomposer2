@@ -87,6 +87,9 @@ int DrmConnector::Init() {
     ALOGE("Could not get CRTC_ID property\n");
     return ret;
   }
+
+  std::tie(ret, mKernelCrtcId_) = crtc_id_property_.value();
+
   if (writeback()) {
     ret = drm_->GetConnectorProperty(*this, "WRITEBACK_PIXEL_FORMATS",
                                      &writeback_pixel_formats_);
@@ -1152,9 +1155,7 @@ HwcConnnectorStete DrmConnector::hwc_state(){
 
 int DrmConnector::set_hwc_state(HwcConnnectorStete state){
   if(state == NORMAL &&
-     (hwc_state_ == NO_CRTC ||
-      hwc_state_ == RELEASE_CRTC ||
-      hwc_state_ == MIRROR_CRTC)){
+     (hwc_state_ == MIRROR_TO_PRI_CRTC)){
     plug_ = true;
   }
   hwc_state_ = state;

@@ -1670,14 +1670,33 @@ int DrmDevice::BindConnectorAndCrtc(int display_id, DrmConnector* conn, DrmCrtc*
     return -EINVAL;
   }
 
+  if(conn->get_kernel_crtc_id() > 0){
+    if(conn->get_kernel_crtc_id() != crtc->id()){
+      for(auto &c : crtcs_){
+        if(c->id() == conn->get_kernel_crtc_id()){
+          HWC2_ALOGI("Display-id=%d kernel-crtc id=%d into new crtc-id=%d to disable kernel-crtc.",
+            display_id, conn->get_kernel_crtc_id(), crtc->id());
+          int ret = ReleaseDpyResByNormal(display_id, conn, c.get());
+          if(ret){
+            HWC2_ALOGE("Display-id=%d disable kernel-crtc id=%d fail",
+              display_id, conn->get_kernel_crtc_id());
+            return -1;
+          }
+          break;
+        }
+      }
+    }
   // 如果开机阶段当前设置的分辨率与 kernel uboot 初始化不一致，则需要关闭所有图层
-  if(!current_mode.equal_no_flag_and_type(crtc->kernel_mode())){
+  }else if(crtc->need_sync_kernel_mode() &&
+           !current_mode.equal_no_flag_and_type(crtc->kernel_mode())){
     HWC2_ALOGI("Display-id=%d kernel-mode not equal to current-mode,"
                "must to disable all plane.", display_id);
     current_mode.dump();
     crtc->kernel_mode().dump();
     if(DisableAllPlaneForCrtc(display_id, crtc, true, NULL)){
       HWC2_ALOGW("display-id=%d crtc-id=%d display all plane fail!.", display_id, crtc->id());
+    }else{
+      crtc->has_sync_kernel_mode();
     }
   }
 
@@ -2092,41 +2111,15 @@ int DrmDevice::ReleaseDpyResByMirror(int display_id,
     return -ENOMEM;
   }
 
-  // 1. 解绑当前 Connector 与 Crtc.
-  ret = ReleaseConnectorAndCrtcNoCommit(display_id, conn, crtc, pset);
-  if(ret){
-    HWC2_ALOGE("Add display-id=%d %s-%d Crtc-id=%d Release req Fail!.",
-                display_id, connector_type_str(conn->type()),
-                conn->type_id(), crtc->id());
-    drmModeAtomicFree(pset);
-    pset=NULL;
-    return ret;
-  }
 
-  // 2. 遍历所有 Connector , 关闭所有绑定在同个Crtc上的Connector资源
-  std::vector<DrmConnector*> store_mirror_conn;
-  for(auto &temp_conn : connectors_){
-    if(temp_conn.get() == conn)
-      continue;
-    if(temp_conn->encoder() &&
-        temp_conn->encoder()->crtc() &&
-        temp_conn->encoder()->crtc() == crtc){
-      int temp_display_id = temp_conn->display();
-      DrmCrtc* temp_crtc = temp_conn->encoder()->crtc();
-      ret = ReleaseConnectorAndCrtcNoCommit(temp_display_id, temp_conn.get(), temp_crtc, pset);
-      if(ret){
-        HWC2_ALOGE("Add display-id=%d %s-%d Crtc-id=%d Release req Fail!.",
-                    temp_display_id, connector_type_str(temp_conn->type()),
-                    temp_conn->type_id(), temp_crtc->id());
-        drmModeAtomicFree(pset);
-        pset=NULL;
-        return ret;
-      }
-      store_mirror_conn.push_back(temp_conn.get());
-    }
-  }
+  // Disable DrmConnector resource.
+  // The note is due to HJC's suggestion that the DRM driver
+  // will actively call the DPMS_OFF interface when disconnecting the CRTC from the Connector,
+  // and no additional calls are required.
+  // conn->SetDpmsMode(DRM_MODE_DPMS_OFF);
+  DRM_ATOMIC_ADD_PROP(conn->id(), conn->crtc_id_property().id(), 0);
 
-  // 3. AtomicCommit
+  // AtomicCommit
   uint32_t flags = DRM_MODE_ATOMIC_ALLOW_MODESET;
   ret = drmModeAtomicCommit(fd_.get(), pset, flags, this);
   if (ret < 0) {
@@ -2135,66 +2128,43 @@ int DrmDevice::ReleaseDpyResByMirror(int display_id,
     pset=NULL;
     return ret;
   }
+
   drmModeAtomicFree(pset);
   pset=NULL;
 
-  HWC2_ALOGI("display-id=%d %s-%d Crtc-id=%d Release Mirror Mode Success!.",
+  conn->set_encoder(NULL);
+
+  // 当前crtc资源的display_id 信息需要迁移到另外一个屏幕上
+  int new_display_id = -1;
+  if(crtc->display() == display_id){
+    for(auto &c : connectors_){
+      if(c->display() == display_id){
+        continue;
+      }
+
+      if(c->encoder() && c->encoder()->crtc() == crtc){
+        crtc->set_display(c->display());
+        c->set_hwc_state(HwcConnnectorStete::MIRROR_TO_PRI_CRTC);
+        new_display_id = c->display();
+        char conn_name[50];
+        char property_conn_name[50];
+        snprintf(conn_name,50,"%s-%d:%d:connected",connector_type_str(c->type()),c->type_id(),crtc->id());
+        snprintf(property_conn_name,50,"vendor.hwc.device.display-%d",c->display());
+        property_set(property_conn_name, conn_name);
+        break;
+      }
+    }
+  }
+
+  HWC2_ALOGI("display-id=%d %s-%d Crtc-id=%d(%d->%d) Release Mirror Mode Success! .",
               display_id, connector_type_str(conn->type()),
-              conn->type_id(), crtc->id());
+              conn->type_id(), display_id, new_display_id, crtc->id());
 
   char conn_name[50];
   char property_conn_name[50];
-  snprintf(conn_name,50,"%s-%d:%d:disconnected",connector_type_str(conn->type()),conn->type_id(),crtc->id());
+  snprintf(conn_name,50,"%s-%d:disconnected",connector_type_str(conn->type()),conn->type_id());
   snprintf(property_conn_name,50,"vendor.hwc.device.display-%d",display_id);
   property_set(property_conn_name, conn_name);
-
-  // 休眠/唤醒等电源操作不进行重新绑定操作
-  // 记录当前状态，表明休眠时是存在Mirror Connector
-  // 下次唤醒时需要重新绑定 Mirror Connector
-  if(usage == DmcuReleaseByPowerMode){
-    // 如果存在与当前屏幕绑定的 Mirror Connector
-    // 则保存当前状态，下次唤醒时恢复 Mirror 状态
-    if(store_mirror_conn.size() > 0){
-      mMapMirrorStateStore_[display_id] = store_mirror_conn;
-      for(auto &temp_conn : store_mirror_conn){
-        if (!temp_conn) {
-          continue;
-        }
-        snprintf(conn_name,50,"%s-%d:%d:mirror-disconnected",
-                 connector_type_str(temp_conn->type()),
-                 temp_conn->type_id(),
-                 crtc->id());
-        snprintf(property_conn_name,50,"vendor.hwc.device.display-%d", temp_conn->display());
-        property_set(property_conn_name, conn_name);
-      }
-    }
-  }else{
-    // 4. 重新绑定其他 Connector与 Crtc
-    for(auto temp_conn : store_mirror_conn){
-      int temp_display_id = temp_conn->display();
-      // 4.1 检查 Connector 状态
-      ret = CheckConnectorState(temp_display_id, temp_conn);
-      if (ret) {
-        return ret;
-      }
-
-      // 4.2 获取可用的 crtc 资源
-      DrmCrtc *temp_crtc = NULL;
-      ret = FindAvailableCrtc(temp_display_id, temp_conn, &temp_crtc);
-      if (ret) {
-        return ret;
-      }
-
-      // 4.3 绑定 Connector and Crtc 资源并使能
-      ret = BindConnectorAndCrtc(temp_display_id, temp_conn, temp_crtc);
-      if (ret) {
-        return ret;
-      }
-      HWC2_ALOGI("display-id=%d %s-%d Crtc-id=%d exit Mirror Mode Success! Enter Normal Mode.",
-                  temp_display_id, connector_type_str(temp_conn->type()),
-                  temp_conn->type_id(), temp_crtc->id());
-    }
-  }
 
   return 0;
 }
