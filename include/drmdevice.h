@@ -174,7 +174,7 @@ class DrmDevice {
   // 获取可用的 Crtc 资源
   int FindAvailableCrtc(int display_id, DrmConnector *conn, DrmCrtc** out_crtc);
   // 获取可用的 Crtc资源, 寻找空闲资源
-  int FindAvailableCrtcByFirst(int display_id, DrmConnector *conn, DrmCrtc** out_crtc);
+  int FindAvailableCrtcByFirst(int display_id, DrmConnector *conn, DrmCrtc** out_crtc, bool check_crtc_cap = false);
   // 获取可用的 Crtc 资源，寻找可Mirror的资源
   int FindAvailableCrtcByMirror(int display_id, DrmConnector *conn, DrmCrtc** out_crtc);
   // 获取可用的 Crtc 资源， 竞争资源

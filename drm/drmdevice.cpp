@@ -1442,10 +1442,11 @@ int DrmDevice::CheckConnectorState(int display_id, DrmConnector *conn){
 
 // 获取可用的 Crtc 资源
 int DrmDevice::FindAvailableCrtc(int display_id, DrmConnector *conn, DrmCrtc **out_crtc){
-  // 1. 第一次遍历所有可获取的空闲Crtc资源
-  int ret = FindAvailableCrtcByFirst(display_id, conn, out_crtc);
-  if(!ret)
+  // 1. 第一次遍历所有可获取的空闲Crtc资源,执行 crtc 的最大输出能力检查
+  int ret = FindAvailableCrtcByFirst(display_id, conn, out_crtc, true);
+  if(!ret){
     return ret;
+  }
 
   // 2. 尝试使用 ConnectorMirror方式
   ret = FindAvailableCrtcByMirror(display_id, conn, out_crtc);
@@ -1453,6 +1454,13 @@ int DrmDevice::FindAvailableCrtc(int display_id, DrmConnector *conn, DrmCrtc **o
     return ret;
   HWC2_ALOGI("Can't find available crtc for display-id=%d with conn[%d] by mirror.",
       display_id, conn->id());
+
+
+  // 3. 第一次遍历所有可获取的空闲Crtc资源，忽略最大支持输出能力检查
+  ret = FindAvailableCrtcByFirst(display_id, conn, out_crtc, false);
+  if(!ret){
+    return ret;
+  }
 
   // 3. 若判断是否存在优先级，进行第二次遍历Crtc资源
   //    -> 若存在，则进行优先级抢占
@@ -1477,11 +1485,19 @@ int DrmDevice::FindAvailableCrtc(int display_id, DrmConnector *conn, DrmCrtc **o
 }
 
 // 获取可用的 Crtc 资源
-int DrmDevice::FindAvailableCrtcByFirst(int display_id, DrmConnector *conn, DrmCrtc **out_crtc){
+int DrmDevice::FindAvailableCrtcByFirst(int display_id, DrmConnector *conn, DrmCrtc **out_crtc, bool check_crtc_cap){
   conn->set_encoder(NULL);
+  // Crtc 匹配需要校验分辨率
+  DrmMode current_mode = conn->current_mode();
+
   for (DrmEncoder *enc : conn->possible_encoders()) {
     for (DrmCrtc *crtc : enc->possible_crtcs()) {
       if(crtc->can_bind(conn->display())){
+        if(check_crtc_cap && CheckCrtcOutputCapability(display_id, crtc, current_mode)){
+          HWC2_ALOGI("CheckCrtc : display-id=%d conn[%d] Skip crtc=%d to try more.\n",
+              display_id, conn->id(), crtc->id());
+          continue;
+        }
         crtc->set_display(conn->display());
         enc->set_crtc(crtc);
         conn->set_encoder(enc);
@@ -1503,6 +1519,12 @@ int DrmDevice::FindAvailableCrtcByFirst(int display_id, DrmConnector *conn, DrmC
       //      -> 若状态正常，则进行优先级抢占
       int ret = CheckConnectorState(temp_display_id, temp_conn);
       if(ret){ // 状态不正常
+        // 检查是否满足
+        if(check_crtc_cap && CheckCrtcOutputCapability(display_id, crtc, current_mode)){
+          HWC2_ALOGI("CheckCrtc : display-id=%d conn[%d] Skip crtc=%d to try more.\n",
+              display_id, conn->id(), crtc->id());
+          continue;
+        }
         // 解绑 temp_conn 与 crtc.
         ReleaseConnectorAndCrtc(temp_display_id,
                                 temp_conn,
@@ -1916,7 +1938,7 @@ int DrmDevice::CheckCrtcOutputCapability(int display_id, DrmCrtc *crtc, DrmMode 
   if(crtc->output_width_property().id() <= 0){
     HWC2_ALOGD_IF_WARN("display-id=%d invalid output_width_property mode id =%d", display_id,
       crtc->output_width_property().id());
-    return -1;
+    return 0;
   }
 
   // 检查 crtc 的输出能力是否可以支持输出当前设置的分辨率，若不支持，则需要切换到支持的分辨率
