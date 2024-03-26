@@ -193,11 +193,12 @@ class DrmDevice {
                             DrmConnector* conn,
                             DrmCrtc* crtc,
                             DrmModeChangeUsage usage);
-
   // 关闭当前 Crtc 与 Connector 资源
   int DisableAllPlaneForCrtc(int display_id, DrmCrtc *crtc,
                              bool commit, drmModeAtomicReqPtr pset);
-
+  // 检查Crtc硬件是否支持输出当前分辨率
+  // VP 可能存在最大输出尺寸限制，比如RK3576 VP1 MaxOutput: 2560x1600
+  int CheckCrtcOutputCapability(int display_id, DrmCrtc *crtc, DrmMode &mode);
 
   UniqueFd fd_;
   int soc_id_;

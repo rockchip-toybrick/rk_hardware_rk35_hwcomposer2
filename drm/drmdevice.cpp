@@ -1659,33 +1659,11 @@ int DrmDevice::BindConnectorAndCrtc(int display_id, DrmConnector* conn, DrmCrtc*
     }
   }
 
+  // 检查 crtc 的输出能力是否可以支持输出当前设置的分辨率，若不支持，则需要切换到支持的分辨率
   if(crtc->output_width_property().id() > 0){
-    // 检查 crtc 的输出能力是否可以支持输出当前设置的分辨率，若不支持，则需要切换到支持的分辨率
-    bool crtc_support_current_mode = true;
-    uint64_t crtc_output_width_max = crtc->get_output_width();
-    uint64_t crtc_output_dclk = crtc->get_output_dlck();
-    // OUTPUT_WIDTH / OUTPUT_DCLK 用来计算VP的输出能力，计算公式为：
-    // 1. 输出分辨率宽度限制： drmModeModeInfo.htotal <= OUTPUT_WIDTH
-    // 2. 输出分辨率高度与刷新率限制：
-    //   drmModeModeInfo.htotal * drmModeModeInfo.vtotal * drmModeModeInfo.vrefresh <= OUTPUT_DCLK
-    if(current_mode.h_display() >  crtc_output_width_max){
-      crtc_support_current_mode = false;
-    }
-
-    if(current_mode.h_display() *
-      current_mode.v_display() *
-      (uint64_t)current_mode.v_refresh() >  crtc_output_dclk){
-      crtc_support_current_mode = false;
-    }
-
-    if(!crtc_support_current_mode){
-      HWC2_ALOGW("current_mode=%dx%d@%f not support, vp-w=%" PRIu64 " vp-dclk=%" PRIu64  " must to change other mode.",
-                current_mode.h_display(),
-                current_mode.v_display(),
-                current_mode.v_refresh(),
-                crtc_output_width_max,
-                crtc_output_dclk);
-      conn->GetSuitableMode(display_id, crtc_output_width_max, crtc_output_dclk);
+    if(CheckCrtcOutputCapability(display_id, crtc, current_mode)){
+      // 轮询分辨率支持列表，获取支持的分辨率
+      conn->GetSuitableMode(display_id, crtc->get_output_width(), crtc->get_output_dlck());
       current_mode = conn->current_mode();
     }
   }
@@ -1917,6 +1895,50 @@ int DrmDevice::DisableAllPlaneForCrtc(int display_id,
     drmModeAtomicFree(pset);
     pset=NULL;
   }
+  return 0;
+}
+
+// 检查Crtc硬件是否支持输出当前分辨率
+// VP 可能存在最大输出尺寸限制，比如RK3576 VP1 MaxOutput: 2560x1600
+int DrmDevice::CheckCrtcOutputCapability(int display_id, DrmCrtc *crtc, DrmMode &mode){
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
+  if(crtc == NULL){
+    HWC2_ALOGW("display-id=%d crtc is null", display_id);
+    return -1;
+  }
+
+  if(mode.id() <= 0){
+    HWC2_ALOGW("display-id=%d invalid mode id = %d", display_id, mode.id());
+    return -1;
+  }
+
+  // 不存在 output_width_property 属性，则说明底层未上报限制信息
+  if(crtc->output_width_property().id() <= 0){
+    HWC2_ALOGD_IF_WARN("display-id=%d invalid output_width_property mode id =%d", display_id,
+      crtc->output_width_property().id());
+    return -1;
+  }
+
+  // 检查 crtc 的输出能力是否可以支持输出当前设置的分辨率，若不支持，则需要切换到支持的分辨率
+  uint64_t crtc_output_width_max = crtc->get_output_width();
+  uint64_t crtc_output_dclk = crtc->get_output_dlck();
+  // OUTPUT_WIDTH / OUTPUT_DCLK 用来计算VP的输出能力，计算公式为：下面1/2判断
+  // 1. 输出分辨率宽度限制： drmModeModeInfo.htotal <= OUTPUT_WIDTH
+  if(static_cast<uint64_t>(mode.h_display()) >  crtc_output_width_max){
+    HWC2_ALOGI("display-id=%d crtc-id=%d port-id=%d sup_max_width=%" PRIu64 " < req_mode_w=%d", display_id,
+      crtc->id(), crtc->get_port_id(), crtc_output_width_max, mode.h_display());
+      return -1;
+  }
+
+  // 2. 输出分辨率高度与刷新率限制：
+  //   drmModeModeInfo.htotal * drmModeModeInfo.vtotal * drmModeModeInfo.vrefresh <= OUTPUT_DCLK
+  uint64_t req_dclk = mode.h_display() * mode.v_display() * (uint64_t)mode.v_refresh();
+  if( req_dclk >  crtc_output_dclk){
+    HWC2_ALOGI("display-id=%d crtc-id=%d port-id=%d sup_dclk=%" PRIu64 " < req_clk=%" PRIu64 " = %d(w) * %d(h) * %f(fps)", display_id,
+      crtc->id(), crtc->get_port_id(), crtc_output_dclk, req_dclk, mode.h_display(), mode.v_display(), mode.v_refresh());
+    return -1;
+  }
+
   return 0;
 }
 
