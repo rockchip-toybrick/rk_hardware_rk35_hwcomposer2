@@ -1790,7 +1790,11 @@ HWC2::Error DrmHwcTwo::HwcDisplay::PresentVirtualDisplay(int32_t *retire_fence) 
 
         im_opt_t imOpt;
         memset(&imOpt, 0x00, sizeof(im_opt_t));
-        imOpt.core = IM_SCHEDULER_RGA3_CORE0 | IM_SCHEDULER_RGA3_CORE1;
+        // 只有RK3588需要指定RGA3核心，因为RGA3支持4G以上地址，以及由于RGA2/RGA3放大算法差异，
+        // 所以需要指定RGA3完成后级放大处理
+        if(gIsRK3588()){
+          imOpt.core = IM_SCHEDULER_RGA3_CORE0 | IM_SCHEDULER_RGA3_CORE1;
+        }
 
         // Call Im2d 格式转换
         im_state = improcess(src, dst, pat, src_rect, dst_rect, pat_rect, 0, NULL, &imOpt, 0);
@@ -3714,7 +3718,7 @@ HWC2::Error DrmHwcTwo::HwcLayer::SetLayerBuffer(buffer_handle_t buffer,
    *    2.1. acquire_fence |= CACHE_SLOT << RK_BUFFER_SLOT_SHIFT
    *    2.2. acquire_fence |= (USE_CACHE or USE_UNCACHE) << RK_BUFFER_CACHE_SHIFT
    *    2.3  acquire_fence = acquire_fence * (-1)
-   * 
+   *
    *  on Android14,
    *    slot is counting form 0 to 64,
    *  on pervious Android version,

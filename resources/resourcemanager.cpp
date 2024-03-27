@@ -708,7 +708,11 @@ int ResourceManager::OutputWBBuffer(int display_id,
 
   im_opt_t imOpt;
   memset(&imOpt, 0x00, sizeof(im_opt_t));
-  imOpt.core = IM_SCHEDULER_RGA3_CORE0 | IM_SCHEDULER_RGA3_CORE1;
+  // 只有RK3588需要指定RGA3核心，因为RGA3支持4G以上地址，以及由于RGA2/RGA3放大算法差异，
+  // 所以需要指定RGA3完成后级放大处理
+  if(gIsRK3588()){
+    imOpt.core = IM_SCHEDULER_RGA3_CORE0 | IM_SCHEDULER_RGA3_CORE1;
+  }
 
   // Call Im2d 格式转换
   im_state = improcess(src, dst, pat, src_rect, dst_rect, pat_rect, 0, NULL, &imOpt, IM_SYNC);
