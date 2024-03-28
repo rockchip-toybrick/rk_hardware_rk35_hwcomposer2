@@ -1106,12 +1106,19 @@ int Vop3588::MatchPlane(std::vector<DrmCompositionPlane> *composition_planes,
                             }
                           }
 
+                          // SWPQ 不支持AFBC输入，所以需要关闭AFBC
+                          if(ctx.state.bUseSwPq){
+                            if((*iter_layer)->bFbTarget_){
+                              (*iter_layer)->bAfbcd_ = false;
+                            }
+                          }
+
                           // Format
                           if((*iter_plane)->is_support_format((*iter_layer)->uFourccFormat_,(*iter_layer)->bAfbcd_)){
                             bNeed = true;
                           }else{
                             // FB-Target 如果匹配失败，尝试反转AFBC压缩格式再匹配
-                            if((*iter_layer)->bFbTarget_ &&
+                            if((*iter_layer)->bFbTarget_ && ctx.state.bUseSwPq == false &&
                                (hwc_get_int_property("vendor.gralloc.no_afbc_for_fb_target_layer","0") == 0) &&
                                (*iter_plane)->is_support_format((*iter_layer)->uFourccFormat_,!(*iter_layer)->bAfbcd_)){
                                 (*iter_layer)->bAfbcd_ = !(*iter_layer)->bAfbcd_;
@@ -3670,7 +3677,7 @@ void Vop3588::InitStateContext(
 
   ctx.state.iVopMaxOverlay4KPlane = hwc_get_int_property("vendor.hwc.vop_max_overlay_4k_plane","0");
   ctx.state.bRgaPolicyEnable = hwc_get_int_property("vendor.hwc.enable_rga_policy","1") > 0;
-
+  ctx.state.bUseSwPq = false;
   HWC2_ALOGD_IF_DEBUG("bMultiAreaEnable=%d, bMultiAreaScaleEnable=%d iVopMaxOverlay4KPlane=%d bRgaPolicyEnable=%d",
             ctx.state.bMultiAreaEnable,
             ctx.state.bMultiAreaScaleEnable,
@@ -3849,6 +3856,7 @@ int Vop3588::InitContext(
   // Match policy first
   HWC2_ALOGD_IF_DEBUG("%s=%d ","persist.vendor.tvinput.rkpq.mode", iPqMode);
   if(iPqMode > 0){
+    ctx.state.bUseSwPq = true;
   //   DrmDevice *drm = crtc->getDrmDevice();
   //   DrmConnector *conn = drm->GetConnectorForDisplay(crtc->display());
     ctx.state.setHwcPolicy.insert(HWC_GLES_POLICY);

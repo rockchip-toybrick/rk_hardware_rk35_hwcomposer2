@@ -192,6 +192,7 @@ typedef struct StateContext{
   // Video state
   bool bLargeVideo=false;
   bool bDisableFBAfbcd=false;
+  bool bUseSwPq=false;
 
   // Soc id
   int iSocId=0;
