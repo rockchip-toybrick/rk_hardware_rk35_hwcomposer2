@@ -1355,7 +1355,7 @@ int Vop3528::TryRgaOverlayPolicy(
         if(drmLayer->bUseRga_){
           im_opt_t imOpt;
           memset(&imOpt, 0x00, sizeof(im_opt_t));
-          imOpt.core = IM_SCHEDULER_RGA3_CORE0 | IM_SCHEDULER_RGA3_CORE1;
+          // imOpt.core = IM_SCHEDULER_RGA3_CORE0 | IM_SCHEDULER_RGA3_CORE1;
 
           IM_STATUS im_state = improcess(src, dst, pat, src_rect, dst_rect, pat_rect, 0, &releaseFence, &imOpt, usage | IM_ASYNC);
           if(im_state != IM_STATUS_SUCCESS){
