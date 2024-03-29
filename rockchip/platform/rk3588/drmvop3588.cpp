@@ -1673,6 +1673,16 @@ int Vop3588::TryRgaOverlayPolicy(
           //     continue;
           //   }
           // }
+          // RGA策略目前无法达到8K60fps合成，测试只能到40-50fps
+          // 由于3588默认限制最大4K UI，如果屏幕分辨率不大于4K，则限制RGA最大分辨率为8K的一半，
+          // 超出此分辨率的走GPU合成以保证帧率
+          DrmDevice *drm = crtc->getDrmDevice();
+          DrmConnector *conn = drm->GetConnectorForDisplay(crtc->display());
+          if(conn && conn->current_mode().h_display() <= 3840 && drmLayer->iWidth_*drmLayer->iHeight_ > 7680*4320/2){
+            HWC2_ALOGD_IF_DEBUG("iWidth_=%d, iHeight_=%d Performance may be insufficient with RGA Policy, fallback to GPU.",
+                        drmLayer->iWidth_,drmLayer->iHeight_);
+            continue;
+          }
 
           // TODO: RGA 最大宽度仅支持8176
           if(drmLayer->iWidth_ > 8176){
