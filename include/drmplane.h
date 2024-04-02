@@ -35,12 +35,18 @@ typedef struct tagPlaneGroup{
   uint64_t share_id;
   uint64_t win_type;
   int64_t possible_display_=-1;
+
   //RK3528 延迟使用
   uint32_t delay_use_cnt;
 	std::vector<DrmPlane*> planes;
 
   uint32_t current_crtc_ = 0;
-  uint32_t uboot_bind_crtc_id = 0;
+
+  // RK3576/RK3528/RK3562 平台支持的动态迁移功能
+  int64_t next_possible_display_ = -1;
+  uint32_t next_crtc_ = 0;
+  bool will_disable_;
+
 
   //RK3399用于判断AFBC图层是否已使用
   int afbc_layer_used = -1;
@@ -88,6 +94,24 @@ typedef struct tagPlaneGroup{
     return true;
   }
 
+  // 设置下一个迁移的 crtc 配置
+  bool set_next_crtc(uint32_t crtc_mask, int64_t display){
+    next_crtc_ = crtc_mask;
+    next_possible_display_ = display;
+
+    if(current_crtc_ == 0 || next_crtc_ == current_crtc_){
+      current_crtc_ = crtc_mask;
+      possible_display_ = next_possible_display_;
+    }
+
+    return true;
+  }
+
+  bool is_will_disable() { return next_crtc_ != current_crtc_; }
+  void complete_disable() {
+       current_crtc_ = next_crtc_;
+       possible_display_ = next_possible_display_;
+  }
 }PlaneGroup;
 
 
@@ -453,7 +477,6 @@ class DrmPlane {
   inline uint32_t get_possible_crtc_mask() const{ return possible_crtc_mask_; }
   inline void set_current_crtc_bit(uint32_t current_crtc) { current_crtc_ = current_crtc;}
   inline uint32_t get_current_crtc_bit() const{ return current_crtc_; }
-  inline uint32_t get_uboot_bind_crtc_id() const{ return uboot_bind_crtc_id_; }
 
   // 8K
   int get_input_w_max_8k();
@@ -472,7 +495,6 @@ class DrmPlane {
   uint32_t id_;
 
   uint32_t possible_crtc_mask_;
-  uint64_t uboot_bind_crtc_id_ = 0;
   uint32_t current_crtc_;
 
   uint32_t type_;

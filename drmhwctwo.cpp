@@ -1433,7 +1433,16 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidatePlanes() {
   std::vector<PlaneGroup *> all_plane_groups = drm->GetPlaneGroups();
   for(auto &plane_group : all_plane_groups){
     if(plane_group->acquire(1 << crtc_->pipe(), handle_)){
-      plane_groups.push_back(plane_group);
+      // RK3576平台动态迁移功能，如果需要disable的图层则不进行策略匹配
+      if(plane_group->is_will_disable() == false){
+        plane_groups.push_back(plane_group);
+      }else{
+        HWC2_ALOGD_IF_DEBUG("%s will disable, display-id(%" PRIi64 "->%" PRIi64 ") crtc_mask(0x%" PRIx32 " -> 0x%" PRIx32 ")",
+            plane_group->planes[0]->name(),
+            plane_group->possible_display_, plane_group->next_possible_display_,
+            plane_group->current_crtc_, plane_group->next_crtc_);
+        continue;
+      }
     }
   }
 

@@ -145,6 +145,7 @@ struct SidebandState {
                          DrmDisplayComposition *display_comp,
                          bool is_sideband_collect);
   int UpdateModeSetState();
+  int UpdateDrmPlaneAssignState();
   int UpdateSidebandState();
   int ApplyDpms(DrmDisplayComposition *display_comp);
   int DisablePlanes(DrmDisplayComposition *display_comp);
@@ -225,6 +226,9 @@ struct SidebandState {
 
   // 丢帧模式
   bool drop_mode_ = false;
+
+  // 动态DrmPlane迁移需要记录DrmPlane的disable信息
+  std::vector<uint64_t> will_disable_drmplane_types;
 
 #ifdef USE_LIBPQ
   // Sideband YUV444 tmp buffer

@@ -198,6 +198,12 @@ int DrmDisplayComposition::DisableUnusedPlanes() {
               (*iter)->delay_use_cnt--;
             }
         }
+        if((*iter)->is_will_disable()){
+            ALOGD_IF(LogLevel(DBG_DEBUG),"DisableUnusedPlanes plane_groups plane id=%d (%s)",
+                      (*iter_plane)->id(),(*iter_plane)->name());
+            AddPlaneDisable(*iter_plane);
+            update_drmplane_assign_ = true;
+        }
       }
     }
   }

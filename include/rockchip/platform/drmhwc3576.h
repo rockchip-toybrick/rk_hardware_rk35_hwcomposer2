@@ -54,7 +54,7 @@ class Hwc3576 : public HwcPlatform::Platform {
   bool SupportPlatform(uint32_t soc_id);
   // Try to assign DrmPlane to display
   int TryAssignPlane(DrmDevice* drm);
-  int assignPlaneByHWC(DrmDevice* drm);
+  int assignPlaneByHWC(DrmDevice* drm, uint64_t connected_port_mask);
  private:
 
 };

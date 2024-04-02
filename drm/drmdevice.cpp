@@ -700,7 +700,16 @@ std::tuple<int, int> DrmDevice::Init(int num_displays) {
     std::tie(ret, share_id) = plane->share_id_property().value();
     std::tie(ret, zpos) = plane->zpos_property().value();
     std::tie(ret, crtc_id) = plane->crtc_property().value();
-
+    uint32_t current_crtc_mask = 0;
+    // 将 uboot 阶段的 crtc 配置同步到 PlaneGroups中;
+    if(crtc_id > 0){
+      for (auto &crtc : crtcs_) {
+        if (crtc->id() == crtc_id){
+          current_crtc_mask = (1 << crtc->pipe());
+          break;
+        }
+      }
+    }
     std::vector<PlaneGroup*>::const_iterator iter;
     for (iter = plane_groups_.begin();
      iter != plane_groups_.end(); ++iter){
@@ -717,8 +726,7 @@ std::tuple<int, int> DrmDevice::Init(int num_displays) {
       plane_group->share_id = share_id;
       plane_group->win_type = plane->win_type();
       plane_group->planes.push_back(plane.get());
-      plane_group->uboot_bind_crtc_id = plane->get_uboot_bind_crtc_id();
-      plane_group->current_crtc_ = 0;
+      plane_group->current_crtc_ = current_crtc_mask;
       plane_groups_.push_back(plane_group);
     }
 
@@ -2180,6 +2188,15 @@ int DrmDevice::ReleaseDpyResByNormal(int display_id,
   snprintf(conn_name,50,"%s-%d:%d:disconnected",connector_type_str(conn->type()),conn->type_id(),crtc->id());
   snprintf(property_conn_name,50,"vendor.hwc.device.display-%d",display_id);
   property_set(property_conn_name, conn_name);
+
+  // 释放DrmPlane相关资源
+  for(auto &plane_group : plane_groups_){
+    uint32_t crtc_mask = 1 << crtc->pipe();
+    if(!plane_group->acquire(crtc_mask))
+        continue;
+    plane_group->current_crtc_ = 0;
+  }
+
   return 0;
 }
 

@@ -39,19 +39,75 @@ bool Hwc3576::SupportPlatform(uint32_t soc_id){
   }
   return false;
 }
-
-struct assign_plane_group_3576{
-  int assigned_crtc_id;
-  uint64_t drm_type_mask;
-  bool have_assigin;
-};
-struct assign_plane_group_3576 assign_mask_default_3576[] = {
-  { -1, PLANE_RK3576_ALL_CLUSTER0_MASK | PLANE_RK3576_ALL_ESMART0_MASK, false},
-  { -1, PLANE_RK3576_ALL_CLUSTER1_MASK | PLANE_RK3576_ALL_ESMART1_MASK, false},
-  { -1, PLANE_RK3576_ALL_ESMART2_MASK  | PLANE_RK3576_ALL_ESMART3_MASK, false},
+enum DrmRK3576Port{
+  DRM_RK3576_VP0 = 0,
+  DRM_RK3576_VP1 = 1,
+  DRM_RK3576_VP2 = 2,
 };
 
-int Hwc3576::assignPlaneByHWC(DrmDevice* drm){
+enum DrmRK3576PortMask{
+  DRM_RK3576_VP0_MASK = 1 << DRM_RK3576_VP0,
+  DRM_RK3576_VP1_MASK = 1 << DRM_RK3576_VP1,
+  DRM_RK3576_VP2_MASK = 1 << DRM_RK3576_VP2,
+};
+
+std::map<uint64_t, std::map<uint64_t, uint64_t>> gMapPlanePolicy = {
+  { DRM_RK3576_VP0_MASK,
+    {
+      {DRM_RK3576_VP0, {PLANE_RK3576_ALL_CLUSTER_MASK|PLANE_RK3576_ALL_ESMART0_MASK|PLANE_RK3576_ALL_ESMART2_MASK}}
+    }
+  },
+  { DRM_RK3576_VP1_MASK,
+    {
+      {DRM_RK3576_VP1, {PLANE_RK3576_ALL_CLUSTER_MASK|PLANE_RK3576_ALL_ESMART1_MASK|PLANE_RK3576_ALL_ESMART3_MASK}}
+    }
+  },
+  { DRM_RK3576_VP2_MASK,
+    {
+      {DRM_RK3576_VP2, {PLANE_RK3576_ALL_ESMART_MASK}}
+    }
+  },
+  { DRM_RK3576_VP0_MASK | DRM_RK3576_VP1_MASK,
+    {
+      {DRM_RK3576_VP0, {PLANE_RK3576_ALL_CLUSTER0_MASK|PLANE_RK3576_ALL_ESMART0_MASK|PLANE_RK3576_ALL_ESMART2_MASK}},
+      {DRM_RK3576_VP1, {PLANE_RK3576_ALL_CLUSTER1_MASK|PLANE_RK3576_ALL_ESMART1_MASK|PLANE_RK3576_ALL_ESMART3_MASK}}
+    }
+  },
+  {DRM_RK3576_VP0_MASK | DRM_RK3576_VP2_MASK,
+    {
+      {DRM_RK3576_VP0, PLANE_RK3576_ALL_CLUSTER_MASK|PLANE_RK3576_ALL_ESMART0_MASK|PLANE_RK3576_ALL_ESMART2_MASK},
+      {DRM_RK3576_VP2, PLANE_RK3576_ALL_ESMART1_MASK|PLANE_RK3576_ALL_ESMART3_MASK}
+    }
+  },
+  {DRM_RK3576_VP1_MASK | DRM_RK3576_VP2_MASK,
+    {
+      {DRM_RK3576_VP1_MASK, PLANE_RK3576_ALL_CLUSTER_MASK|PLANE_RK3576_ALL_ESMART1_MASK|PLANE_RK3576_ALL_ESMART3_MASK},
+      {DRM_RK3576_VP2_MASK, PLANE_RK3576_ALL_ESMART0_MASK|PLANE_RK3576_ALL_ESMART2_MASK}
+    }
+  },
+  {DRM_RK3576_VP0_MASK | DRM_RK3576_VP1_MASK | DRM_RK3576_VP2_MASK,
+    {
+      {DRM_RK3576_VP0_MASK, PLANE_RK3576_ALL_CLUSTER0_MASK|PLANE_RK3576_ALL_ESMART0_MASK},
+      {DRM_RK3576_VP1_MASK, PLANE_RK3576_ALL_CLUSTER1_MASK|PLANE_RK3576_ALL_ESMART1_MASK},
+      {DRM_RK3576_VP2_MASK, PLANE_RK3576_ALL_ESMART2_MASK|PLANE_RK3576_ALL_ESMART3_MASK}
+    }
+  },
+};
+
+int Hwc3576::assignPlaneByHWC(DrmDevice* drm, uint64_t connected_port_mask){
+
+  if(connected_port_mask == 0){
+      HWC2_ALOGW("connected_port_mask = 0x%" PRIx64 ", must disable all DrmPlane ");
+      return 0;
+  }
+
+  // 根据已连接的 port_mask 选择图层分配策略
+  auto map_policy = gMapPlanePolicy.find(connected_port_mask);
+  if(map_policy == gMapPlanePolicy.end()){
+      HWC2_ALOGW("can't find port_mask = 0x%" PRIx64 ", plaease check connected port.");
+      return -1;
+  }
+
   std::vector<PlaneGroup*> all_plane_group = drm->GetPlaneGroups();
   for (auto &conn : drm->connectors()) {
     int display_id = conn->display();
@@ -64,86 +120,39 @@ int Hwc3576::assignPlaneByHWC(DrmDevice* drm){
         HWC2_ALOGE("display=%d crtc is NULL.", display_id);
         continue;
     }
-    
-    uint32_t crtc_mask = 1<<crtc->pipe();
 
-    uint64_t plane_mask=0;
-    //热插拔等二次分配流程
-    for(int i = 0; i < ARRAY_SIZE(assign_mask_default_3576);i++){
-      if(crtc->id() == assign_mask_default_3576[i].assigned_crtc_id){
-        plane_mask = assign_mask_default_3576[i].drm_type_mask;
-        break;
-      }
+    uint32_t crtc_mask = 1 << crtc->pipe();
+    uint64_t port_mask = 1 << crtc->get_port_id();
+
+    if((connected_port_mask & port_mask) == 0){
+        HWC2_ALOGW("display=%d connected_port_mask=0x%" PRIx64 " current_port_mask=0x%" PRIx64,
+                    display_id, connected_port_mask, port_mask);
+        continue;
     }
 
-    // 1. 将所有存在 uboot_bind_crtc_id 的 PlaneGroup 进行分配
-    if(plane_mask == 0){
-      for(auto &plane_group : all_plane_group){
-        // 获取 uboot 阶段绑定的 crtc id
-        if(plane_group->uboot_bind_crtc_id == crtc->id()){
-          for(int i = 0; i < ARRAY_SIZE(assign_mask_default_3576);i++){
-            // 将绑定的crtc id 对应的一组DrmPlane分配给对应的crtc
-            if(assign_mask_default_3576[i].have_assigin == false && 
-              (plane_group->win_type & assign_mask_default_3576[i].drm_type_mask)>0){
-              plane_mask = assign_mask_default_3576[i].drm_type_mask;
-              assign_mask_default_3576[i].assigned_crtc_id = crtc->id();
-              assign_mask_default_3576[i].have_assigin = true;
-              break;
-            }
-          }
-        }
-      }
-    }
-
-    // 2. 上一步未分配的 DrmPlane 组进行最终分配
-    if(plane_mask == 0){
-      for(int i = 0; i < ARRAY_SIZE(assign_mask_default_3576);i++){
-
-        // 找到还未分配的 DrmPlane 组
-        if(assign_mask_default_3576[i].have_assigin == false){
-          uint64_t allow_assigin_mask = 0;
-          // 遍历所有可分配到 crtc 的 drmplane, 获得 allow_assigin_mask
-          for(auto &plane_group : all_plane_group){
-            if((crtc_mask & plane_group->possible_crtcs) > 0){
-              for(auto& drm_plane : plane_group->planes){
-                allow_assigin_mask |= drm_plane->win_type();
-              }
-            }
-          }
-          uint64_t will_assigin_mask = assign_mask_default_3576[i].drm_type_mask;
-          if((allow_assigin_mask & will_assigin_mask) == will_assigin_mask){
-              plane_mask = assign_mask_default_3576[i].drm_type_mask;
-              assign_mask_default_3576[i].assigned_crtc_id = crtc->id();
-              assign_mask_default_3576[i].have_assigin = true;
-              break;
-          }
-        }
-      }
-    }
-
-    ALOGI_IF(DBG_INFO,"%s,line=%d, crtc-id=%d mask=0x%x ,plane_mask=0x%" PRIx64 ,__FUNCTION__,__LINE__,
-             crtc->id(),crtc_mask,plane_mask);
+    uint64_t plane_mask = map_policy->second[crtc->get_port_id()];
+    HWC2_ALOGI("display=%d crtc-id=%d port_mask=0x%" PRIx64" plane_mask=0x%" PRIx64 ,
+             display_id, crtc->id(), port_mask, plane_mask);
     for(auto &plane_group : all_plane_group){
       uint64_t plane_group_win_type = plane_group->win_type;
       if((plane_mask & plane_group_win_type) == plane_group_win_type){
-        plane_group->set_current_crtc(crtc_mask, display_id);
-      }else{
-        plane_group->current_crtc_ &= ~crtc_mask;
+        plane_group->set_next_crtc(crtc_mask, display_id);
       }
     }
   }
 
   for(auto &plane_group : all_plane_group){
-    ALOGI_IF(DBG_INFO,"%s,line=%d, name=%s cur_crtcs_mask=0x%x",__FUNCTION__,__LINE__,
-             plane_group->planes[0]->name(),plane_group->current_crtc_);
+    HWC2_ALOGI("name=%s display=(%" PRIi64 " -> %" PRIi64 ") crtcs_mask=(0x%x -> 0x%x)",
+      plane_group->planes[0]->name(), plane_group->possible_display_,
+      plane_group->next_possible_display_,
+      plane_group->current_crtc_, plane_group->next_crtc_);
   }
   return 0;
 }
 
 int Hwc3576::TryAssignPlane(DrmDevice* drm){
   int ret = -1;
-  bool exist_plane_mask = false;
-
+  uint64_t connected_port_mask = 0;
   for (auto &conn : drm->connectors()) {
     int display_id = conn->display();
     if(conn->state() != DRM_MODE_CONNECTED)
@@ -154,9 +163,10 @@ int Hwc3576::TryAssignPlane(DrmDevice* drm){
       continue;
     }
 
-    ret = assignPlaneByHWC(drm);
+    connected_port_mask |= (1 << crtc->get_port_id());
   }
 
+  ret = assignPlaneByHWC(drm, connected_port_mask);
   return ret;
 }
 }

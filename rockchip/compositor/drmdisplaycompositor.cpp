@@ -318,6 +318,7 @@ int DrmDisplayCompositor::DisablePlanes(DrmDisplayComposition *display_comp) {
     pset=NULL;
     return ret;
   }
+
   drmModeAtomicFree(pset);
   pset=NULL;
   return 0;
@@ -826,6 +827,33 @@ int DrmDisplayCompositor::UpdateModeSetState() {
   return 0;
 }
 
+int DrmDisplayCompositor::UpdateDrmPlaneAssignState() {
+  ATRACE_CALL();
+  AutoLock lock(&lock_, __func__);
+  if (lock.Lock())
+    return -1;
+
+  if(will_disable_drmplane_types.size() == 0){
+    return 0;
+  }
+
+  std::vector<uint64_t> disable_drmplane_types = will_disable_drmplane_types;
+  will_disable_drmplane_types.clear();
+
+  DrmDevice *drm = resource_manager_->GetDrmDevice(display_);
+  std::vector<PlaneGroup*> plane_groups = drm->GetPlaneGroups();
+
+  for(auto &plane_groups : plane_groups){
+    for(auto &drmplane_type : disable_drmplane_types){
+      if(plane_groups->win_type == drmplane_type){
+        plane_groups->complete_disable();
+      }
+    }
+  }
+
+  return 0;
+}
+
 int DrmDisplayCompositor::UpdateSidebandState() {
   ATRACE_CALL();
   AutoLock lock(&lock_, __func__);
@@ -1136,6 +1164,9 @@ int DrmDisplayCompositor::CollectCommitInfo(drmModeAtomicReqPtr pset,
                               layer.bIsPreScale_);
           continue;
         }
+        if(display_comp->update_drmplane_assign()){
+          will_disable_drmplane_types.push_back(plane->win_type());
+        }
       }
 #endif
 
@@ -1182,6 +1213,9 @@ int DrmDisplayCompositor::CollectCommitInfo(drmModeAtomicReqPtr pset,
       if (ret) {
         ALOGE("Failed to add plane %d disable to pset", plane->id());
         continue;
+      }
+      if(display_comp->update_drmplane_assign()){
+        will_disable_drmplane_types.push_back(plane->win_type());
       }
 
       // set async_cmmit = 0
@@ -1526,6 +1560,7 @@ void DrmDisplayCompositor::Commit() {
     GetTimestamp();
     UpdateModeSetState();
     UpdateSidebandState();
+    UpdateDrmPlaneAssignState();
   }
 
   AutoLock lock(&lock_, __func__);
@@ -1819,6 +1854,9 @@ int DrmDisplayCompositor::CommitFrame(DrmDisplayComposition *display_comp,
       if (ret) {
         ALOGE("Failed to add plane %d disable to pset", plane->id());
         break;
+      }
+      if(display_comp->update_drmplane_assign()){
+        will_disable_drmplane_types.push_back(plane->win_type());
       }
       continue;
     }
@@ -2710,6 +2748,9 @@ int DrmDisplayCompositor::CollectVPInfo() {
       if (ret) {
         ALOGE("Failed to add plane %d disable to pset", plane->id());
         continue;
+      }
+      if(current_composition->update_drmplane_assign()){
+        will_disable_drmplane_types.push_back(plane->win_type());
       }
       continue;
     }

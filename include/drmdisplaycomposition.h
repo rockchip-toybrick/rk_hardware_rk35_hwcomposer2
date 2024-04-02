@@ -241,6 +241,7 @@ class DrmDisplayComposition {
 
   void Dump(std::ostringstream *out) const;
 
+  bool update_drmplane_assign() { return update_drmplane_assign_;}
  private:
   bool validate_composition_type(DrmCompositionType desired);
 
@@ -277,6 +278,7 @@ class DrmDisplayComposition {
 
   uint64_t frame_no_ = 0;
   uint64_t display_id_;
+  bool update_drmplane_assign_ = false;
 
   // mutable since we need to acquire in HaveQueuedComposites
   mutable pthread_mutex_t lock_;
