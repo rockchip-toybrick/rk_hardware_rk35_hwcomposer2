@@ -2194,7 +2194,7 @@ int DrmDevice::ReleaseDpyResByNormal(int display_id,
     uint32_t crtc_mask = 1 << crtc->pipe();
     if(!plane_group->acquire(crtc_mask))
         continue;
-    plane_group->current_crtc_ = 0;
+    plane_group->reset();
   }
 
   return 0;

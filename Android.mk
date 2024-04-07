@@ -328,6 +328,7 @@ LOCAL_CFLAGS += \
 endif
 
 # HwProxy aidl (hw_output)
+BOARD_USES_HWC_PROXY_SERVICE := false
 ifeq ($(strip $(BOARD_USES_HWC_PROXY_SERVICE)),true)
 LOCAL_SHARED_LIBRARIES += \
 	rockchip.hwc.proxy.aidl-V1-ndk \

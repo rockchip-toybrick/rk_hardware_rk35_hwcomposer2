@@ -85,12 +85,15 @@ typedef struct tagPlaneGroup{
       return false;
     }
     current_crtc_ = crtc_mask;
+    next_crtc_ = crtc_mask;
     return true;
   }
 
   bool set_current_crtc(uint32_t crtc_mask, int64_t display){
     current_crtc_ = crtc_mask;
     possible_display_ = display;
+    next_crtc_ = crtc_mask;
+    next_possible_display_ = display;
     return true;
   }
 
@@ -109,8 +112,15 @@ typedef struct tagPlaneGroup{
 
   bool is_will_disable() { return next_crtc_ != current_crtc_; }
   void complete_disable() {
-       current_crtc_ = next_crtc_;
-       possible_display_ = next_possible_display_;
+    current_crtc_ = next_crtc_;
+    possible_display_ = next_possible_display_;
+  }
+
+  void reset() {
+    current_crtc_ = 0;
+    possible_display_ = -1;
+    next_crtc_ = 0;
+    next_possible_display_ = -1;
   }
 }PlaneGroup;
 
