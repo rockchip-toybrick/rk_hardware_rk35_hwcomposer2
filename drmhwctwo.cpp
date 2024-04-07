@@ -708,7 +708,12 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ChosePreferredConfig() {
   if (err != HWC2::Error::None || !num_configs)
     return err;
 
-  err = SetActiveConfig(connector_->active_mode().id());
+
+  if(ctx_.bStandardSwitchResolution){
+    err = SetActiveConfig(connector_->active_mode().id());
+  }else{
+    err = SetActiveConfig(0);
+  }
   return err;
 }
 
@@ -860,7 +865,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayAttribute(hwc2_config_t config,
                                return m.id() == config;
                              });
     if (mode == sf_modes_.end()) {
-      ALOGE("Could not find active mode for %d", config);
+      HWC2_ALOGE("Could not find active mode for %d", config);
       return HWC2::Error::BadConfig;
     }
 
@@ -911,6 +916,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayAttribute(hwc2_config_t config,
        && config < vrr_mode.size()) {
       vrefresh = vrr_mode[config];
     }
+
     auto attribute = static_cast<HWC2::Attribute>(attribute_in);
     switch (attribute) {
       case HWC2::Attribute::Width:
@@ -962,6 +968,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayConfigs(uint32_t *num_configs,
       }
     }
   }
+
   if(ctx_.bStandardSwitchResolution){
     // Since the upper layers only look at vactive/hactive/refresh, height and
     // width, it doesn't differentiate interlaced from progressive and other
@@ -2022,7 +2029,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetActiveConfig(hwc2_config_t config) {
                                return m.id() == config;
                              });
     if (mode == sf_modes_.end()) {
-      ALOGE("Could not find active mode for %d", config);
+      HWC2_ALOGE("Could not find active mode for %d", config);
       return HWC2::Error::BadConfig;
     }
 
@@ -2072,6 +2079,17 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetActiveConfig(hwc2_config_t config) {
       client_layer_.SetLayerSourceCrop(source_crop);
 
     }else{
+      if(bVrrDisplay_){
+        // VRR
+        HWC2::Error error = UpdateRefreshRate(config);
+        if(error != HWC2::Error::None){
+          return error;
+        }
+      }else if(config != 0){
+        HWC2_ALOGE("Could not find active mode for %d", config);
+        return HWC2::Error::BadConfig;
+      }
+
       // Setup the client layer's dimensions
       hwc_rect_t display_frame = {.left = 0,
                                   .top = 0,
@@ -2084,8 +2102,6 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetActiveConfig(hwc2_config_t config) {
                                 .bottom = ctx_.framebuffer_height + 0.0f};
       client_layer_.SetLayerSourceCrop(source_crop);
     }
-    // VRR
-    UpdateRefreshRate(config);
   }
 
   return HWC2::Error::None;
@@ -2105,6 +2121,9 @@ HWC2::Error DrmHwcTwo::HwcDisplay::UpdateRefreshRate(hwc2_config_t config) {
                   handle_, config, refresh_rate);
       return HWC2::Error::BadConfig;
     }
+  }else{
+      HWC2_ALOGE("Could not find active mode for %d", config);
+      return HWC2::Error::BadConfig;
   }
 
   return HWC2::Error::BadConfig;
