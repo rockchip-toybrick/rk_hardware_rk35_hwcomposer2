@@ -352,32 +352,36 @@ int DrmCrtc::Init() {
     }
   }
 
-  int variable_refresh_rate = 0;
-  int max_refresh_rate = 0;
-  int min_refresh_rate = 0;
+  // variable_refresh_rate_ ： 为用户设置给驱动的请求值
+  // max_refresh_rate_ ： VRR 支持的最大刷新率
+  // min_refresh_rate_ ： VRR 支持的最小刷新率
+  // VRR 使能条件： variable_refresh_rate_value_ > 0 &&
+  //               min_refresh_rate_value_ > 0 &&
+  //               max_refresh_rate_value_ > min_refresh_rate_value_
   ret = drm_->GetCrtcProperty(*this, "variable refresh rate", &variable_refresh_rate_);
   if (ret)
     ALOGE("Could not get variable_refresh_rate property");
   else{
-    std::tie(ret,variable_refresh_rate) = variable_refresh_rate_.value();
+    std::tie(ret,variable_refresh_rate_value_) = variable_refresh_rate_.value();
   }
   ret = drm_->GetCrtcProperty(*this, "max refresh rate", &max_refresh_rate_);
   if (ret)
     ALOGE("Could not get max_refresh_rate property");
   else{
-    std::tie(ret,max_refresh_rate) = max_refresh_rate_.value();
+    std::tie(ret,max_refresh_rate_value_) = max_refresh_rate_.value();
   }
   ret = drm_->GetCrtcProperty(*this, "min refresh rate", &min_refresh_rate_);
   if (ret)
     ALOGE("Could not get min_refresh_rate_ property");
   else{
-    std::tie(ret,min_refresh_rate) = min_refresh_rate_.value();
+    std::tie(ret,min_refresh_rate_value_) = min_refresh_rate_.value();
   }
 
-  HWC2_ALOGI("crtc-id=%d vrr=%d, maxrr=%d minrr=%d",id_,
-                                         variable_refresh_rate,
-                                         max_refresh_rate,
-                                         min_refresh_rate);
+  HWC2_ALOGI("crtc-id=%d vrr=%" PRIu64 ", maxrr=%" PRIu64 " minrr=%" PRIu64 ", VRR %s",id_,
+                                         variable_refresh_rate_value_,
+                                         max_refresh_rate_value_,
+                                         min_refresh_rate_value_,
+                                         (is_vrr() ? "Enable" : "Disable"));
 
   ret = drm_->GetCrtcProperty(*this, "HDR_EXT_DATA", &hdr_ext_data_);
   if (ret)

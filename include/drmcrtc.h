@@ -83,7 +83,7 @@ class DrmCrtc {
   const DrmProperty &is_virtual() const;
 
   DrmDevice *getDrmDevice(){ return drm_; }
-  bool is_vrr(){ return variable_refresh_rate().id() > 0; };
+  bool is_vrr(){ return (max_refresh_rate_value_ > 0) && (min_refresh_rate_value_ > 0) && (max_refresh_rate_value_ > min_refresh_rate_value_); };
   bool is_virtual_crtc() { return is_virtual().id() > 0;};
 
  private:
@@ -123,6 +123,10 @@ class DrmCrtc {
   DrmProperty cubic_lut_size_property_;
   DrmProperty output_width_property_;
   DrmProperty output_dclk_property_;
+  // VRR 相关属性
+  // variable_refresh_rate_ ： 为用户设置给驱动的请求值
+  // max_refresh_rate_ ： VRR 支持的最大刷新率
+  // min_refresh_rate_ ： VRR 支持的最小刷新率
   DrmProperty variable_refresh_rate_;
   DrmProperty max_refresh_rate_;
   DrmProperty min_refresh_rate_;
@@ -141,6 +145,10 @@ class DrmCrtc {
   uint64_t plane_mask_=0;
   // hwc_plane_mask_ will be set by DrmHwc
   uint64_t hwc_plane_mask_=0;
+
+  uint64_t variable_refresh_rate_value_ = 0;
+  uint64_t max_refresh_rate_value_ = 0;
+  uint64_t min_refresh_rate_value_ = 0;
 };
 }  // namespace android
 
