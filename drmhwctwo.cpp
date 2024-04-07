@@ -2647,6 +2647,10 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetContentType(int32_t contentType) {
 HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayIdentificationData(
     uint8_t *outPort, uint32_t *outDataSize, uint8_t *outData) {
   HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ,handle_);
+  if(!resource_manager_->GetEnableEdidReport()){
+    HWC2_ALOGI("vendor.hwc.enable_edid_report = 0, disable GetDisplayIdentificationData support.");
+    return HWC2::Error::Unsupported;
+  }
   supported(__func__);
 
   auto blob = connector_->GetEdidBlob();

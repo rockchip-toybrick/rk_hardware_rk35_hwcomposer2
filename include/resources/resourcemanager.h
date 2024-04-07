@@ -118,6 +118,7 @@ class ResourceManager {
   bool IsDynamicDisplayMode() const;
   bool IsSidebandStream2Mode() const;
   int GetCacheBufferLimitSize() const;
+  bool GetEnableEdidReport() const;
 
  private:
   ResourceManager();
@@ -174,6 +175,8 @@ class ResourceManager {
   bool mSidebandStream2Mode_;
   // cache buffer max size limit enable
   int mCacheBufferLimitSize_ = 0;
+  // Enable Edid report by GetDisplayIdentificationData
+  bool mEnableEdidReport_ = false;
 
   mutable std::recursive_mutex mRecursiveMutex;
 };
