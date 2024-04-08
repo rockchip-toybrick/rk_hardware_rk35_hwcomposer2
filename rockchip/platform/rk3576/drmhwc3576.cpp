@@ -97,14 +97,14 @@ std::map<uint64_t, std::map<uint64_t, uint64_t>> gMapPlanePolicy = {
 int Hwc3576::assignPlaneByHWC(DrmDevice* drm, uint64_t connected_port_mask){
 
   if(connected_port_mask == 0){
-      HWC2_ALOGW("connected_port_mask = 0x%" PRIx64 ", must disable all DrmPlane ");
+      HWC2_ALOGW("connected_port_mask = 0, must disable all DrmPlane ");
       return 0;
   }
 
   // 根据已连接的 port_mask 选择图层分配策略
   auto map_policy = gMapPlanePolicy.find(connected_port_mask);
   if(map_policy == gMapPlanePolicy.end()){
-      HWC2_ALOGW("can't find port_mask = 0x%" PRIx64 ", plaease check connected port.");
+      HWC2_ALOGW("can't find port_mask = 0x%" PRIx64 ", plaease check connected port.", connected_port_mask);
       return -1;
   }
 
