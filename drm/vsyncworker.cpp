@@ -129,7 +129,6 @@ void VSyncWorker::Routine() {
   }
 
   int display = display_;
-  std::shared_ptr<VsyncCallback> callback(callback_);
   Unlock();
 
   int64_t timestamp;
@@ -162,6 +161,10 @@ void VSyncWorker::Routine() {
   }
 
   if (!enabled_) return;
+
+  Lock();
+  std::shared_ptr<VsyncCallback> callback(callback_);
+  Unlock();
   /*
    * There's a race here where a change in callback_ will not take effect until
    * the next subsequent requested vsync. This is unavoidable since we can't
