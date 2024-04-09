@@ -832,73 +832,131 @@ int DrmHwcLayer::GetSkipLine(){
 
 #define CONTAIN_VALUE(value,mask) ((dataspace & mask) == value)
 drm_colorspace DrmHwcLayer::GetColorSpace(android_dataspace_t dataspace){
-
   drm_colorspace output_colorspace;
-  if (CONTAIN_VALUE(HAL_DATASPACE_STANDARD_BT2020, HAL_DATASPACE_STANDARD_MASK)){
-      // BT2020
-      if(gIsDrmVerison6_1()){
-        output_colorspace.colorspace_kernel_6_1_.color_encoding_ = DRM_COLOR_YCBCR_BT2020;
-      }else{
-        output_colorspace.colorspace_kernel_510_ = V4L2_COLORSPACE_BT2020;
-      }
-      return output_colorspace;
-  }else if (CONTAIN_VALUE(HAL_DATASPACE_STANDARD_BT601_625, HAL_DATASPACE_STANDARD_MASK) &&
-          CONTAIN_VALUE(HAL_DATASPACE_TRANSFER_SMPTE_170M, HAL_DATASPACE_TRANSFER_MASK)){
+  // if (CONTAIN_VALUE(HAL_DATASPACE_STANDARD_BT2020, HAL_DATASPACE_STANDARD_MASK)){
+  //     // BT2020
+  //     if(gIsDrmVerison6_1()){
+  //       output_colorspace.colorspace_kernel_6_1_.color_encoding_ = DRM_COLOR_YCBCR_BT2020;
+  //     }else{
+  //       output_colorspace.colorspace_kernel_510_ = V4L2_COLORSPACE_BT2020;
+  //     }
+  //     return output_colorspace;
+  // }else if (CONTAIN_VALUE(HAL_DATASPACE_STANDARD_BT601_625, HAL_DATASPACE_STANDARD_MASK) &&
+  //         CONTAIN_VALUE(HAL_DATASPACE_TRANSFER_SMPTE_170M, HAL_DATASPACE_TRANSFER_MASK)){
 
-      // BT601 确定，下面判断色彩范围
-      if (CONTAIN_VALUE(HAL_DATASPACE_RANGE_FULL, HAL_DATASPACE_RANGE_MASK)){
-        // BT601 Full range
-        if(gIsDrmVerison6_1()){
-          output_colorspace.colorspace_kernel_6_1_.color_encoding_ = DRM_COLOR_YCBCR_BT601;
+  //     // BT601 确定，下面判断色彩范围
+  //     if (CONTAIN_VALUE(HAL_DATASPACE_RANGE_FULL, HAL_DATASPACE_RANGE_MASK)){
+  //       // BT601 Full range
+  //       if(gIsDrmVerison6_1()){
+  //         output_colorspace.colorspace_kernel_6_1_.color_encoding_ = DRM_COLOR_YCBCR_BT601;
+  //         output_colorspace.colorspace_kernel_6_1_.color_range_ = DRM_COLOR_YCBCR_FULL_RANGE;
+  //       }else{
+  //         output_colorspace.colorspace_kernel_510_ = V4L2_COLORSPACE_JPEG;
+  //       }
+  //     }else if (CONTAIN_VALUE(HAL_DATASPACE_RANGE_LIMITED, HAL_DATASPACE_RANGE_MASK)){
+  //       // BT601 Limit range
+  //       if(gIsDrmVerison6_1()){
+  //         output_colorspace.colorspace_kernel_6_1_.color_encoding_ = DRM_COLOR_YCBCR_BT601;
+  //         output_colorspace.colorspace_kernel_6_1_.color_range_ = DRM_COLOR_YCBCR_LIMITED_RANGE;
+  //       }else{
+  //         output_colorspace.colorspace_kernel_510_ = V4L2_COLORSPACE_SMPTE170M;
+  //       }
+  //     }
+  //     return output_colorspace;
+  // }
+  // else if (CONTAIN_VALUE(HAL_DATASPACE_STANDARD_BT601_525, HAL_DATASPACE_STANDARD_MASK) &&
+  //         CONTAIN_VALUE(HAL_DATASPACE_TRANSFER_SMPTE_170M, HAL_DATASPACE_TRANSFER_MASK) &&
+  //         CONTAIN_VALUE(HAL_DATASPACE_RANGE_LIMITED, HAL_DATASPACE_RANGE_MASK)){
+  //           // BT601 Limit range
+  //           if(gIsDrmVerison6_1()){
+  //             output_colorspace.colorspace_kernel_6_1_.color_encoding_ = DRM_COLOR_YCBCR_BT601;
+  //             output_colorspace.colorspace_kernel_6_1_.color_range_ = DRM_COLOR_YCBCR_LIMITED_RANGE;
+  //           }else{
+  //             output_colorspace.colorspace_kernel_510_ = V4L2_COLORSPACE_SMPTE170M;
+  //           }
+  //           return output_colorspace;
+  // }
+  // else if (CONTAIN_VALUE(HAL_DATASPACE_STANDARD_BT709, HAL_DATASPACE_STANDARD_MASK) &&
+  //     CONTAIN_VALUE(HAL_DATASPACE_TRANSFER_SMPTE_170M, HAL_DATASPACE_TRANSFER_MASK) &&
+  //     CONTAIN_VALUE(HAL_DATASPACE_RANGE_LIMITED, HAL_DATASPACE_RANGE_MASK)){
+  //       // BT709 Limit range
+  //       if(gIsDrmVerison6_1()){
+  //         output_colorspace.colorspace_kernel_6_1_.color_encoding_ = DRM_COLOR_YCBCR_BT709;
+  //         output_colorspace.colorspace_kernel_6_1_.color_range_ = DRM_COLOR_YCBCR_LIMITED_RANGE;
+  //       }else{
+  //         output_colorspace.colorspace_kernel_510_ = V4L2_COLORSPACE_REC709;
+  //       }
+  //       return output_colorspace;
+  // }
+  // else if (CONTAIN_VALUE(HAL_DATASPACE_TRANSFER_SRGB, HAL_DATASPACE_TRANSFER_MASK)){
+  //       // BT709 Limit range
+  //       if(gIsDrmVerison6_1()){
+  //         output_colorspace.colorspace_kernel_6_1_.color_encoding_ = DRM_COLOR_YCBCR_BT709;
+  //         output_colorspace.colorspace_kernel_6_1_.color_range_ = DRM_COLOR_YCBCR_FULL_RANGE;
+  //       }else{
+  //         output_colorspace.colorspace_kernel_510_ = V4L2_COLORSPACE_SRGB;
+  //       }
+  //       return output_colorspace;
+  // }
+
+  // BT601
+  if (CONTAIN_VALUE(HAL_DATASPACE_STANDARD_BT601_625, HAL_DATASPACE_STANDARD_MASK) ||
+      CONTAIN_VALUE(HAL_DATASPACE_STANDARD_BT601_625_UNADJUSTED, HAL_DATASPACE_STANDARD_MASK) ||
+      CONTAIN_VALUE(HAL_DATASPACE_STANDARD_BT601_525, HAL_DATASPACE_STANDARD_MASK) ||
+      CONTAIN_VALUE(HAL_DATASPACE_STANDARD_BT601_525_UNADJUSTED, HAL_DATASPACE_STANDARD_MASK)){
+      if(gIsDrmVerison6_1()){ // Kernel 6.10
+        output_colorspace.colorspace_kernel_6_1_.color_encoding_ = DRM_COLOR_YCBCR_BT601;
+        // Full range
+        if(CONTAIN_VALUE(HAL_DATASPACE_RANGE_FULL, HAL_DATASPACE_RANGE_MASK)){
           output_colorspace.colorspace_kernel_6_1_.color_range_ = DRM_COLOR_YCBCR_FULL_RANGE;
-        }else{
-          output_colorspace.colorspace_kernel_510_ = V4L2_COLORSPACE_JPEG;
-        }
-      }else if (CONTAIN_VALUE(HAL_DATASPACE_RANGE_LIMITED, HAL_DATASPACE_RANGE_MASK)){
-        // BT601 Limit range
-        if(gIsDrmVerison6_1()){
-          output_colorspace.colorspace_kernel_6_1_.color_encoding_ = DRM_COLOR_YCBCR_BT601;
+        }else{ // Limit range
           output_colorspace.colorspace_kernel_6_1_.color_range_ = DRM_COLOR_YCBCR_LIMITED_RANGE;
-        }else{
+        }
+      }else{ // Kernel 5.10
+        // Full range
+        if(CONTAIN_VALUE(HAL_DATASPACE_RANGE_FULL, HAL_DATASPACE_RANGE_MASK)){
+          output_colorspace.colorspace_kernel_510_ = V4L2_COLORSPACE_JPEG;
+        }else{ // Limit range
           output_colorspace.colorspace_kernel_510_ = V4L2_COLORSPACE_SMPTE170M;
         }
       }
       return output_colorspace;
-  }
-  else if (CONTAIN_VALUE(HAL_DATASPACE_STANDARD_BT601_525, HAL_DATASPACE_STANDARD_MASK) &&
-          CONTAIN_VALUE(HAL_DATASPACE_TRANSFER_SMPTE_170M, HAL_DATASPACE_TRANSFER_MASK) &&
-          CONTAIN_VALUE(HAL_DATASPACE_RANGE_LIMITED, HAL_DATASPACE_RANGE_MASK)){
-            // BT601 Limit range
-            if(gIsDrmVerison6_1()){
-              output_colorspace.colorspace_kernel_6_1_.color_encoding_ = DRM_COLOR_YCBCR_BT601;
-              output_colorspace.colorspace_kernel_6_1_.color_range_ = DRM_COLOR_YCBCR_LIMITED_RANGE;
-            }else{
-              output_colorspace.colorspace_kernel_510_ = V4L2_COLORSPACE_SMPTE170M;
-            }
-            return output_colorspace;
-  }
-  else if (CONTAIN_VALUE(HAL_DATASPACE_STANDARD_BT709, HAL_DATASPACE_STANDARD_MASK) &&
-      CONTAIN_VALUE(HAL_DATASPACE_TRANSFER_SMPTE_170M, HAL_DATASPACE_TRANSFER_MASK) &&
-      CONTAIN_VALUE(HAL_DATASPACE_RANGE_LIMITED, HAL_DATASPACE_RANGE_MASK)){
-        // BT709 Limit range
-        if(gIsDrmVerison6_1()){
-          output_colorspace.colorspace_kernel_6_1_.color_encoding_ = DRM_COLOR_YCBCR_BT709;
+  // BT709
+  }else if(CONTAIN_VALUE(HAL_DATASPACE_STANDARD_BT709, HAL_DATASPACE_STANDARD_MASK)){
+      if(gIsDrmVerison6_1()){ // Kernel 6.10
+        output_colorspace.colorspace_kernel_6_1_.color_encoding_ = DRM_COLOR_YCBCR_BT709;
+        // Full range
+        if(CONTAIN_VALUE(HAL_DATASPACE_RANGE_FULL, HAL_DATASPACE_RANGE_MASK)){
+          output_colorspace.colorspace_kernel_6_1_.color_range_ = DRM_COLOR_YCBCR_FULL_RANGE;
+        }else{ // Limit range
           output_colorspace.colorspace_kernel_6_1_.color_range_ = DRM_COLOR_YCBCR_LIMITED_RANGE;
-        }else{
+        }
+      }else{ // Kernel 5.10
+        // Full range
+        if(CONTAIN_VALUE(HAL_DATASPACE_RANGE_FULL, HAL_DATASPACE_RANGE_MASK)){
+          output_colorspace.colorspace_kernel_510_ = V4L2_COLORSPACE_SRGB;
+        }else{ // Limit range
           output_colorspace.colorspace_kernel_510_ = V4L2_COLORSPACE_REC709;
         }
-        return output_colorspace;
-  }
-  else if (CONTAIN_VALUE(HAL_DATASPACE_TRANSFER_SRGB, HAL_DATASPACE_TRANSFER_MASK)){
-        // BT709 Limit range
-        if(gIsDrmVerison6_1()){
-          output_colorspace.colorspace_kernel_6_1_.color_encoding_ = DRM_COLOR_YCBCR_BT709;
+      }
+      return output_colorspace;
+  // BT2020
+  }else if(CONTAIN_VALUE(HAL_DATASPACE_STANDARD_BT2020, HAL_DATASPACE_STANDARD_MASK) ||
+           CONTAIN_VALUE(HAL_DATASPACE_STANDARD_BT2020_CONSTANT_LUMINANCE, HAL_DATASPACE_STANDARD_MASK)){
+      if(gIsDrmVerison6_1()){ // Kernel 6.10
+        output_colorspace.colorspace_kernel_6_1_.color_encoding_ = DRM_COLOR_YCBCR_BT2020;
+        // Full range
+        if(CONTAIN_VALUE(HAL_DATASPACE_RANGE_FULL, HAL_DATASPACE_RANGE_MASK)){
           output_colorspace.colorspace_kernel_6_1_.color_range_ = DRM_COLOR_YCBCR_FULL_RANGE;
-        }else{
-          output_colorspace.colorspace_kernel_510_ = V4L2_COLORSPACE_SRGB;
+        }else{  // Limit range
+          output_colorspace.colorspace_kernel_6_1_.color_range_ = DRM_COLOR_YCBCR_LIMITED_RANGE;
         }
-        return output_colorspace;
+      }else{// Kernel 5.10
+        output_colorspace.colorspace_kernel_510_ = V4L2_COLORSPACE_BT2020;
+      }
+      return output_colorspace;
   }
+
   /*
     * Default colorspace, i.e. let the driver figure it out.
     * Can only be used with video capture.
