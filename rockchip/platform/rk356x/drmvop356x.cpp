@@ -2561,6 +2561,21 @@ bool Vop356x::CheckGLESLayer(DrmHwcLayer *layer){
     return true;
   }
 
+  // YUV bt709 full range vop 不支持输入
+  if(layer->bYuv_ &&
+    ((layer->eDataSpace_ & HAL_DATASPACE_STANDARD_BT709) > 0) &&
+    ((layer->eDataSpace_ & HAL_DATASPACE_RANGE_FULL) > 0) ){
+    // vop不支持输入bt709，但是sideband又要求vop输入, 此时 driver 会使用 bt601-f 处理
+    if(layer->bSidebandStreamLayer_){
+      HWC2_ALOGD_IF_DEBUG("[%s]:sideband layer->dataspace= 0x%" PRIx32 " is BT709-Full, force cvt BT601-F",
+              layer->sLayerName_.c_str(), layer->eDataSpace_);
+    }else{
+      HWC2_ALOGD_IF_DEBUG("[%s]:layer->dataspace= 0x%" PRIx32 " is BT709-Full, vop npsupport input.",
+              layer->sLayerName_.c_str(), layer->eDataSpace_);
+      return true;
+    }
+  }
+
   switch(layer->sf_composition){
     //case HWC2::Composition::Sideband:
     case HWC2::Composition::SolidColor:

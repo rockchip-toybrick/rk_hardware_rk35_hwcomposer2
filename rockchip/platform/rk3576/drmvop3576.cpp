@@ -3256,28 +3256,27 @@ bool Vop3576::CheckGLESLayer(DrmHwcLayer *layer){
     return true;
   }
 
+  // 20240408 RK3576 Cluster0/1 win0支持BT709 Full 输入，故删除此逻辑
   // YUV bt709 full range vop 不支持输入
   if(layer->bYuv_ &&
     ((layer->eDataSpace_ & HAL_DATASPACE_STANDARD_BT709) > 0) &&
     ((layer->eDataSpace_ & HAL_DATASPACE_RANGE_FULL) > 0) ){
-    // vop不支持输入bt709，但是sideband又要求vop输入
-    // 故目前的解决方案是强制修改 bt709 full range 为 vop支持的色域空间：
-    // CSC：RGB : BT709 Limit range
-    //      YUV : BT601 limit range
-    if(layer->bSidebandStreamLayer_){
-      HWC2_ALOGD_IF_DEBUG("[%s]:sideband layer->dataspace= 0x%" PRIx32 " is BT709-Full, force cvt BT709-Limit",
-              layer->sLayerName_.c_str(), layer->eDataSpace_);
-      if(gIsDrmVerison6_1()){
-        layer->uColorSpace.colorspace_kernel_6_1_.color_encoding_ = DRM_COLOR_YCBCR_BT709;
-        layer->uColorSpace.colorspace_kernel_6_1_.color_range_ = DRM_COLOR_YCBCR_LIMITED_RANGE;
+      // 如果存在 AFBC 支持图层，即Cluster图层，则设置最佳匹配图层为Cluster
+      if(ctx.support.ifbcdCnt > 0){
+        layer->iBestPlaneType = PLANE_RK3576_CLUSTER0_WIN0 | PLANE_RK3576_CLUSTER1_WIN0;
+        HWC2_ALOGD_IF_DEBUG("[%s]:sideband layer->dataspace= 0x%" PRIx32 " is BT709-Full, Must Overlay by Cluster0/1 win0",
+                layer->sLayerName_.c_str(), layer->eDataSpace_);
       }else{
-        layer->uColorSpace.colorspace_kernel_510_ = V4L2_COLORSPACE_REC709;
+        // RK3576只有Cluster0/1 win0支持输入bt709，若不存在Cluster图层的话，BT709-F 驱动会强制使用BT601-F处理
+        if(layer->bSidebandStreamLayer_){
+          HWC2_ALOGD_IF_DEBUG("[%s]:sideband layer->dataspace= 0x%" PRIx32 " is BT709-Full, force cvt BT601-Full",
+                  layer->sLayerName_.c_str(), layer->eDataSpace_);
+        }else{
+          HWC2_ALOGD_IF_DEBUG("[%s]:layer->dataspace= 0x%" PRIx32 " is BT709-Full, vop npsupport input.",
+                  layer->sLayerName_.c_str(), layer->eDataSpace_);
+          return true;
+        }
       }
-    }else{
-      HWC2_ALOGD_IF_DEBUG("[%s]:layer->dataspace= 0x%" PRIx32 " is BT709-Full, vop npsupport input.",
-              layer->sLayerName_.c_str(), layer->eDataSpace_);
-      return true;
-    }
   }
 
   switch(layer->sf_composition){
@@ -3526,8 +3525,8 @@ int Vop3576::InitContext(
   ctx.state.setHwcPolicy.clear();
   ctx.state.iSocId = crtc->get_soc_id();
 
-  InitRequestContext(layers);
   InitSupportContext(plane_groups,crtc);
+  InitRequestContext(layers);
   InitStateContext(layers,plane_groups,crtc);
 
   //force go into GPU
