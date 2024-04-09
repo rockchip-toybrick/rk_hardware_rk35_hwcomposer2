@@ -57,6 +57,9 @@ static DrmHwcTwo *g_ctx = NULL;
 
 #define MAX_NUM_BUFFER_SLOTS 32
 #define MAX_NUM_FRAME_TIMESTAMP_CNT 20
+
+#define HWC3_COMPOSITION_DISPLAY_DECORATION 6
+
 class DrmHwcTwo : public hwc2_device_t {
  public:
   static int HookDevOpen(const struct hw_module_t *module, const char *name,
@@ -102,6 +105,9 @@ class DrmHwcTwo : public hwc2_device_t {
 
     HWC2::Composition sf_type() const {
       return mCurrentState.sf_type_;
+    }
+    int32_t hwc3_sf_type() const {
+      return mCurrentState.hwc3_sf_type_;
     }
     HWC2::Composition validated_type() const {
       return mCurrentState.validated_type_;
@@ -178,6 +184,8 @@ class DrmHwcTwo : public hwc2_device_t {
       // validated_type_ stores the type after running ValidateDisplay
       HWC2::Composition sf_type_ = HWC2::Composition::Invalid;
       HWC2::Composition validated_type_ = HWC2::Composition::Invalid;
+
+      int32_t hwc3_sf_type_ = 0;
 
       float alpha_ = 1.0f;
       HWC2::BlendMode blending_ = HWC2::BlendMode::None;

@@ -3173,7 +3173,7 @@ if(!init_success_ || force_disconneted_){
       layer.set_validated_type(HWC2::Composition::Client);
     }
     //num_types 应该为发生改变的图层，不仅仅是Client图层
-    if(layer.type_changed()){
+    if(layer.type_changed() && (layer.hwc3_sf_type() != HWC3_COMPOSITION_DISPLAY_DECORATION)){
       ++*num_types;
     }
   }
@@ -4694,7 +4694,14 @@ HWC2::Error DrmHwcTwo::HwcLayer::SetLayerColor(hwc_color_t color) {
 
 HWC2::Error DrmHwcTwo::HwcLayer::SetLayerCompositionType(int32_t type) {
   HWC2_ALOGD_IF_VERBOSE("layer-id=%d"", type=0x%x" ,id_,type);
+#if PLATFORM_SDK_VERSION >= 34
+  mCurrentState.hwc3_sf_type_ = type;
+  if (mCurrentState.hwc3_sf_type_ == HWC3_COMPOSITION_DISPLAY_DECORATION)
+    return HWC2::Error::Unsupported;
+#endif
+
   mCurrentState.sf_type_ = static_cast<HWC2::Composition>(type);
+
   return HWC2::Error::None;
 }
 
