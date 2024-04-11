@@ -255,7 +255,7 @@ int DrmGenericImporter::ImportBuffer(buffer_handle_t handle, hwc_drm_bo_t *bo) {
     bo->width = ALIGN_DOWN(bo->width,2);
   }
 
-#ifdef RK3528 // RK3528 kernel 5.10 也需要遵循此逻辑
+#if defined(RK3528) ||(defined(RK3576) && (PLATFORM_SDK_VERSION <= 28))  // RK3528 kernel 5.10 RK3576 9.0 也需要遵循此逻辑
   if(bo->format == DRM_FORMAT_NV15 && bo->modifier == 0){
     bo->width = bo->width / 1.25;
     bo->width = ALIGN_DOWN(bo->width,2);
