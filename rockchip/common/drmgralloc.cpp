@@ -703,8 +703,9 @@ uint32_t DrmGralloc::hwc_get_handle_fourcc_format(buffer_handle_t hnd)
     {
         ALOGE("%s:cann't get value from gralloc", __FUNCTION__);
     }
+    uint64_t modifier = hwc_get_handle_format_modifier(hnd);
 
-    return hwc_get_fourcc_from_hal_format(format);
+    return hwc_get_fourcc_from_hal_format(format, modifier);
 #endif
 }
 
@@ -763,7 +764,11 @@ int DrmGralloc::hwc_get_handle_unlock(buffer_handle_t hnd){
 #define HAL_PIXEL_FORMAT_BGR_888  29
 #endif
 
-uint32_t DrmGralloc::hwc_get_fourcc_from_hal_format(int hal_format){
+uint32_t DrmGralloc::hwc_get_fourcc_from_hal_format(int hal_format, uint64_t modifier){
+  bool isAfbc = false;
+  if((modifier & DRM_FORMAT_MOD_ARM_AFBC(0)) == DRM_FORMAT_MOD_ARM_AFBC(0)){
+    isAfbc = true;
+  }
   switch (hal_format) {
     case HAL_PIXEL_FORMAT_RGBA_1010102:
       return DRM_FORMAT_ABGR2101010;
@@ -787,13 +792,19 @@ uint32_t DrmGralloc::hwc_get_fourcc_from_hal_format(int hal_format){
     case HAL_PIXEL_FORMAT_YCbCr_422_SP:
       return DRM_FORMAT_NV16;
     case HAL_PIXEL_FORMAT_YCrCb_NV12:
-      return DRM_FORMAT_NV12;
+      if(isAfbc)
+        return DRM_FORMAT_YUV420_8BIT;
+      else
+        return DRM_FORMAT_NV12;
     case HAL_PIXEL_FORMAT_YCrCb_NV12_10:
       // DrmVersion:
       // 3.0.0 = Kernel 5.10
       // 2.0.0 = Kernel 4.19 Vop driver 不支持 NV15格式
-      if(drmVersion_ == 3){
-        return DRM_FORMAT_NV15;
+      if(drmVersion_ >= 3){
+        if(isAfbc)
+          return DRM_FORMAT_YUV420_10BIT;
+        else
+          return DRM_FORMAT_NV15;
       }else{
         return DRM_FORMAT_NV12_10;
       }
@@ -802,7 +813,7 @@ uint32_t DrmGralloc::hwc_get_fourcc_from_hal_format(int hal_format){
       // DrmVersion:
       // 3.0.0 = Kernel 5.10
       // 2.0.0 = Kernel 4.19 Vop driver 不支持 YUV420_8BIT 格式
-      if(drmVersion_ == 3){
+      if(drmVersion_ >= 3){
         return DRM_FORMAT_YUV420_8BIT;
       }else{
         return DRM_FORMAT_NV12;
@@ -811,7 +822,7 @@ uint32_t DrmGralloc::hwc_get_fourcc_from_hal_format(int hal_format){
       // DrmVersion:
       // 3.0.0 = Kernel 5.10
       // 2.0.0 = Kernel 4.19 Vop driver 不支持 YUV420_8BIT 格式
-      if(drmVersion_ == 3){
+      if(drmVersion_ >= 3){
         return DRM_FORMAT_YUV420_10BIT;
       }else{
         return DRM_FORMAT_NV12_10;
