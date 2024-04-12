@@ -39,6 +39,9 @@
 #include "platform.h"
 #include "drmdevice.h"
 #include "drmbufferqueue.h"
+#ifdef USE_LIBPQ_HWPQ
+#include "Pq.h"
+#endif
 
 #ifdef USE_LIBSR
 #include "SvepSr.h"
@@ -375,6 +378,8 @@ struct SvepXml{
     HwPqImageInfo hwPqDstInfo_;
     std::shared_ptr<rk_hwpq_reg> lastHwPqReg_ = NULL;
     std::shared_ptr<Pq> pq_ = NULL;
+    uint64_t lastHwPqBufferId = 0;
+    sp<AcquireFence> lastHwPqAcquireFence = NULL;
 #endif
 #ifdef USE_LIBSR
   // SR

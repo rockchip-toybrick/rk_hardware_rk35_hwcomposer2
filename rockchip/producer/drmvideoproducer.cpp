@@ -204,11 +204,121 @@ int DrmVideoProducer::DestoryConnection(int display_id, int tunnel_id){
 }
 
 #ifdef USE_LIBPQ_HWPQ
+
+static bool IsYuvFormat(int format, uint32_t fourcc_format){
+
+  switch(fourcc_format){
+    case DRM_FORMAT_NV12:
+    case DRM_FORMAT_NV12_10:
+    case DRM_FORMAT_NV21:
+    case DRM_FORMAT_NV16:
+    case DRM_FORMAT_NV61:
+    case DRM_FORMAT_YUV420:
+    case DRM_FORMAT_YVU420:
+    case DRM_FORMAT_YUV422:
+    case DRM_FORMAT_YVU422:
+    case DRM_FORMAT_YUV444:
+    case DRM_FORMAT_YVU444:
+    case DRM_FORMAT_UYVY:
+    case DRM_FORMAT_VYUY:
+    case DRM_FORMAT_YUYV:
+    case DRM_FORMAT_YVYU:
+    case DRM_FORMAT_YUV420_8BIT:
+    case DRM_FORMAT_YUV420_10BIT:
+    case DRM_FORMAT_NV24:
+    case DRM_FORMAT_NV42:
+    case DRM_FORMAT_NV15:
+    case DRM_FORMAT_NV20:
+    case DRM_FORMAT_NV30:
+    case DRM_FORMAT_Y210:
+    case DRM_FORMAT_VUY888:
+    case DRM_FORMAT_VUY101010:
+      return true;
+    default:
+      break;
+  }
+
+  switch(format){
+    case HAL_PIXEL_FORMAT_YCrCb_NV12:
+    case HAL_PIXEL_FORMAT_YCrCb_NV12_10:
+    case HAL_PIXEL_FORMAT_YCrCb_NV12_VIDEO:
+    case HAL_PIXEL_FORMAT_YCbCr_422_SP_10:
+    case HAL_PIXEL_FORMAT_YCrCb_420_SP_10:
+    case HAL_PIXEL_FORMAT_YCBCR_422_I:
+    case HAL_PIXEL_FORMAT_YUV420_8BIT_I:
+    case HAL_PIXEL_FORMAT_YUV420_10BIT_I:
+    case HAL_PIXEL_FORMAT_Y210:
+      return true;
+    default:
+      return false;
+  }
+}
+
+static bool Is10bitYuv(int format,uint32_t fourcc_format){
+  switch(fourcc_format){
+    case DRM_FORMAT_NV12_10:
+    case DRM_FORMAT_YUV420_10BIT:
+    case DRM_FORMAT_VUY101010:
+    case DRM_FORMAT_Y210:
+    case DRM_FORMAT_NV30:
+    case DRM_FORMAT_NV20:
+    case DRM_FORMAT_NV15:
+      return true;
+    default:
+      break;
+  }
+
+  switch(format){
+    case HAL_PIXEL_FORMAT_YCrCb_NV12_10:
+    case HAL_PIXEL_FORMAT_YCbCr_422_SP_10:
+    case HAL_PIXEL_FORMAT_YCrCb_420_SP_10:
+    case HAL_PIXEL_FORMAT_YUV420_10BIT_I:
+      return true;
+    default:
+      return false;
+  }
+}
+
 std::shared_ptr<DrmBuffer> DrmVideoProducer::DoHwPq(std::shared_ptr<VpContext> ctx, std::shared_ptr<DrmBuffer> buffer){
 
-  if((buffer->GetWidth()%(16*2) != 0) && (buffer->GetStride()%(16*8) != 0)){
-    HWC2_ALOGD_IF_DEBUG("Width = %d, Should align to 16x2. Stride = %d, Should align to 16x8 , Skip DoHwPq", buffer->GetWidth(), buffer->GetStride());
-    return buffer;
+  int left,top,right,bottom;
+  buffer->GetCrop(&left,&top,&right,&bottom);
+
+  int act_w = right - left;
+  int act_h = bottom - top;
+
+  //vdpp要求宽高2对齐
+  if((act_w % 2) != 0){
+      HWC2_ALOGD_IF_DEBUG("Active Width = %d, Should align to 2 , Skip DoHwPq", act_w);
+      return NULL;
+  }
+  if((act_h % 2) != 0){
+    HWC2_ALOGD_IF_DEBUG("Active Height = %d, Should align to 2 , Skip DoHwPq", act_h);
+    return NULL;
+  }
+
+  if(IsYuvFormat(buffer->GetFormat(), buffer->GetFourccFormat())){
+    //yuv格式对齐限制：虚宽16对齐，虚高8对齐
+    if((buffer->GetStride() % 16 != 0)){
+      HWC2_ALOGD_IF_DEBUG("WStride = %d, Should align to 16 , Skip DoHwPq", buffer->GetStride());
+      return NULL;
+    }
+    if((buffer->GetHeightStride() % 8 != 0)){
+      HWC2_ALOGD_IF_DEBUG("HStride = %d, Should align to 8 , Skip DoHwPq", buffer->GetHeightStride());
+      return NULL;
+    }
+    if(Is10bitYuv(buffer->GetFormat(), buffer->GetFourccFormat())){
+      if((left % 4) != 0){
+        HWC2_ALOGD_IF_DEBUG("Yuv10bit left = %d, Should align to 4 , Skip DoHwPq", left);
+        return NULL;
+      }
+    }
+  }else{
+    //RGB格式对齐限制：虚宽4对齐
+    if((buffer->GetStride() % 4 != 0)){
+      HWC2_ALOGD_IF_DEBUG("WStride = %d, Should align to 4 , Skip DoHwPq", buffer->GetStride());
+      return NULL;
+    }
   }
 
   int ret = 0;
@@ -239,10 +349,7 @@ std::shared_ptr<DrmBuffer> DrmVideoProducer::DoHwPq(std::shared_ptr<VpContext> c
   src.mBufferInfo_.iHeightStride_ = buffer->GetHeightStride();
   src.mBufferInfo_.uBufferId_ = buffer->GetBufferId();
   src.mBufferInfo_.uDataSpace_ = (uint64_t)ctx->iDataSpace_;
-  
-  int left,top,right,bottom;
-  buffer->GetCrop(&left,&top,&right,&bottom);
-  
+    
   src.mCrop_.iLeft_  = (int)left;
   src.mCrop_.iTop_   = (int)top;
   src.mCrop_.iRight_ = (int)right;
@@ -316,7 +423,7 @@ std::shared_ptr<DrmBuffer> DrmVideoProducer::DoHwPq(std::shared_ptr<VpContext> c
     return NULL;
   }
   //执行PQ
-  int output_fence = 0;
+  int output_fence = -1;
   ret = hwpq_->RunHwPqAsync(&output_fence);
   if(ret){
     HWC2_ALOGE("tunnel_id=%d, buffer_id=0x%" PRIx64" .hwPq Run fail ret = %d",
@@ -326,6 +433,12 @@ std::shared_ptr<DrmBuffer> DrmVideoProducer::DoHwPq(std::shared_ptr<VpContext> c
   ctx->SetAcquireFence(buffer->GetExternalId(),output_fence);
 
   if(dst_buffer){
+    char value[PROPERTY_VALUE_MAX];
+    property_get("vendor.dump", value, "false");
+    if(!strcmp(value, "true")){
+      ctx->WaitAcquireFence(buffer->GetExternalId(),3000);
+      dst_buffer->DumpData();
+    }
     //Update Crop form Query Result
     dst_buffer->SetCrop(dst.mCrop_.iLeft_, dst.mCrop_.iTop_, dst.mCrop_.iRight_, dst.mCrop_.iBottom_);
     return dst_buffer;

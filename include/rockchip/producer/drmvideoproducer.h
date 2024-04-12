@@ -59,7 +59,9 @@ public:
   int SetProducerFps(int tunnel_id, float fps);
   float GetProducerFps(int tunnel_id);
   void PrintTimeStamp(int display_id, int tunnel_id, uint64_t buffer_id);
+#ifdef USE_LIBPQ_HWPQ
   std::shared_ptr<DrmBuffer> DoHwPq(std::shared_ptr<VpContext> ctx, std::shared_ptr<DrmBuffer> buffer);
+#endif
 
   enum ReleaseFenceMode{
     DisableReleaseFence = 0,

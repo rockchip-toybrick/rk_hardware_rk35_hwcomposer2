@@ -22,7 +22,7 @@
 
 #include <ui/GraphicBuffer.h>
 
-#ifdef USE_LIBPQ
+#ifdef USE_LIBPQ_HWPQ
 #include "Pq.h"
 #endif
 
@@ -71,7 +71,7 @@ public:
   int WaitReleaseFence();
   int DumpData();
 
-#ifdef USE_LIBPQ
+#ifdef USE_LIBPQ_HWPQ
   std::shared_ptr<rk_hwpq_reg> GetHwPqRegs(){
     if(spHwPqReg_ == NULL)
       spHwPqReg_ = std::make_shared<rk_hwpq_reg>();
@@ -137,7 +137,7 @@ private:
   sp<GraphicBuffer> ptrBuffer_;
   DrmGralloc *ptrDrmGralloc_;
   mutable std::mutex mtx_;
-#ifdef USE_LIBPQ
+#ifdef USE_LIBPQ_HWPQ
   std::shared_ptr<rk_hwpq_reg> spHwPqReg_;
 #endif
 };

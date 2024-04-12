@@ -317,7 +317,9 @@ endif
 
 # BOARD_USES_LIBPQ_HWPQ=true
 ifeq ($(strip $(BOARD_USES_LIBPQ_HWPQ)),true)
-
+ifneq ($(strip $(TARGET_SOC_PLATFORM)),rk3576)
+  $(error BOARD_USES_LIBPQ_HWPQ=true but TARGET_SOC_PLATFORM $(TARGET_SOC_PLATFORM) does not support HWPQ!)
+endif
 BOARD_USES_LIBPQ=true
 
 LOCAL_CFLAGS += \

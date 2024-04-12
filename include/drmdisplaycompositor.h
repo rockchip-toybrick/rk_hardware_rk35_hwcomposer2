@@ -106,7 +106,7 @@ struct SidebandState {
 
   struct ModeSetState{
     HdrState hdr_;
-  #ifdef USE_LIBPQ
+  #ifdef USE_LIBPQ_HWPQ
     std::shared_ptr<rk_hwpq_reg> hwpq_regs_;
   #endif
   };
@@ -144,7 +144,7 @@ struct SidebandState {
                            DrmHwcBuffer *writeback_buffer);
   int DisableWritebackCommit(drmModeAtomicReqPtr pset,
                              DrmConnector *writeback_conn);
-#ifdef USE_LIBPQ
+#ifdef USE_LIBPQ_HWPQ
   int CollectHwPqInfo();
   int UpdateHwPqState();
 #endif                      
@@ -242,6 +242,8 @@ struct SidebandState {
   std::shared_ptr<DrmBuffer> sidbenad_pq_tmp_buffer_ = NULL;
   std::shared_ptr<rkpq> pq_ = NULL;
   int pq_last_init_format_ = 0;
+#endif
+#ifdef USE_LIBPQ_HWPQ
   uint32_t hwpq_shp_id_ = 0;
   uint32_t hwpq_csc_id_ = 0;
   uint32_t hwpq_acm_id_ = 0;
