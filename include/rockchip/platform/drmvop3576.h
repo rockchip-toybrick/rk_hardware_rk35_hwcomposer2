@@ -99,7 +99,6 @@ typedef enum tagComposeMode{
    HWC_ACCELERATE_POLICY,
    HWC_3D_POLICY,
    HWC_DEBUG_POLICY,
-   HWC_HWPQ_VIDEO_POLICY
 }ComposeMode;
 
 typedef struct RequestContext{
@@ -189,6 +188,7 @@ typedef struct StateContext{
 
   bool bRequireGLESMode;
   bool bHDRVideoForceOverlay;
+  bool bEnableHwPqVideoMode_;
 
   int iVopPerformanceFactor;
 } StaCtx;
@@ -274,7 +274,7 @@ struct SvepXml{
                         std::vector<PlaneGroup *> &plane_groups);
 #endif
 #ifdef USE_LIBPQ_HWPQ
-  int TryHwPqVideoPolicy(std::vector<DrmCompositionPlane> *composition,
+  int RunHwPqVideoMode(std::vector<DrmCompositionPlane> *composition,
                       std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                       std::vector<PlaneGroup *> &plane_groups);
 #endif
