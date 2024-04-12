@@ -374,6 +374,7 @@ struct SvepXml{
     std::shared_ptr<DrmBufferQueue> hwPqBufferQueue_;
     HwPqImageInfo hwPqDstInfo_;
     std::shared_ptr<rk_hwpq_reg> lastHwPqReg_ = NULL;
+    std::shared_ptr<Pq> pq_ = NULL;
 #endif
 #ifdef USE_LIBSR
   // SR

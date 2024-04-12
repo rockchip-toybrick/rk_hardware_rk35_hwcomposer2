@@ -781,7 +781,7 @@ int DrmDisplayCompositor::CollectHwPqInfo() {
         crtc->acm_lut_data().id() && 
         crtc->post_csc_data().id()) {
       if(layer.bSidebandStreamLayer_){
-        if(current_sideband2_.enable_ == true && current_sideband2_.buffer_->HasHwPqRegs())
+        if(current_sideband2_.enable_ == true && current_sideband2_.buffer_!=NULL && current_sideband2_.buffer_->HasHwPqRegs())
           request_mode_set_.hwpq_regs_ = current_sideband2_.buffer_->GetHwPqRegs();
       }else{
         request_mode_set_.hwpq_regs_ = layer.hwPqReg_;
@@ -806,7 +806,7 @@ int DrmDisplayCompositor::CollectHwPqInfo() {
     if(current_mode_set_.hwpq_regs_!=hwpq_regs){
       HWC2_ALOGD_IF_DEBUG("crtc_id = %" PRIu32" new hwpq setting! update hwpq reg",crtc->id());
       if(hwpq_plane==NULL || hwpq_crtc == NULL){
-        if(hwpq_plane==NULL){
+        if(hwpq_plane==NULL)
           HWC2_ALOGE("Could not found HWPQ Plane, soc_id=%" PRIu32" crtc_id=%" PRIu32, drm->getSocId());
         if(hwpq_crtc==NULL)
           HWC2_ALOGE("Could not found HWPQ Crtc, soc_id=%" PRIu32" crtc_id=%" PRIu32, drm->getSocId());
@@ -851,8 +851,7 @@ int DrmDisplayCompositor::CollectHwPqInfo() {
       if (ret < 0) {
         HWC2_ALOGE("Failed to add blob to prop %s(id:%d) blob_id:[%" PRIu32"]", hwpq_plane->dci_data().name().c_str(), hwpq_plane->dci_data().id(),hwpq_dci_id_);
       }
-        HWC2_ALOGD_IF_DEBUG("Done Setting HWPQ regs for crtc_id=%" PRIu32" plane_name=%s", hwpq_crtc->id(), hwpq_plane->name());
-      }
+      HWC2_ALOGD_IF_DEBUG("Done Setting HWPQ regs for crtc_id=%" PRIu32" plane_name=%s", hwpq_crtc->id(), hwpq_plane->name());
     }
   }else{
     if(hwpq_plane==NULL || hwpq_crtc == NULL){

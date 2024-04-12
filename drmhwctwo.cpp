@@ -3653,6 +3653,15 @@ int DrmHwcTwo::HwcDisplay::UpdateTimerEnable(){
       break;
     }
   }
+#if defined(USE_LIBPQ)
+  if(enable_timer){
+    int iPqMode = hwc_get_int_property("persist.vendor.tvinput.rkpq.mode","0");
+    if(iPqMode!=0){
+      HWC2_ALOGD_IF_DEBUG("persist.vendor.tvinput.rkpq.mode=%d , Disable Timer.", iPqMode);
+      enable_timer = false;
+    }
+  }
+#endif
   static_screen_timer_enable_ = enable_timer;
   return 0;
 }
@@ -4349,7 +4358,7 @@ int DrmHwcTwo::HwcLayer::DoSwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_dr
         bufferQueue_ = std::make_shared<DrmBufferQueue>();
       }
       if(pq_ == NULL){
-        pq_ = Pq::Get();
+        pq_ = std::shared_ptr<Pq>(Pq::Get());
         if(pq_ != NULL){
           bPqReady_ = true;
           HWC2_ALOGI("Pq module ready. to enable PqMode.");
@@ -4393,7 +4402,7 @@ int DrmHwcTwo::HwcLayer::DoSwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_dr
         bufferQueue_ = std::make_shared<DrmBufferQueue>();
       }
       if(pq_ == NULL){
-        pq_ = Pq::Get();
+        pq_ = std::shared_ptr<Pq>(Pq::Get());
         if(pq_ != NULL){
           bPqReady_ = true;
           HWC2_ALOGI("pq module ready. to enable pqMode.");
@@ -4545,49 +4554,34 @@ int DrmHwcTwo::HwcLayer::DoHwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_dr
   char value[PROPERTY_VALUE_MAX];
   property_get("persist.vendor.tvinput.rkpq.mode", value, "0");
   bool pq_mode_enable = atoi(value) == 1;
+  int ret = 0;
 
   if(pq_mode_enable == 1){
     static bool use_pq_fb = false;
     if(validate){
+
+      if((drmHwcLayer->iWidth_%(16*2) != 0) && (drmHwcLayer->iStride_%(16*8) != 0)){
+        HWC2_ALOGD_IF_DEBUG("Width = %d, Should align to 16x2. Stride = %d, Should align to 16x8 , Skip DoHwPq", drmHwcLayer->iWidth_, drmHwcLayer->iStride_);
+        return -1;
+      }
+
       if(bufferQueue_ == NULL){
         bufferQueue_ = std::make_shared<DrmBufferQueue>();
       }
       if(pq_ == NULL){
-        pq_ = Pq::Get();
+        pq_ = std::make_shared<Pq>();
         if(pq_ != NULL){
-          bPqReady_ = true;
-          HWC2_ALOGI("Pq module ready. to enable PqMode.");
+          ret = pq_->Init(PQ_VERSION);
+          if(ret != 0){
+            pq_ = NULL;
+            HWC2_ALOGE("Pq Init Failed, ret = %d", ret);
+          }
         }
-      } else {
-          bPqReady_ = true;
-          HWC2_ALOGI("Pq module ready. to enable PqMode.");
       }
-      if(bPqReady_){
-        // 1. Init Ctx
-        int ret = pq_->InitCtx(pqCtx_);
-        if(ret){
-          HWC2_ALOGE("Pq ctx init fail");
-          return ret;
-        }
-        // 2. Set buffer Info
-        HwPqImageInfo src;
-        src.mBufferInfo_.iFd_     = 1;
-        src.mBufferInfo_.iWidth_  = drmHwcLayer->iFbWidth_;
-        src.mBufferInfo_.iHeight_ = drmHwcLayer->iFbHeight_;
-        src.mBufferInfo_.iFormat_ = HAL_PIXEL_FORMAT_RGBA_8888;
-        src.mBufferInfo_.iStride_ = drmHwcLayer->iFbWidth_;
-        src.mBufferInfo_.uBufferId_ = 0x1;
-
-        src.mCrop_.iLeft_  = (int)drmHwcLayer->source_crop.left;
-        src.mCrop_.iTop_   = (int)drmHwcLayer->source_crop.top;
-        src.mCrop_.iRight_ = (int)drmHwcLayer->source_crop.right;
-        src.mCrop_.iBottom_= (int)drmHwcLayer->source_crop.bottom;
-
-        ret = pq_->SetHwPqSrcImage(pqCtx_, src);
-        if(ret){
-          HWC2_ALOGE("pq SetSrcImage fail\n");
-          return ret;
-        }
+      if(pq_ == NULL){
+        HWC2_ALOGE("Pq module neot ready.");
+      } else {
+        HWC2_ALOGI("Pq module ready. to enable PqMode.");
         use_pq_fb = true;
       }
     }else if(use_pq_fb){
@@ -4595,28 +4589,15 @@ int DrmHwcTwo::HwcLayer::DoHwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_dr
       if(bufferQueue_ == NULL){
         bufferQueue_ = std::make_shared<DrmBufferQueue>();
       }
-      if(pq_ == NULL){
-        pq_ = Pq::Get();
-        if(pq_ != NULL){
-          bPqReady_ = true;
-          HWC2_ALOGI("pq module ready. to enable pqMode.");
-        }
-      }
-      if(bPqReady_){
-        // 1. Init Ctx
-        int ret = pq_->InitCtx(pqCtx_);
-        if(ret){
-          HWC2_ALOGE("Pq ctx init fail");
-          return ret;
-        }
-        // 2. Set buffer Info
+      if(pq_ != NULL){
+        // 1. Set buffer Info
         HwPqImageInfo src;
         src.mBufferInfo_.iFd_     = drmHwcLayer->iFd_;
         src.mBufferInfo_.iWidth_  = drmHwcLayer->iWidth_;
         src.mBufferInfo_.iHeight_ = drmHwcLayer->iHeight_;
         src.mBufferInfo_.iFormat_ = drmHwcLayer->iFormat_;
         src.mBufferInfo_.iStride_ = drmHwcLayer->iStride_;
-        // src.mBufferInfo_.iSize_   = drmHwcLayer->iSize_;
+        src.mBufferInfo_.iHeightStride_ = drmHwcLayer->iHeightStride_;
         src.mBufferInfo_.uBufferId_ = drmHwcLayer->uBufferId_;
         src.mBufferInfo_.uDataSpace_ = (uint64_t)drmHwcLayer->eDataSpace_;
 
@@ -4625,13 +4606,8 @@ int DrmHwcTwo::HwcLayer::DoHwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_dr
         src.mCrop_.iRight_ = (int)drmHwcLayer->source_crop.right;
         src.mCrop_.iBottom_= (int)drmHwcLayer->source_crop.bottom;
 
-        ret = pq_->SetHwPqSrcImage(pqCtx_, src);
-        if(ret){
-          HWC2_ALOGE("Pq SetSrcImage fail\n");
-          return ret;
-        }
 
-        // 4. Alloc Dst buffer
+        // 2. Alloc Dst HwPqReg
         HwPqImageInfo dst;
         std::shared_ptr<DrmBuffer> dst_buffer;
         if(drmHwcLayer->hwPqReg_ == NULL){
@@ -4645,11 +4621,16 @@ int DrmHwcTwo::HwcLayer::DoHwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_dr
         dst.mBufferInfo_.iFd_ = -1;
         dst.mRkHwpqReg_ = drmHwcLayer->hwPqReg_.get();
 
-        pq_->Query(src,dst);
+        // 3. Set HwPq Src Image
+        bool needAllocNewBuffer = false;
+        ret = pq_->SetHwPqSrcImage(src, dst, &needAllocNewBuffer);
+        if(ret){
+          HWC2_ALOGE("Pq SetSrcImage fail\n");
+          return ret;
+        }
+
         //如果需要新的buffer（宽高format变化）
-        if(!(dst.mBufferInfo_.iWidth_ == src.mBufferInfo_.iWidth_ &&
-           dst.mBufferInfo_.iHeight_ == src.mBufferInfo_.iHeight_ &&
-           dst.mBufferInfo_.iFormat_ == src.mBufferInfo_.iFormat_ )){
+        if(needAllocNewBuffer){
           HWC2_ALOGD_IF_DEBUG("hwpq use new buffer mode, alloc Buffer!");
           dst_buffer = bufferQueue_->DequeueDrmBuffer(dst.mBufferInfo_.iWidth_,
                                                       dst.mBufferInfo_.iHeight_,
@@ -4672,10 +4653,13 @@ int DrmHwcTwo::HwcLayer::DoHwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_dr
           dst.mBufferInfo_.iHeight_ = dst_buffer->GetHeight();
           dst.mBufferInfo_.iFormat_ = dst_buffer->GetFormat();
           dst.mBufferInfo_.iStride_ = dst_buffer->GetStride();
+          dst.mBufferInfo_.iHeightStride_ = dst_buffer->GetHeightStride();
           dst.mBufferInfo_.uBufferId_ = dst_buffer->GetBufferId();
+        }else{
+          dst.mBufferInfo_ = src.mBufferInfo_;
         }
 
-        ret = pq_->SetHwPqDstImage(pqCtx_, dst);
+        ret = pq_->SetHwPqDstImage(dst);
         if(ret){
           HWC2_ALOGE("Pq SetSrcImage fail");
           if(dst_buffer != NULL)
@@ -4719,9 +4703,9 @@ int DrmHwcTwo::HwcLayer::DoHwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_dr
           }
         }
         int output_fence = 0;
-        ret = pq_->RunAsync(pqCtx_, &output_fence);
+        ret = pq_->RunHwPqAsync(&output_fence);
         if(ret){
-          HWC2_ALOGE("RunAsync fail!");
+          HWC2_ALOGE("RunHwPqAsync fail!");
           drmHwcLayer->bUsePq_ = false;
           if(dst_buffer != NULL)
             bufferQueue_->QueueBuffer(dst_buffer);
