@@ -2113,7 +2113,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::UpdateRefreshRate(hwc2_config_t config) {
     return HWC2::Error::None;
 
   const std::vector<int> vrr_mode = connector_->vrr_modes();
-  if(config < vrr_mode.size()){
+  if(config <= (vrr_mode.size() - 1)){
     int refresh_rate = vrr_mode[config];
     int ret = drm_->UpdateVrrRefreshRate(handle_, refresh_rate);
     if(ret){
@@ -2126,7 +2126,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::UpdateRefreshRate(hwc2_config_t config) {
       return HWC2::Error::BadConfig;
   }
 
-  return HWC2::Error::BadConfig;
+  return HWC2::Error::None;
 }
 
 HWC2::Error DrmHwcTwo::HwcDisplay::SetClientTarget(buffer_handle_t target,
