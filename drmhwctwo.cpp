@@ -2385,7 +2385,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateVirtualDisplay(uint32_t *num_types,
       }
     }
 
-    HWC2_ALOGI("frame_no_ = %d", frame_no_);
+    HWC2_ALOGD_IF_DEBUG("frame_no_ = %d", frame_no_);
 
     // 获取 WriteBack id
     int WBDisplayId = resource_manager_->GetWBDisplay();
@@ -2416,6 +2416,26 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateVirtualDisplay(uint32_t *num_types,
         //   HWC2_ALOGD_IF_DEBUG("WB buffer not ready, display=%" PRIu64 " wb-display %d frame_no=%d", handle_, WBDisplayId, frame_no_);
         //   bUseWriteBack_ = false;
         // }
+
+        // 逐层匹配图层确认是否支持从WriteBack获取图像
+        for (std::pair<const hwc2_layer_t, DrmHwcTwo::HwcLayer> &l : layers_) {
+          DrmHwcTwo::HwcLayer &layer = l.second;
+          uint64_t buffer_id = 0;
+          const std::shared_ptr<LayerInfoCache> layer_info_cache = layer.GetBufferInfo();
+          if(layer_info_cache != NULL){
+            buffer_id = layer_info_cache->uBufferId_;
+          }
+          // 判断信息当前仅需要 BufferId 与 图层名字
+          MirrorDisplayInfo_t info;
+          info.buffer_id = buffer_id;
+          info.name = layer.name();
+          if(!resource_manager_->IsWBMirrorDisplay(handle_, layer.z_order(), info)){
+            HWC2_ALOGD_IF_DEBUG("WB: Current display=%" PRIu64 " is not wb-display %d mirror display. disable VDS. frame_no=%d",
+              handle_, WBDisplayId, frame_no_);
+            bUseWriteBack_ = false;
+          }
+        }
+
       }
     }else{
       bUseWriteBack_ = false;
@@ -2425,11 +2445,19 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateVirtualDisplay(uint32_t *num_types,
     for (std::pair<const hwc2_layer_t, DrmHwcTwo::HwcLayer> &l : layers_) {
       DrmHwcTwo::HwcLayer &layer = l.second;
       if(bUseWriteBack_){
-        layer.set_validated_type(HWC2::Composition::Device);
+        if(layer.sf_type() == HWC2::Composition::Sideband){
+          layer.set_validated_type(HWC2::Composition::Sideband);
+        }else{
+          layer.set_validated_type(HWC2::Composition::Device);
+        }
       }else{
         layer.set_validated_type(HWC2::Composition::Client);
       }
-      ++*num_types;
+      //num_types 应该为发生改变的图层，不仅仅是Client图层
+      if(layer.type_changed()){
+        ++*num_types;
+      }
+      layer.StateChange();
     }
     *num_requests = 0;
 
@@ -2521,6 +2549,27 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateDisplay(uint32_t *num_types,
   UpdateTimerEnable();
   // Enable Self-refresh mode.
   SelfRefreshEnable();
+
+  // 更新使能WriteBack的Display当前提交的图层信息
+  if(resource_manager_->isWBMode() && resource_manager_->GetWBDisplay() == handle_){
+    std::map<uint32_t, MirrorDisplayInfo_t> wbd_info;
+    for (std::pair<const hwc2_layer_t, DrmHwcTwo::HwcLayer> &l : layers_){
+      DrmHwcTwo::HwcLayer &layer = l.second;
+      uint64_t buffer_id = 0;
+      const std::shared_ptr<LayerInfoCache> layer_info_cache = layer.GetBufferInfo();
+      if(layer_info_cache != NULL){
+        buffer_id = layer_info_cache->uBufferId_;
+      }
+      // 目前判断信息仅需要BufferId与图层名称
+      MirrorDisplayInfo_t info;
+      info.buffer_id = buffer_id;
+      info.name = layer.name();
+      wbd_info[layer.z_order()] = info;
+    }
+    // 保存当前帧信息到 resource_manager
+    resource_manager_->AddWBDisplayLayerInfo(wbd_info);
+  }
+
   for (std::pair<const hwc2_layer_t, DrmHwcTwo::HwcLayer> &l : layers_) {
     DrmHwcTwo::HwcLayer &layer = l.second;
     // We can only handle layers of Device type, send everything else to SF
@@ -4479,21 +4528,21 @@ void DrmHwcTwo::HwcLayer::DumpLayerInfo(String8 &output) {
                        " %-11.11s | %-10.10s |%7.1f,%7.1f,%7.1f,%7.1f |%5d,%5d,%5d,%5d |"
                        " %10x | %5.1f  | %s | 0x%" PRIx64 "\n",
                     id_,
-                    mDrawingState.z_order_,
-                    to_string(mDrawingState.sf_type_).c_str(),
-                    to_string(mDrawingState.validated_type_).c_str(),
+                    mCurrentState.z_order_,
+                    to_string(mCurrentState.sf_type_).c_str(),
+                    to_string(mCurrentState.validated_type_).c_str(),
                     intptr_t(buffer_),
-                    to_string(mDrawingState.transform_).c_str(),
-                    to_string(mDrawingState.blending_).c_str(),
-                    mDrawingState.source_crop_.left,
-                    mDrawingState.source_crop_.top,
-                    mDrawingState.source_crop_.right,
-                    mDrawingState.source_crop_.bottom,
-                    mDrawingState.display_frame_.left,
-                    mDrawingState.display_frame_.top,
-                    mDrawingState.display_frame_.right,
-                    mDrawingState.display_frame_.bottom,
-                    mDrawingState.dataspace_,
+                    to_string(mCurrentState.transform_).c_str(),
+                    to_string(mCurrentState.blending_).c_str(),
+                    mCurrentState.source_crop_.left,
+                    mCurrentState.source_crop_.top,
+                    mCurrentState.source_crop_.right,
+                    mCurrentState.source_crop_.bottom,
+                    mCurrentState.display_frame_.left,
+                    mCurrentState.display_frame_.top,
+                    mCurrentState.display_frame_.right,
+                    mCurrentState.display_frame_.bottom,
+                    mCurrentState.dataspace_,
                     GetFps(),
                     layer_name_.c_str(),
                     pBufferInfo_ != NULL ? pBufferInfo_->uBufferId_ : -1);

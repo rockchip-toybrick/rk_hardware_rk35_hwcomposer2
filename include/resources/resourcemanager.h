@@ -37,6 +37,12 @@
 #include "rockchip/platform/RkHwcProxyClient.h"
 #endif
 
+
+typedef struct MirrorDisplayInfo{
+  uint64_t buffer_id = 0;
+  std::string name = std::string("UnSet");
+} MirrorDisplayInfo_t;
+
 namespace android {
 class DrmDisplayCompositor;
 class DrmHwcTwo;
@@ -111,6 +117,10 @@ class ResourceManager {
                      int32_t *retire_fence,
                      uint64_t *last_frame_no);
   int SwapWBBuffer(uint64_t frame_no);
+  // 更新WriteBack Display的图层信息，以便判断是否可以开启WriteBack
+  void AddWBDisplayLayerInfo(std::map<uint32_t, MirrorDisplayInfo_t> &Info);
+  // 检查是否是WriteBack Display 的 Mirror Dispaly
+  bool IsWBMirrorDisplay(uint64_t display_id, uint32_t zorder, MirrorDisplayInfo_t info);
   // WriteBack interface.
 
   // 系统属性开关
@@ -164,6 +174,10 @@ class ResourceManager {
   std::shared_ptr<DrmBuffer> mNextWriteBackBuffer_;
   std::shared_ptr<DrmBuffer> mDrawingWriteBackBuffer_;
   std::vector<PAIR_ID_BUFFER> mFinishBufferQueue_;
+
+  // 主要用于保存WriteBack 图层信息，用于评估虚拟屏幕是否支持从WriteBack获取图像
+  std::map<uint32_t/*z*/, MirrorDisplayInfo_t> mWBDisplayLayerInfo_;
+
   // -->
   std::map<int, std::set<uint64_t>> mMapDisplayBufferSet_;
 

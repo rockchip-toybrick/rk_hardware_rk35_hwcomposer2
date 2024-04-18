@@ -81,6 +81,7 @@ class DrmHwcTwo : public hwc2_device_t {
       lastTimeRecod_ = 0;
       last_buffer_id_ = 0;
       mSvepFps_ = 0;
+      layer_name_ = std::string("UnSet");
     };
 
     void clear(){
@@ -191,6 +192,8 @@ class DrmHwcTwo : public hwc2_device_t {
     buffer_handle_t buffer() {
       return buffer_;
     }
+
+    std::string name() { return layer_name_;}
 
     void CacheBufferInfoBySlot(buffer_handle_t buffer, bool use_cache, uint32_t slot) {
       buffer_ = buffer;

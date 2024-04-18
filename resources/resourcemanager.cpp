@@ -803,4 +803,40 @@ int ResourceManager::SwapWBBuffer(uint64_t frame_no){
   mNextWriteBackBuffer_ = next;
   return 0;
 }
+
+// 更新WriteBack Display的图层信息，以便判断是否可以开启WriteBack
+void ResourceManager::AddWBDisplayLayerInfo(std::map<uint32_t, MirrorDisplayInfo_t> &Info){
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
+  mWBDisplayLayerInfo_.clear();
+  mWBDisplayLayerInfo_ = Info;
+}
+
+// 检查是否是WriteBack Display 的 Mirror Dispaly
+bool ResourceManager::IsWBMirrorDisplay(uint64_t display_id, uint32_t zorder, MirrorDisplayInfo_t info){
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
+  auto layer_info = mWBDisplayLayerInfo_.find(zorder);
+  if(layer_info == mWBDisplayLayerInfo_.end()){
+    return false;
+  }
+
+  // 检查对应 z 坐标图层的BufferId是否匹配
+  if(layer_info->second.buffer_id != info.buffer_id){
+    HWC2_ALOGD_IF_INFO("display-id=%" PRIu64 ": z=%d buffer_id=0x%" PRIu64 " not compare WBDisplay-id=%d buffer_id=0x%" PRIu64,
+      display_id, zorder, layer_info->second.buffer_id,
+      iWriteBackDisplayId_, info.buffer_id);
+    return false;
+  }
+
+  // 检查对应 z 坐标图层的图层名称是否匹配
+  if(layer_info->second.name.compare(info.name) != 0){
+    HWC2_ALOGD_IF_INFO("display-id=%" PRIu64 ": z=%d name=%s not compare WBDisplay-id=%d name=%s",
+      display_id, zorder, info.name.c_str(),
+      iWriteBackDisplayId_, layer_info->second.name.c_str());
+    return false;
+  }
+
+  // 该层满足WriteBack使能需求
+  return true;
+}
+
 }  // namespace android
