@@ -1371,42 +1371,46 @@ int DrmDevice::UpdateVrrRefreshRate(int display_id, int refresh_rate){
     return ret;
   }
 
-  DrmCrtc *crtc = conn->encoder()->crtc();
-  if(crtc != NULL && crtc->variable_refresh_rate().id() > 0){
+  // 避免 encoder 为空导致奔溃
+  if(conn->encoder() && conn->encoder()->crtc()) {
+    DrmCrtc *crtc = conn->encoder()->crtc();
+    if(crtc != NULL && crtc->variable_refresh_rate().id() > 0){
+      drmModeAtomicReqPtr pset = drmModeAtomicAlloc();
+      if (!pset) {
+        HWC2_ALOGE("%s:line=%d Failed to allocate property set",__FUNCTION__, __LINE__);
+        return -ENOMEM;
+      }
 
-    drmModeAtomicReqPtr pset = drmModeAtomicAlloc();
-    if (!pset) {
-      HWC2_ALOGE("%s:line=%d Failed to allocate property set",__FUNCTION__, __LINE__);
-      return -ENOMEM;
-    }
-
-    uint64_t min_refresh_rate = 0;
-    uint64_t max_refresh_rate = 0;
-    std::tie(ret, min_refresh_rate) = crtc->min_refresh_rate().value();
-    std::tie(ret, max_refresh_rate) = crtc->max_refresh_rate().value();
-    if(refresh_rate < min_refresh_rate) refresh_rate = min_refresh_rate;
-    if(refresh_rate > max_refresh_rate) refresh_rate = max_refresh_rate;
-    ret = drmModeAtomicAddProperty(pset, crtc->id(),
-                                  crtc->variable_refresh_rate().id(), refresh_rate) < 0;
-    if (ret) {
-      ALOGE("Failed to add variable_refresh_rate property %d to crtc %d",
-            crtc->variable_refresh_rate().id(), crtc->id());
+      uint64_t min_refresh_rate = 0;
+      uint64_t max_refresh_rate = 0;
+      std::tie(ret, min_refresh_rate) = crtc->min_refresh_rate().value();
+      std::tie(ret, max_refresh_rate) = crtc->max_refresh_rate().value();
+      if(refresh_rate < min_refresh_rate) refresh_rate = min_refresh_rate;
+      if(refresh_rate > max_refresh_rate) refresh_rate = max_refresh_rate;
+      ret = drmModeAtomicAddProperty(pset, crtc->id(),
+                                    crtc->variable_refresh_rate().id(), refresh_rate) < 0;
+      if (ret) {
+        ALOGE("Failed to add variable_refresh_rate property %d to crtc %d",
+              crtc->variable_refresh_rate().id(), crtc->id());
+        drmModeAtomicFree(pset);
+        pset=NULL;
+        return -EINVAL;
+      }
+      // AtomicCommit
+      uint32_t flags = DRM_MODE_ATOMIC_ALLOW_MODESET;
+      ret = drmModeAtomicCommit(fd_.get(), pset, flags, this);
+      if (ret < 0) {
+        ALOGE("%s:line=%d Failed to commit pset ret=%d\n", __FUNCTION__, __LINE__, ret);
+        drmModeAtomicFree(pset);
+        pset=NULL;
+        return ret;
+      }
       drmModeAtomicFree(pset);
       pset=NULL;
-      return -EINVAL;
+      HWC2_ALOGI("display-id=%d Update Refresh Rate = %d success!.", display_id, refresh_rate);
     }
-    // AtomicCommit
-    uint32_t flags = DRM_MODE_ATOMIC_ALLOW_MODESET;
-    ret = drmModeAtomicCommit(fd_.get(), pset, flags, this);
-    if (ret < 0) {
-      ALOGE("%s:line=%d Failed to commit pset ret=%d\n", __FUNCTION__, __LINE__, ret);
-      drmModeAtomicFree(pset);
-      pset=NULL;
-      return ret;
-    }
-    drmModeAtomicFree(pset);
-    pset=NULL;
-    HWC2_ALOGI("display-id=%d Update Refresh Rate = %d success!.", display_id, refresh_rate);
+  }else{
+      HWC2_ALOGW("display-id=%d crtc is null. request fps = %d", display_id, refresh_rate);
   }
 
   return 0;
