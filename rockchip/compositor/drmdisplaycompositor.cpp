@@ -2416,21 +2416,43 @@ int DrmDisplayCompositor::CollectSFInfoByDrop() {
   exist_display.clear();
   if (!composite_queue_.empty()) {
     std::map<int, std::unique_ptr<DrmDisplayComposition>>  latest_composition_map;
+    std::queue<std::unique_ptr<DrmDisplayComposition>>  reserved_comp;
+    std::map<int, int> droped_frame_map;
     // 找到最新的 composition,并且把不需要送显的composition存放在composite_queue_temp_队列中
     while(composite_queue_.size() > 0){
       std::unique_ptr<DrmDisplayComposition> composition = std::move(composite_queue_.front());
       int composition_display = composition->display();
       mapDisplayHaveQeueuCnt_[composition_display]--;
       composite_queue_.pop();
-      if(latest_composition_map[composition_display] == NULL){
-        latest_composition_map[composition_display] = std::move(composition);
-        composition = NULL;
-      }else if(composition->frame_no() > latest_composition_map[composition_display]->frame_no()){
-        composite_queue_temp_.push(std::move(latest_composition_map[composition_display]));
-        latest_composition_map[composition_display] = std::move(composition);
+
+      if(!droped_frame_map.count(composition_display))
+        droped_frame_map[composition_display]=0;
+
+      //如果丢帧数量小于1
+      if(droped_frame_map[composition_display]<1){
+        if(latest_composition_map[composition_display] == NULL){
+          latest_composition_map[composition_display] = std::move(composition);
+          composition = NULL;
+        }else if(composition->frame_no() > latest_composition_map[composition_display]->frame_no()){
+          composite_queue_temp_.push(std::move(latest_composition_map[composition_display]));
+          droped_frame_map[composition_display]++;
+          latest_composition_map[composition_display] = std::move(composition);
+        }else{
+          composite_queue_temp_.push(std::move(composition));
+          droped_frame_map[composition_display]++;
+        }
       }else{
-        composite_queue_temp_.push(std::move(composition));
+        //如果已经丢了两帧，剩余的帧送到新队列
+        reserved_comp.push(std::move(composition));
       }
+    }
+
+    //将保留的composition重新queue回队列中
+    while(reserved_comp.size() > 0){
+      std::unique_ptr<DrmDisplayComposition> composition = std::move(reserved_comp.front());
+      mapDisplayHaveQeueuCnt_[composition->display()]++;
+      composite_queue_.push(std::move(composition));
+      reserved_comp.pop();
     }
 
     // 将存放在composite_queue_temp_队列中的composition移动到最新的DrmDisplayComposition中
