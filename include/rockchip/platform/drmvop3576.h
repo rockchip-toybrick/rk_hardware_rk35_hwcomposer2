@@ -188,6 +188,8 @@ typedef struct StateContext{
 
   bool bRequireGLESMode;
   bool bHDRVideoForceOverlay;
+
+  int iVopPerformanceFactor;
 } StaCtx;
 
 typedef struct DrmVop2Context{
@@ -316,6 +318,7 @@ struct SvepXml{
 
   void TryMix();
   void UpdateResevedPlane(DrmCrtc *crtc);
+  bool IsExcceedVopLimit(DrmHwcLayer *layer, uint64_t plane_mask);
   bool CheckGLESLayer(DrmHwcLayer* layers);
   void InitStateContext(
       std::vector<DrmHwcLayer*> &layers,

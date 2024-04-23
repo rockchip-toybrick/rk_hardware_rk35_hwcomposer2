@@ -946,6 +946,10 @@ int Vop3576::MatchPlane(std::vector<DrmCompositionPlane> *composition_planes,
                       if(!(*iter_plane)->is_use() && (*iter_plane)->GetCrtcSupported(*crtc))
                       {
                           bool bNeed = false;
+                          if(IsExcceedVopLimit((*iter_layer), (*iter_plane)->win_type()) && !(*iter_layer)->bFbTarget_){
+                              HWC2_ALOGD_IF_DEBUG("%s excceed vop limit, can't overlay ",(*iter_plane)->name());
+                              continue;
+                          }
 
                           // Cluster 0, 初始化 Cluster 图层匹配参数
                           if((*iter_plane)->win_type() & PLANE_RK3576_CLUSTER0_WIN0){
@@ -3163,13 +3167,87 @@ void Vop3576::UpdateResevedPlane(DrmCrtc *crtc){
   return;
 }
 
-/*
- * CLUSTER_AFBC_DECODE_MAX_RATE = 3.2
- * (src(W*H)/dst(W*H))/(aclk/dclk) > CLUSTER_AFBC_DECODE_MAX_RATE to use GLES compose.
- * Notes: (4096,1714)=>(1080,603) appear( DDR 1560M ), CLUSTER_AFBC_DECODE_MAX_RATE=2.839350
- * Notes: (4096,1714)=>(1200,900) appear( DDR 1056M ), CLUSTER_AFBC_DECODE_MAX_RATE=2.075307
- */
-#define CLUSTER_AFBC_DECODE_MAX_RATE 2.0
+//AFBC解码效率限制：(dsp_w*dsp_h)/（dclk）>(src0_w*src0_h+src1_w*src1_h)/(aclk*4)
+//RFBC解码效率限制：(dsp_w*dsp_h)/（dclk）>(src0_w*src0_h+src1_w*src1_h)/(aclk*8)
+//ESMART效率限制：(dsp_w*dsp_h)/（dclk）>(src_w*src_h)/(aclk*2)
+//非压缩效率限制：(dsp_w*dsp_h)/（dclk）>(src0_w*src0_h+src1_w*src1_h+...+srcn_w*srcn_h)/(aclk*4)
+#define CLUSTER_AFBC_MAX_SCALE_RATE 4.0
+#define CLUSTER_RFBC_MAX_SCALE_RATE 8.0
+#define ESMART_MAX_SCALE_RATE 2.0
+#define CLUSTER_MAX_SCALE_RATE 4.0
+bool Vop3576::IsExcceedVopLimit(DrmHwcLayer *layer, uint64_t win_type){
+
+  double perf_max_factor = (double)ctx.state.iVopPerformanceFactor / 100.0;
+
+  if(layer->uAclk_ > 0 && layer->uDclk_ > 0 ){
+    if(layer->bAfbcd_){
+      //1.在处理raster格式的性能是4pix/cycle
+      //(dsp_w*dsp_h)/（dclk）>(src0_w*src0_h+src1_w*src1_h)/(aclk*4)
+      double allow_rate = CLUSTER_AFBC_MAX_SCALE_RATE*perf_max_factor;
+      double scale_rate = (layer->fHScaleMul_ * layer->fVScaleMul_) / ((double)layer->uAclk_/(double)layer->uDclk_);
+      HWC2_ALOGD_IF_VERBOSE("[%s]:scale-rate=%f, allow_rate = %f, "
+                "fHScaleMul_ = %f, fVScaleMul_ = %f, uAclk_ = %d, uDclk_=%d ",
+                layer->sLayerName_.c_str(), scale_rate, allow_rate,
+                layer->fHScaleMul_ ,layer->fVScaleMul_ ,layer->uAclk_ ,layer->uDclk_);
+      if(allow_rate > 0){
+        if(scale_rate > allow_rate){
+          HWC2_ALOGD_IF_DEBUG("[%s]:Scale too large (%f) Use GLES Composite, allow_rate = %f, "
+                    "fHScaleMul_ = %f, fVScaleMul_ = %f, uAclk_ = %d, uDclk_=%d ",
+                    layer->sLayerName_.c_str(), scale_rate, allow_rate,
+                    layer->fHScaleMul_ ,layer->fVScaleMul_ ,layer->uAclk_ ,layer->uDclk_);
+          return true;
+        }
+      }
+    }else if(layer->bRfbcd_){
+      //2.在处理rkafbc的性能是8pix/cycle
+      //(dsp_w*dsp_h)/（dclk）>(src0_w*src0_h+src1_w*src1_h)/(aclk*8)
+      double allow_rate = CLUSTER_RFBC_MAX_SCALE_RATE*perf_max_factor;
+      double scale_rate = (layer->fHScaleMul_ * layer->fVScaleMul_) /((double)layer->uAclk_/(double)layer->uDclk_);
+      HWC2_ALOGD_IF_VERBOSE("[%s]:scale-rate=%f, allow_rate = %f, "
+                "fHScaleMul_ = %f, fVScaleMul_ = %f, uAclk_ = %d, uDclk_=%d ",
+                layer->sLayerName_.c_str(), scale_rate, allow_rate,
+                layer->fHScaleMul_ ,layer->fVScaleMul_ ,layer->uAclk_ ,layer->uDclk_);
+      if(allow_rate > 0){
+        if(scale_rate > allow_rate){
+          HWC2_ALOGD_IF_DEBUG("[%s]:Scale too large (%f) But GPU can not composite RFBC, use VOP anyway, allow_rate = %f, "
+                    "fHScaleMul_ = %f, fVScaleMul_ = %f, uAclk_ = %d, uDclk_=%d ",
+                    layer->sLayerName_.c_str(), scale_rate, allow_rate,
+                    layer->fHScaleMul_ ,layer->fVScaleMul_ ,layer->uAclk_ ,layer->uDclk_);
+          return true;
+        }
+      }
+    }else{
+      //3.单esmart性能是2pix/cycle
+      //(dsp_w*dsp_h)/（dclk）>(src_w*src_h)/(aclk*2)
+      //4.axi取argb的性能是argb 4pix/cycle
+      //(dsp_w*dsp_h)/（dclk）>(src0_w*src0_h+src1_w*src1_h+...+srcn_w*srcn_h)/(aclk*4)
+      double allow_cluster_rate = CLUSTER_MAX_SCALE_RATE*perf_max_factor;
+      double allow_esmart_rate = ESMART_MAX_SCALE_RATE*perf_max_factor;
+      double scale_rate = (layer->fHScaleMul_ * layer->fVScaleMul_) / ((double)layer->uAclk_/(double)layer->uDclk_);
+      HWC2_ALOGD_IF_VERBOSE("[%s]:scale-rate=%f, allow_cluster_rate = %f, allow_esmart_rate = %f, "
+                "fHScaleMul_ = %f, fVScaleMul_ = %f, uAclk_ = %d, uDclk_=%d ",
+                layer->sLayerName_.c_str(), scale_rate, allow_cluster_rate, allow_esmart_rate,
+                layer->fHScaleMul_ ,layer->fVScaleMul_ ,layer->uAclk_ ,layer->uDclk_);
+
+      if((win_type&PLANE_RK3576_ALL_CLUSTER_MASK) && scale_rate>allow_cluster_rate){
+        HWC2_ALOGD_IF_DEBUG("[%s]:Scale too large (%f), Can not use Cluster Composite, allow_rate = %f, "
+                "fHScaleMul_ = %f, fVScaleMul_ = %f, uAclk_ = %d, uDclk_=%d ",
+                layer->sLayerName_.c_str(), scale_rate, allow_cluster_rate,
+                layer->fHScaleMul_ ,layer->fVScaleMul_ ,layer->uAclk_ ,layer->uDclk_);
+        return true;
+      }else if((win_type&PLANE_RK3576_ALL_ESMART_MASK) && scale_rate > allow_esmart_rate){
+        HWC2_ALOGD_IF_DEBUG("[%s]:Scale too large (%f), Can not use Esmart Composite, allow_rate = %f, "
+                  "fHScaleMul_ = %f, fVScaleMul_ = %f, uAclk_ = %d, uDclk_=%d ",
+                  layer->sLayerName_.c_str(), scale_rate, allow_esmart_rate,
+                  layer->fHScaleMul_ ,layer->fVScaleMul_ ,layer->uAclk_ ,layer->uDclk_);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+
 bool Vop3576::CheckGLESLayer(DrmHwcLayer *layer){
 
   int act_w = static_cast<int>(layer->source_crop.right - layer->source_crop.left);
@@ -3184,67 +3262,6 @@ bool Vop3576::CheckGLESLayer(DrmHwcLayer *layer){
     return true;
   }
 
-  // RK356x Cluster can't overlay act_w % 4 != 0 afbcd layer.
-  if(layer->bAfbcd_){
-    // RK3576 不知道是否存在以下限制
-    // if(act_w % 4 != 0){
-    //   HWC2_ALOGD_IF_DEBUG("[%s]：act_w=%d Cluster must act_w %% 4 != 0.",
-    //           layer->sLayerName_.c_str(),act_w);
-    //   return true;
-    // }
-
-    // RK3576 Cluster性能与RK356x差异比较大，这部分限制暂时先关闭。
-    //  (src(W*H)/dst(W*H))/(aclk/dclk) > rate = CLUSTER_AFBC_DECODE_MAX_RATE, Use GLES compose
-    // if(layer->uAclk_ > 0 && layer->uDclk_ > 0){
-    //     char value[PROPERTY_VALUE_MAX];
-    //     property_get("vendor.hwc.cluster_afbc_decode_max_rate", value, "0");
-    //     double cluster_afbc_decode_max_rate = atof(value);
-
-    //     HWC2_ALOGD_IF_VERBOSE("[%s]：scale-rate=%f, allow_rate = %f, "
-    //               "property_rate=%f, fHScaleMul_ = %f, fVScaleMul_ = %f, uAclk_ = %d, uDclk_=%d ",
-    //               layer->sLayerName_.c_str(),
-    //               (layer->fHScaleMul_ * layer->fVScaleMul_) / (layer->uAclk_/(layer->uDclk_ * 1.0)),
-    //               cluster_afbc_decode_max_rate ,CLUSTER_AFBC_DECODE_MAX_RATE,
-    //               layer->fHScaleMul_ ,layer->fVScaleMul_ ,layer->uAclk_ ,layer->uDclk_);
-    //   if(cluster_afbc_decode_max_rate > 0){
-    //     if((layer->fHScaleMul_ * layer->fVScaleMul_) / (layer->uAclk_/(layer->uDclk_ * 1.0)) > cluster_afbc_decode_max_rate){
-    //       HWC2_ALOGD_IF_DEBUG("[%s]：scale too large(%f) to use GLES composer, allow_rate = %f, "
-    //                 "property_rate=%f, fHScaleMul_ = %f, fVScaleMul_ = %f, uAclk_ = %d, uDclk_=%d ",
-    //                 layer->sLayerName_.c_str(),
-    //                 (layer->fHScaleMul_ * layer->fVScaleMul_) / (layer->uAclk_/(layer->uDclk_ * 1.0)),
-    //                 CLUSTER_AFBC_DECODE_MAX_RATE,
-    //                 cluster_afbc_decode_max_rate, layer->fHScaleMul_ ,
-    //                 layer->fVScaleMul_ ,layer->uAclk_ ,layer->uDclk_);
-    //       return true;
-    //     }
-    //   }else if((layer->fHScaleMul_ * layer->fVScaleMul_) / (layer->uAclk_/(layer->uDclk_ * 1.0)) > CLUSTER_AFBC_DECODE_MAX_RATE){
-    //     HWC2_ALOGD_IF_DEBUG("[%s]：scale too large(%f) to use GLES composer, allow_rate = %f, "
-    //               "property_rate=%f, fHScaleMul_ = %f, fVScaleMul_ = %f, uAclk_ = %d, uDclk_=%d ",
-    //               layer->sLayerName_.c_str(),
-    //               (layer->fHScaleMul_ * layer->fVScaleMul_) / (layer->uAclk_/(layer->uDclk_ * 1.0)),
-    //               CLUSTER_AFBC_DECODE_MAX_RATE,
-    //               cluster_afbc_decode_max_rate, layer->fHScaleMul_ ,
-    //               layer->fVScaleMul_ ,layer->uAclk_ ,layer->uDclk_);
-    //     return true;
-    //   }
-    // }
-  }
-
-  // RK356x Esmart can't overlay act_w % 16 == 1 and fHScaleMul_ < 1.0 layer.
-  // if(!layer->bAfbcd_){
-  //   if(act_w % 16 == 1 && layer->fHScaleMul_ < 1.0){
-  //     HWC2_ALOGD_IF_DEBUG("[%s]：RK356x Esmart can't overlay act_w %% 16 == 1 and fHScaleMul_ < 1.0 layer.",
-  //             layer->sLayerName_.c_str());
-  //     return true;
-  //   }
-
-  //   int dst_w = static_cast<int>(layer->display_frame.right - layer->display_frame.left);
-  //   if(dst_w % 2 == 1 && layer->fHScaleMul_ < 1.0){
-  //     HWC2_ALOGD_IF_DEBUG("[%s]：RK356x Esmart can't overlay dst_w %% 2 == 1 and fHScaleMul_ < 1.0 layer.",
-  //             layer->sLayerName_.c_str());
-  //     return true;
-  //   }
-  // }
 
   if(layer->transform == -1){
     HWC2_ALOGD_IF_DEBUG("[%s]：layer->transform = %d is invalidate",
@@ -3425,6 +3442,11 @@ void Vop3576::InitStateContext(
   ctx.state.iVopMaxOverlay4KPlane = hwc_get_int_property("vendor.hwc.vop_max_overlay_4k_plane","0");
   ctx.state.bRgaPolicyEnable = hwc_get_int_property("vendor.hwc.enable_rga_policy","1") > 0;
   ctx.state.bHDRVideoForceOverlay = hwc_get_int_property("vendor.hwc.hdr_video_force_overlay","1") > 0;
+  ctx.state.iVopPerformanceFactor = hwc_get_int_property("vendor.hwc.vop_performance_factor","100");
+  if(ctx.state.iVopPerformanceFactor<50){
+    HWC2_ALOGE("vendor.hwc.vop_performance_limit_rate should heigher than 50");
+    ctx.state.iVopPerformanceFactor = 50;
+  }
 
   HWC2_ALOGD_IF_DEBUG("bMultiAreaEnable=%d, bMultiAreaScaleEnable=%d iVopMaxOverlay4KPlane=%d bRgaPolicyEnable=%d",
             ctx.state.bMultiAreaEnable,
