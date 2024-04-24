@@ -33,6 +33,9 @@
 #ifdef USE_LIBPQ
 #include "Pq.h"
 #endif
+#ifdef USE_LIBEBOOK
+#include "EBookApi.h"
+#endif
 #include <hardware/hwcomposer2.h>
 
 #include <utils/Timers.h>
@@ -692,6 +695,9 @@ class DrmHwcTwo : public hwc2_device_t {
     HWC2::Error Init();
 
     HWC2::Error InitVirtual();
+#ifdef USE_LIBEBOOK
+    HWC2::Error InitEBook();
+#endif
 
     HWC2::Error CheckStateAndReinit(bool clear_layer = false);
 
@@ -737,6 +743,11 @@ class DrmHwcTwo : public hwc2_device_t {
                                  int32_t *fences);
     HWC2::Error PresentVirtualDisplay(int32_t *retire_fence);
     HWC2::Error PresentDisplay(int32_t *retire_fence);
+
+#ifdef USE_LIBEBOOK
+    HWC2::Error PresentEBookDisplay(int32_t *retire_fence);
+    HWC2::Error ValidateEBookDisplay(uint32_t *num_types, uint32_t *num_requests);
+#endif
     HWC2::Error SetActiveConfig(hwc2_config_t config);
     // RK:VRR
     HWC2::Error UpdateRefreshRate(hwc2_config_t config);
@@ -823,6 +834,10 @@ class DrmHwcTwo : public hwc2_device_t {
    int InvalidateControl(uint64_t refresh, int refresh_cnt);
    int isVirtual() { return type_ == HWC2::DisplayType::Virtual;}
 
+#ifdef USE_LIBEBOOK
+   int isEBook() { return ebook_framebuffer_width > 0;}
+#endif
+
 
    private:
     HWC2::Error ValidatePlanes();
@@ -882,6 +897,15 @@ class DrmHwcTwo : public hwc2_device_t {
 
     bool bUseWriteBack_;
     int iLastTunnelId_=0;
+
+#ifdef USE_LIBEBOOK
+    // EBook
+    std::shared_ptr<EBookApi> mEBookApi_;
+    int ebook_framebuffer_width   = 0;
+    int ebook_framebuffer_height  = 0;
+    int ebook_framebuffer_mmwidth = 0;
+    int ebook_framebuffer_mmheight = 0;
+#endif
   };
 
 
@@ -1016,6 +1040,9 @@ class DrmHwcTwo : public hwc2_device_t {
   // 通过 mHasRegisterDisplay_ 存储已向SurfaceFlinger注册的display
   std::set<hwc2_display_t> mHasRegisterDisplay_;
   EventWorker eventWorker_;
+#ifdef USE_LIBEBOOK
+  int EBookDisplayId_;
+#endif
 };
 }  // namespace android
 #endif // DRM_HWC_TWO_H

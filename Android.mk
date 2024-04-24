@@ -372,6 +372,28 @@ LOCAL_CFLAGS += \
 	-DUSE_HWC_PROXY_SERVICE=1
 endif
 
+
+# EBOOK
+# BOARD_USES_LIBEBOOK := true
+ifeq ($(strip $(BOARD_USES_LIBEBOOK)),true)
+
+CHECKED_DIRECTORY := hardware/rockchip/libebook
+ifeq ($(wildcard $(CHECKED_DIRECTORY)),)
+    $(error Directory $(CHECKED_DIRECTORY) does not exist, Please upgrade the libebook!)
+else
+    $(info Directory $(CHECKED_DIRECTORY) exists)
+endif
+
+LOCAL_C_INCLUDES += \
+  hardware/rockchip/libebook/lib/Android/$(TARGET_SOC_PLATFORM)/include
+
+LOCAL_SHARED_LIBRARIES += \
+	libebook
+
+LOCAL_CFLAGS += \
+	-DUSE_LIBEBOOK=1
+endif
+
 # LOCAL_SANITIZE:=address
 
 LOCAL_MODULE := hwcomposer.$(TARGET_BOARD_HARDWARE)

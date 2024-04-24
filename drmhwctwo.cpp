@@ -39,7 +39,9 @@
 
 #include <linux/fb.h>
 
-
+#ifdef USE_LIBEBOOK
+#include "EBookApi.h"
+#endif
 #define hwcMIN(x, y)			(((x) <= (y)) ?  (x) :  (y))
 #define hwcMAX(x, y)			(((x) >= (y)) ?  (x) :  (y))
 
@@ -125,6 +127,10 @@ DrmHwcTwo::DrmHwcTwo()
   common.close = HookDevClose;
   getCapabilities = HookDevGetCapabilities;
   getFunction = HookDevGetFunction;
+
+#ifdef USE_LIBEBOOK
+  EBookDisplayId_ = -1;
+#endif
 }
 
 HWC2::Error DrmHwcTwo::CreateDisplay(hwc2_display_t displ,
@@ -172,6 +178,29 @@ HWC2::Error DrmHwcTwo::Init() {
   if(eventWorker_.Init(this)){
     HWC2_ALOGE("EventWorker init fail.");
   }
+
+#ifdef USE_LIBEBOOK
+  // 初始化EBook显示设备
+  int physical_display_num = resource_manager_->getDisplayCount();
+  int ebook_display_id = physical_display_num + mVirtualDisplayCount_;
+  if(!displays_.count(ebook_display_id)){
+    int virtual_display_id = 0;
+    DrmDevice *drm = resource_manager_->GetDrmDevice(virtual_display_id);
+    std::shared_ptr<Importer> importer = resource_manager_->GetImporter(virtual_display_id);
+    if (!drm || !importer) {
+      ALOGE("Failed to get a valid drmresource and importer");
+      return HWC2::Error::NoResources;
+    }
+    displays_.emplace(std::piecewise_construct, std::forward_as_tuple(ebook_display_id),
+                      std::forward_as_tuple(resource_manager_, drm, importer,
+                                            ebook_display_id,
+                                            HWC2::DisplayType::Physical));
+    displays_.at(ebook_display_id).InitEBook();
+    mVirtualDisplayCount_++;
+    EBookDisplayId_ = ebook_display_id;
+  }
+#endif
+
   return ret;
 }
 
@@ -336,7 +365,14 @@ HWC2::Error DrmHwcTwo::RegisterCallback(int32_t descriptor,
     case HWC2::Callback::Hotplug: {
       auto hotplug = reinterpret_cast<HWC2_PFN_HOTPLUG>(function);
       hotplug(data, HWC_DISPLAY_PRIMARY,
+
               static_cast<int32_t>(HWC2::Connection::Connected));
+#ifdef USE_LIBEBOOK
+      if(EBookDisplayId_ > 0){
+        hotplug(data, EBookDisplayId_,
+                static_cast<int32_t>(HWC2::Connection::Connected));
+      }
+#endif
       // 主屏已经向SurfaceFlinger注册
       mHasRegisterDisplay_.insert(HWC_DISPLAY_PRIMARY);
       auto &drmDevices = resource_manager_->GetDrmDevices();
@@ -558,7 +594,59 @@ HWC2::Error DrmHwcTwo::HwcDisplay::InitVirtual() {
   return HWC2::Error::None;
 }
 
+#ifdef USE_LIBEBOOK
+HWC2::Error DrmHwcTwo::HwcDisplay::InitEBook() {
+
+  HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 " type=%s",handle_,
+                        (type_ == HWC2::DisplayType::Physical ? "Physical" : "Ebook"));
+
+  int display = static_cast<int>(handle_);
+
+  mEBookApi_ =
+      std::shared_ptr<EBookApi>(new EBookApi());
+  if (mEBookApi_ == NULL)
+  {
+      HWC2_ALOGE("EBookApi init fail check\n");
+      return HWC2::Error::BadDisplay;
+  }
+
+  EBookError error = EBookError::None;
+  // 2. 初始化
+  error = mEBookApi_->Init(EBOOK_VERSION);
+  if (error != EBookError::None)
+  {
+      HWC2_ALOGE("EBook Init fail.\n");
+      return HWC2::Error::BadDisplay;
+  }
+
+  error = mEBookApi_->GetEBookInfo(&ebook_framebuffer_width, &ebook_framebuffer_height,
+                                   &ebook_framebuffer_mmwidth, &ebook_framebuffer_mmheight);
+  if (error != EBookError::None)
+  {
+      HWC2_ALOGE("EBook Init fail.\n");
+      return HWC2::Error::BadDisplay;;
+  }
+
+  HWC2_ALOGI(
+        "EBookInfo: resolution : width=%d height=%d. physical: width=%d mm"
+        "height=%d mm\n",
+        ebook_framebuffer_width, ebook_framebuffer_height, ebook_framebuffer_mmwidth,
+        ebook_framebuffer_mmheight);
+
+  connector_ = drm_->GetWritebackConnectorForDisplay(0);
+  if (!connector_) {
+    ALOGE("Failed to get connector for display %d", display);
+    return HWC2::Error::BadDisplay;
+  }
+
+  init_success_ = true;
+  frame_no_ = 0;
+  wb_frame_no_ = 0;
+  return HWC2::Error::None;
+}
+#endif
 HWC2::Error DrmHwcTwo::HwcDisplay::CheckStateAndReinit(bool clear_layer) {
+
 
   HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64,handle_);
 
@@ -903,49 +991,96 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayAttribute(hwc2_config_t config,
         return HWC2::Error::BadConfig;
     }
   }else{
-
     static const int32_t kUmPerInch = 25400;
-    uint32_t mm_width = connector_->mm_width();
-    uint32_t mm_height = connector_->mm_height();
-    int w = ctx_.framebuffer_width;
-    int h = ctx_.framebuffer_height;
-    int vrefresh = ctx_.vrefresh;
-    // VRR
-    const std::vector<int> vrr_mode = connector_->vrr_modes();
-    if (bVrrDisplay_ && vrr_mode.size() > 1
-       && config < vrr_mode.size()) {
-      vrefresh = vrr_mode[config];
-    }
 
-    auto attribute = static_cast<HWC2::Attribute>(attribute_in);
-    switch (attribute) {
-      case HWC2::Attribute::Width:
-        *value = w;
-        break;
-      case HWC2::Attribute::Height:
-        *value = h;
-        break;
-      case HWC2::Attribute::VsyncPeriod:
-        // in nanoseconds
-        *value = 1000 * 1000 * 1000 / vrefresh;
-        break;
-      case HWC2::Attribute::DpiX:
-        // Dots per 1000 inches
-        *value = mm_width ? (w * kUmPerInch) / mm_width : -1;
-        break;
-      case HWC2::Attribute::DpiY:
-        // Dots per 1000 inches
-        *value = mm_height ? (h * kUmPerInch) / mm_height : -1;
-        break;
-// Only Android 14 Support
-#if PLATFORM_SDK_VERSION >= 34
-      case HWC2::Attribute::ConfigGroup:
-        *value = 0; /* TODO: Add support for config groups */
-        break;
+    uint32_t mm_width = 0;
+    uint32_t mm_height = 0;
+    int w = 0;
+    int h = 0;
+    int vrefresh = 0;
+
+#ifdef USE_LIBEBOOK
+    if(isEBook()){
+      mm_width = ebook_framebuffer_mmwidth;
+      mm_height = ebook_framebuffer_mmheight;
+      w = ctx_.framebuffer_width;
+      h = ctx_.framebuffer_height;
+      vrefresh = 10;
+      auto attribute = static_cast<HWC2::Attribute>(attribute_in);
+      switch (attribute) {
+        case HWC2::Attribute::Width:
+          *value = w;
+          break;
+        case HWC2::Attribute::Height:
+          *value = h;
+          break;
+        case HWC2::Attribute::VsyncPeriod:
+          // in nanoseconds
+          *value = 1000 * 1000 * 1000 / vrefresh;
+          break;
+        case HWC2::Attribute::DpiX:
+          // Dots per 1000 inches
+          *value = mm_width ? (w * kUmPerInch) / mm_width : -1;
+          break;
+        case HWC2::Attribute::DpiY:
+          // Dots per 1000 inches
+          *value = mm_height ? (h * kUmPerInch) / mm_height : -1;
+          break;
+  // Only Android 14 Support
+  #if PLATFORM_SDK_VERSION >= 34
+        case HWC2::Attribute::ConfigGroup:
+          *value = 0; /* TODO: Add support for config groups */
+          break;
+  #endif
+        default:
+          *value = -1;
+          return HWC2::Error::BadConfig;
+      }
+    }else
 #endif
-      default:
-        *value = -1;
-        return HWC2::Error::BadConfig;
+    {
+      mm_width = connector_->mm_width();
+      mm_height = connector_->mm_height();
+      w = ctx_.framebuffer_width;
+      h = ctx_.framebuffer_height;
+      vrefresh = ctx_.vrefresh;
+      // VRR
+      const std::vector<int> vrr_mode = connector_->vrr_modes();
+      if (bVrrDisplay_ && vrr_mode.size() > 1
+        && config < vrr_mode.size()) {
+        vrefresh = vrr_mode[config];
+      }
+
+      auto attribute = static_cast<HWC2::Attribute>(attribute_in);
+      switch (attribute) {
+        case HWC2::Attribute::Width:
+          *value = w;
+          break;
+        case HWC2::Attribute::Height:
+          *value = h;
+          break;
+        case HWC2::Attribute::VsyncPeriod:
+          // in nanoseconds
+          *value = 1000 * 1000 * 1000 / vrefresh;
+          break;
+        case HWC2::Attribute::DpiX:
+          // Dots per 1000 inches
+          *value = mm_width ? (w * kUmPerInch) / mm_width : -1;
+          break;
+        case HWC2::Attribute::DpiY:
+          // Dots per 1000 inches
+          *value = mm_height ? (h * kUmPerInch) / mm_height : -1;
+          break;
+  // Only Android 14 Support
+  #if PLATFORM_SDK_VERSION >= 34
+        case HWC2::Attribute::ConfigGroup:
+          *value = 0; /* TODO: Add support for config groups */
+          break;
+  #endif
+        default:
+          *value = -1;
+          return HWC2::Error::BadConfig;
+      }
     }
   }
   return HWC2::Error::None;
@@ -1045,6 +1180,21 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayConfigs(uint32_t *num_configs,
 
 
     *num_configs = sf_modes_.size();
+#ifdef USE_LIBEBOOK
+  }else if(isEBook()){
+    ctx_.framebuffer_width = ebook_framebuffer_width;
+    ctx_.framebuffer_height = ebook_framebuffer_height;
+    ctx_.vrefresh = 10;
+
+    if (!configs) {
+      *num_configs = 1;
+      return HWC2::Error::None;
+    }
+    *num_configs = 1;
+    configs[0] = 0;
+    return HWC2::Error::None;
+#endif
+
   }else{
     UpdateDisplayInfo();
     const DrmMode best_mode = connector_->active_mode();
@@ -1947,13 +2097,69 @@ HWC2::Error DrmHwcTwo::HwcDisplay::PresentVirtualDisplay(int32_t *retire_fence) 
   ++frame_no_;
   return HWC2::Error::None;
 }
+#ifdef USE_LIBEBOOK
+HWC2::Error DrmHwcTwo::HwcDisplay::PresentEBookDisplay(int32_t *retire_fence) {
+  ATRACE_CALL();
+  *retire_fence = -1;
+  const std::shared_ptr<LayerInfoCache> info = client_layer_.GetBufferInfo();
+  if(info != NULL){
+
+    // 5. 设置源图像参数
+    EBookImageInfo src;
+    src.mBufferInfo_.iFd_           = info->uniqueFd_.get();
+    src.mBufferInfo_.iWidth_        = info->iWidth_;
+    src.mBufferInfo_.iHeight_       = info->iHeight_;
+    src.mBufferInfo_.iFormat_       = info->uFourccFormat_;
+    src.mBufferInfo_.iStride_       = info->iStride_;
+    src.mBufferInfo_.iHeightStride_ = info->iHeightStride_;
+    src.mBufferInfo_.uBufferId_     = info->uBufferId_;
+    src.mBufferInfo_.iSize_         = info->iSize_;
+    src.mAcquireFence_.Set(dup(client_layer_.acquire_fence()->getFd()));
+
+    src.mCrop_.iLeft_               = 0;
+    src.mCrop_.iTop_                = 0;
+    src.mCrop_.iRight_              = ebook_framebuffer_width;
+    src.mCrop_.iBottom_             = ebook_framebuffer_height;
+
+    if (info->uModifier_)
+    {
+        src.mBufferInfo_.uMask_ = EBookBufferMask::EB_AFBC_FORMATE;
+    }
+
+    char value[PROPERTY_VALUE_MAX];
+    property_get("sys.eink.mode", value, "9");
+    EBookMode mode = static_cast<EBookMode>(atoi(value));
+
+    // 6. Commit
+    int finish_fence = -1;
+    EBookError error = mEBookApi_->Commit(&src, mode, &finish_fence);
+    if (error != EBookError::None)
+    {
+        HWC2_ALOGE("EBook RunAsync fail\n");
+        return HWC2::Error::BadDisplay;
+    }
+
+    if(finish_fence > 0){
+      *retire_fence = finish_fence;
+    }
+  }
+  ++frame_no_;
+
+  return HWC2::Error::None;
+}
+#endif
+
 HWC2::Error DrmHwcTwo::HwcDisplay::PresentDisplay(int32_t *retire_fence) {
   ATRACE_CALL();
 
   if(isVirtual()){
     return PresentVirtualDisplay(retire_fence);;
   }
-
+#ifdef USE_LIBEBOOK
+  if(isEBook()){
+    return PresentEBookDisplay(retire_fence);
+  }
+#endif
   int32_t merge_retire_fence = -1;
   // 拼接主屏需要遍历其他拼接子屏幕
   if(connector_->IsSpiltPrimary()){
@@ -2238,7 +2444,11 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SyncPowerMode() {
 
 HWC2::Error DrmHwcTwo::HwcDisplay::SetPowerMode(int32_t mode_in) {
   HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ", mode_in=%d",handle_,mode_in);
-
+#ifdef USE_LIBEBOOK
+  if(isEBook()){
+    return HWC2::Error::None;
+  }
+#endif
   // 拼接屏幕主屏需要更新拼接副屏的电源状态
   if(connector_->IsSpiltPrimary()){
     for (auto &conn : drm_->connectors()) {
@@ -2480,6 +2690,39 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateVirtualDisplay(uint32_t *num_types,
 
     return HWC2::Error::None;
 }
+
+#ifdef USE_LIBEBOOK
+HWC2::Error DrmHwcTwo::HwcDisplay::ValidateEBookDisplay(uint32_t *num_types,
+                                                          uint32_t *num_requests) {
+    if(LogLevel(DBG_INFO)){
+      DumpDisplayLayersInfo();
+    }
+
+    if(!layers_.size()){
+      HWC2_ALOGI("display %" PRIu64 " layer size is %zu, %s,line=%d", handle_, layers_.size(),
+            __FUNCTION__, __LINE__);
+      return HWC2::Error::None;
+    }
+
+    for (std::pair<const hwc2_layer_t, DrmHwcTwo::HwcLayer> &l : layers_) {
+      DrmHwcTwo::HwcLayer &layer = l.second;
+      if(layer.sf_type() == HWC2::Composition::Sideband){
+        layer.set_validated_type(HWC2::Composition::Sideband);
+      }else{
+        layer.set_validated_type(HWC2::Composition::Client);
+      }
+      //num_types 应该为发生改变的图层，不仅仅是Client图层
+      if(layer.type_changed()){
+        ++*num_types;
+      }
+      layer.StateChange();
+    }
+    *num_requests = 0;
+
+    return HWC2::Error::None;
+}
+#endif
+
 HWC2::Error DrmHwcTwo::HwcDisplay::ValidateDisplay(uint32_t *num_types,
                                                    uint32_t *num_requests) {
   ATRACE_CALL();
@@ -2489,6 +2732,13 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateDisplay(uint32_t *num_types,
   if(isVirtual()){
     return ValidateVirtualDisplay(num_types, num_requests);;
   }
+
+#ifdef USE_LIBEBOOK
+  // 虚拟屏
+  if(isEBook()){
+    return ValidateEBookDisplay(num_types, num_requests);;
+  }
+#endif
 
   if(LogLevel(DBG_DEBUG))
     DumpDisplayLayersInfo();
