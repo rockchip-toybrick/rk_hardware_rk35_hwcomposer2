@@ -1830,33 +1830,6 @@ int Vop3576::RunHwPqVideoMode(
     return -1;
   }
   if(drmLayer->bYuv_){
-      int act_w = (int)drmLayer->source_crop.right - (int)drmLayer->source_crop.left;
-      int act_h = (int)drmLayer->source_crop.bottom - (int)drmLayer->source_crop.top;
-
-    //vdpp要求宽高2对齐
-    if((act_w % 2) != 0){
-        HWC2_ALOGD_IF_DEBUG("Width = %d, Should align to 2 , Skip DoHwPq", drmLayer->iWidth_);
-        return -1;
-    }
-    if((act_h % 2) != 0){
-      HWC2_ALOGD_IF_DEBUG("Height = %d, Should align to 2 , Skip DoHwPq", drmLayer->iHeight_);
-      return -1;
-    }
-    //yuv格式对齐限制：虚宽16对齐，虚高8对齐
-    if((drmLayer->iStride_ % 16) != 0){
-      HWC2_ALOGD_IF_DEBUG("WStride = %d, Should align to 16 , Skip DoHwPq", drmLayer->iStride_);
-      return -1;
-    }
-    if((drmLayer->iHeightStride_ % 8) != 0){
-      HWC2_ALOGD_IF_DEBUG("HStride = %d, Should align to 8 , Skip DoHwPq", drmLayer->iHeightStride_);
-      return -1;
-    }
-    if(drmLayer->bYuv10bit_){
-      if(((int)drmLayer->source_crop.left % 4) != 0){
-        HWC2_ALOGD_IF_DEBUG("Yuv10bit source_crop.left = %d, Should align to 4 , Skip DoHwPq", (int)drmLayer->source_crop.left);
-        return -1;
-      }
-    }
 
     if(lastHwPqBufferId != drmLayer->uBufferId_){
       if(drmLayer->bAfbcd_ || drmLayer->bRfbcd_){
@@ -1900,6 +1873,8 @@ int Vop3576::RunHwPqVideoMode(
       if(ret){
         if(ret == PqUnInit)
           HWC2_ALOGW("Pq SetHwPqSrcImage fail, Pq may still initializing, ret = %d", ret);
+        else if(PqUnSupported)
+          HWC2_ALOGE("Pq SetHwPqSrcImage fail, Src is UnSupported, ret = %d", ret);
         else
           HWC2_ALOGE("Pq SetHwPqSrcImage fail, ret = %d", ret);
         return ret;

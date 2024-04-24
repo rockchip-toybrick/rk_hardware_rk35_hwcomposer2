@@ -4558,41 +4558,6 @@ int DrmHwcTwo::HwcLayer::DoHwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_dr
   if(pq_mode_enable == 1){
     static bool use_pq_fb = false;
     if(validate){
-      //vdpp要求宽高2对齐
-      int act_w = (int)drmHwcLayer->source_crop.right - (int)drmHwcLayer->source_crop.left;
-      int act_h = (int)drmHwcLayer->source_crop.bottom - (int)drmHwcLayer->source_crop.top;
-      if((act_w % 2) != 0){
-          HWC2_ALOGD_IF_DEBUG("Active Width = %d, Should align to 2 , Skip DoHwPq", act_w);
-          return -1;
-      }
-      if((act_h % 2) != 0){
-        HWC2_ALOGD_IF_DEBUG("Active Height = %d, Should align to 2 , Skip DoHwPq", act_h);
-        return -1;
-      }
-
-      if(drmHwcLayer->bYuv_){
-        //yuv格式对齐限制：虚宽16对齐，虚高8对齐
-        if((drmHwcLayer->iStride_ % 16) != 0){
-          HWC2_ALOGD_IF_DEBUG("WStride = %d, Should align to 16 , Skip DoHwPq", drmHwcLayer->iStride_);
-          return -1;
-        }
-        if((drmHwcLayer->iHeightStride_ % 8) != 0){
-          HWC2_ALOGD_IF_DEBUG("HStride = %d, Should align to 8 , Skip DoHwPq", drmHwcLayer->iHeightStride_);
-          return -1;
-        }
-        if(drmHwcLayer->bYuv10bit_){
-          if(((int)drmHwcLayer->source_crop.left % 4) != 0){
-            HWC2_ALOGD_IF_DEBUG("Yuv10bit source_crop.left = %d, Should align to 4 , Skip DoHwPq", (int)drmHwcLayer->source_crop.left);
-            return -1;
-          }
-        }
-      }else{
-        //RGB格式对齐限制：虚宽4对齐
-        if((drmHwcLayer->iStride_ % 4) != 0){
-          HWC2_ALOGD_IF_DEBUG("WStride = %d, Should align to 4 , Skip DoHwPq", drmHwcLayer->iStride_);
-          return -1;
-        }
-      }
 
       if(bufferQueue_ == NULL){
         bufferQueue_ = std::make_shared<DrmBufferQueue>();

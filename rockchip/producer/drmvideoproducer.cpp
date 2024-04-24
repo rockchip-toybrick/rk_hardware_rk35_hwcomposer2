@@ -287,40 +287,6 @@ std::shared_ptr<DrmBuffer> DrmVideoProducer::DoHwPq(std::shared_ptr<VpContext> c
   int act_w = right - left;
   int act_h = bottom - top;
 
-  //vdpp要求宽高2对齐
-  if((act_w % 2) != 0){
-      HWC2_ALOGD_IF_DEBUG("Active Width = %d, Should align to 2 , Skip DoHwPq", act_w);
-      return NULL;
-  }
-  if((act_h % 2) != 0){
-    HWC2_ALOGD_IF_DEBUG("Active Height = %d, Should align to 2 , Skip DoHwPq", act_h);
-    return NULL;
-  }
-
-  if(IsYuvFormat(buffer->GetFormat(), buffer->GetFourccFormat())){
-    //yuv格式对齐限制：虚宽16对齐，虚高8对齐
-    if((buffer->GetStride() % 16 != 0)){
-      HWC2_ALOGD_IF_DEBUG("WStride = %d, Should align to 16 , Skip DoHwPq", buffer->GetStride());
-      return NULL;
-    }
-    if((buffer->GetHeightStride() % 8 != 0)){
-      HWC2_ALOGD_IF_DEBUG("HStride = %d, Should align to 8 , Skip DoHwPq", buffer->GetHeightStride());
-      return NULL;
-    }
-    if(Is10bitYuv(buffer->GetFormat(), buffer->GetFourccFormat())){
-      if((left % 4) != 0){
-        HWC2_ALOGD_IF_DEBUG("Yuv10bit left = %d, Should align to 4 , Skip DoHwPq", left);
-        return NULL;
-      }
-    }
-  }else{
-    //RGB格式对齐限制：虚宽4对齐
-    if((buffer->GetStride() % 4 != 0)){
-      HWC2_ALOGD_IF_DEBUG("WStride = %d, Should align to 4 , Skip DoHwPq", buffer->GetStride());
-      return NULL;
-    }
-  }
-
   int ret = 0;
   // 0. Check if HwPq is Ready
   if(hwpq_ == NULL){
