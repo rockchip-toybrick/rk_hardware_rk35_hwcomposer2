@@ -38,9 +38,9 @@ namespace android {
 
 #define DRM_ATOMIC_ADD_PROP(object_id, prop_id, value) \
   if (prop_id) { \
-    ret = drmModeAtomicAddProperty(pset, object_id, prop_id, value); \
+    int ret = drmModeAtomicAddProperty(pset, object_id, prop_id, value); \
     if (ret < 0) { \
-      ALOGE("Failed to add prop[%d] to [%d]", prop_id, object_id); \
+      ALOGE("Failed to add prop[%d] to [%d] ret=%d", prop_id, object_id, ret); \
     } \
   }
 
