@@ -462,6 +462,7 @@ class DrmPlane {
   const DrmProperty &async_commit_property() const;
   const DrmProperty &kernel6_1_color_encoding() const;
   const DrmProperty &kernel6_1_color_range() const;
+  const DrmProperty &dci_data() const;
 
   bool is_use();
   void set_use(bool b_use);
@@ -540,6 +541,7 @@ class DrmPlane {
   DrmProperty kernel6_1_color_range_;
   DrmProperty alpha_property_vop1_kernel4_19_;
   DrmProperty blend_mode_property_vop1_kernel4_19;
+  DrmProperty dci_data_;
 
   // next hdr
   DrmProperty next_hdr_layer_type_property_;

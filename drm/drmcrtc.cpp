@@ -387,9 +387,26 @@ int DrmCrtc::Init() {
   if (ret)
     ALOGE("Could not get hdr_ext_data_ property");
 
+  ret = drm_->GetCrtcProperty(*this, "ACM_LUT_DATA", &acm_lut_data_);
+  if (ret)
+    ALOGE("Could not get ACM_LUT_DATA property");
+
+  ret = drm_->GetCrtcProperty(*this, "POST_CSC_DATA", &post_csc_data_);
+  if (ret)
+    ALOGE("Could not get POST_CSC_DATA property");
+
+  ret = drm_->GetCrtcProperty(*this, "POST_SHARP_DATA", &post_sharp_data_);
+  if (ret)
+    ALOGE("Could not get POST_SHARP_DATA property");
+
   ret = drm_->GetCrtcProperty(*this, "IS_VIRTUAL", &is_virtual_);
   if (ret)
     ALOGE("Could not get IS_VIRTUAL property");
+
+  if(isRK3576(soc_id_)){
+    HWC2_ALOGI("RK3576 do not use vop overscan, set b_can_overscan_ to false");
+    b_can_overscan_ = false;
+  }
 
   HWC2_ALOGD_IF_DEBUG("crtc-id=%d b_can_alpha_scale_=%d b_can_hdr10_=%d b_can_next_hdr_=%d b_can_vivid_hdr_=%d",
     id_, b_can_alpha_scale_, b_can_hdr10_, b_can_next_hdr_, b_can_vivid_hdr_);
@@ -487,6 +504,18 @@ const DrmProperty &DrmCrtc::min_refresh_rate() const{
 }
 const DrmProperty &DrmCrtc::hdr_ext_data() const{
   return hdr_ext_data_;
+}
+
+const DrmProperty &DrmCrtc::acm_lut_data() const{
+  return acm_lut_data_;
+}
+
+const DrmProperty &DrmCrtc::post_csc_data() const{
+  return post_csc_data_;
+}
+
+const DrmProperty &DrmCrtc::post_sharp_data() const{
+  return post_sharp_data_;
 }
 
 const DrmProperty &DrmCrtc::is_virtual() const{

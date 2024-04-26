@@ -212,6 +212,9 @@ public:
   std::vector<uint64_t> mReleaseFailedBuffer_;
 
   void PrintReleaseFailedBuffer();
+
+  android_dataspace_t iDataSpace_ = HAL_DATASPACE_UNKNOWN;
+
 private:
   DrmGralloc* mDrmGralloc_;
   int iTunnelId_;

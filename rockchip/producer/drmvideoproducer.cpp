@@ -24,6 +24,10 @@
 
 #include <dlfcn.h>
 #include <fcntl.h>
+#ifdef USE_LIBPQ_HWPQ
+#include <hardware/hwcomposer_defs.h>
+#include <Pq.h>
+#endif
 namespace android {
 
 #if defined(__arm64__) || defined(__aarch64__)
@@ -142,7 +146,7 @@ bool DrmVideoProducer::IsValid(){
 }
 
 // Create tunnel connection.
-int DrmVideoProducer::CreateConnection(int display_id, int tunnel_id){
+int DrmVideoProducer::CreateConnection(int display_id, int tunnel_id, android_dataspace_t dataspace ){
   std::lock_guard<std::mutex> lock(mtx_);
 
   if(!bInit_){
@@ -152,6 +156,7 @@ int DrmVideoProducer::CreateConnection(int display_id, int tunnel_id){
 
   if(mMapCtx_.count(tunnel_id)){
     std::shared_ptr<VpContext> ctx = mMapCtx_[tunnel_id];
+    ctx->iDataSpace_ = dataspace;
     if(!ctx->AddConnRef(display_id)){
       HWC2_ALOGI("display-id=%d tunnel_id=%d success, connections size=%d", display_id, tunnel_id, ctx->ConnectionCnt());
     }
@@ -167,6 +172,7 @@ int DrmVideoProducer::CreateConnection(int display_id, int tunnel_id){
   mMapCtx_[tunnel_id] = std::make_shared<VpContext>(tunnel_id);
   std::shared_ptr<VpContext> ctx = mMapCtx_[tunnel_id];
   ctx->AddConnRef(display_id);
+  ctx->iDataSpace_ = dataspace;
   Signal();
   return 0;
 }
@@ -196,6 +202,126 @@ int DrmVideoProducer::DestoryConnection(int display_id, int tunnel_id){
                         display_id, tunnel_id, ctx->ConnectionCnt());
   return 0;
 }
+
+#ifdef USE_LIBPQ_HWPQ
+static std::shared_ptr<DrmBuffer> DoHwPq(std::shared_ptr<VpContext> ctx, std::shared_ptr<DrmBuffer> buffer){
+  auto hwpq_ = Pq::Get();
+  if(hwpq_ == NULL){
+    HWC2_ALOGE("tunnel_id=%d, buffer_id=0x%" PRIx64" Pq module not ready! Pq::Get() return NULL",
+      ctx->GetTunnelId(), buffer->GetExternalId());
+    return NULL;
+  }
+  //1. 初始化Ctx
+  PqContext hwpqCtx_;
+  int ret = hwpq_->InitCtx(hwpqCtx_);
+  if(ret){
+        HWC2_ALOGE("tunnel_id=%d, buffer_id=0x%" PRIx64" HwPq init Ctx failed, ret = %d",
+        ctx->GetTunnelId(), buffer->GetExternalId(), ret);
+    return NULL;
+  }
+
+  // 2. Set buffer Info
+  HwPqImageInfo src;
+  src.mBufferInfo_.iFd_     = buffer->GetFd();
+  src.mBufferInfo_.iWidth_  = buffer->GetWidth();
+  src.mBufferInfo_.iHeight_ = buffer->GetHeight();
+  src.mBufferInfo_.iFormat_ = buffer->GetFormat();
+  src.mBufferInfo_.iStride_ = buffer->GetStride();
+  src.mBufferInfo_.uBufferId_ = buffer->GetBufferId();
+  src.mBufferInfo_.uDataSpace_ = (uint64_t)ctx->iDataSpace_;
+  
+  int left,top,right,bottom;
+  buffer->GetCrop(&left,&top,&right,&bottom);
+  
+  src.mCrop_.iLeft_  = (int)left;
+  src.mCrop_.iTop_   = (int)top;
+  src.mCrop_.iRight_ = (int)right;
+  src.mCrop_.iBottom_= (int)bottom;
+  // src.mVirtualAddress_ = buffer->Lock();
+  // HWC2_ALOGI("DEBUG: src.mVirtualAddress_ = %p",src.mVirtualAddress_);
+  ret = hwpq_->SetHwPqSrcImage(hwpqCtx_, src);
+  if(ret){
+    HWC2_ALOGE("tunnel_id=%d, buffer_id=0x%" PRIx64" Pq SetSrcImage fail ret = %d",
+        ctx->GetTunnelId(), buffer->GetExternalId(), ret);
+    // buffer->Unlock();
+    return NULL;
+  }
+
+  HwPqImageInfo dst;
+  dst.mBufferInfo_.iFd_ = -1;
+  std::shared_ptr<DrmBuffer> dst_buffer;
+  //获取dst属性
+  hwpq_->Query(src,dst);
+  //判断是否需要新buffer的条件：宽高format存在差异
+  if(!(dst.mBufferInfo_.iWidth_ == src.mBufferInfo_.iWidth_ &&
+     dst.mBufferInfo_.iHeight_ == src.mBufferInfo_.iHeight_ &&
+     dst.mBufferInfo_.iFormat_ == src.mBufferInfo_.iFormat_) ){
+    dst_buffer = std::make_shared<DrmBuffer>(dst.mBufferInfo_.iWidth_,
+                                              dst.mBufferInfo_.iHeight_,
+                                              dst.mBufferInfo_.iFormat_,
+                                              RK_GRALLOC_USAGE_STRIDE_ALIGN_64 |
+                                              MALI_GRALLOC_USAGE_NO_AFBC,
+                                              "HWPQ-target");
+    ret = dst_buffer->Init();
+    if(ret){
+          HWC2_ALOGE("tunnel_id=%d, buffer_id=0x%" PRIx64" Create DstBuffer fail! ret = %d",
+        ctx->GetTunnelId(), buffer->GetExternalId(), ret);
+      return NULL;
+    }
+    //更新buffer参数
+    dst.mBufferInfo_.iFd_     = dst_buffer->GetFd();
+    dst.mBufferInfo_.iWidth_  = dst_buffer->GetWidth();
+    dst.mBufferInfo_.iHeight_ = dst_buffer->GetHeight();
+    dst.mBufferInfo_.iFormat_ = dst_buffer->GetFormat();
+    dst.mBufferInfo_.iStride_ = dst_buffer->GetStride();
+    dst.mBufferInfo_.uBufferId_ = dst_buffer->GetBufferId();
+  }
+
+  if(dst.mBufferInfo_.iFd_<0){
+    HWC2_ALOGE("tunnel_id=%d, buffer_id=0x%" PRIx64" dst buffer not set, dst.mBufferInfo_.iFd_=%d",
+    ctx->GetTunnelId(), buffer->GetExternalId(), dst.mBufferInfo_.iFd_);
+    return NULL;
+  }
+
+  //Alloc rk_hwpq_reg变量
+  if(dst_buffer == NULL)
+    dst.mRkHwpqReg_ = buffer->GetHwPqRegs().get();
+  else
+    dst.mRkHwpqReg_ = dst_buffer->GetHwPqRegs().get();
+
+  //设置目标属性
+  ret = hwpq_->SetHwPqDstImage(hwpqCtx_, dst);
+  if(ret){
+    HWC2_ALOGE("tunnel_id=%d, buffer_id=0x%" PRIx64" Pq SetHwPqDstImage fail, ret = %d",
+        ctx->GetTunnelId(), buffer->GetExternalId(), ret);
+    return NULL;
+  }
+  //pq前需要等待AcquireFence
+  ret = ctx->WaitAcquireFence(buffer->GetExternalId(),3000);
+  if(ret){
+    HWC2_ALOGE("tunnel_id=%d, buffer_id=0x%" PRIx64" buffer not signaled after 3000ms, ret = %d",
+        ctx->GetTunnelId(), buffer->GetExternalId(), ret);
+    return NULL;
+  }
+  //执行PQ
+  int output_fence = 0;
+  ret = hwpq_->RunAsync(hwpqCtx_, &output_fence);
+  if(ret){
+    HWC2_ALOGE("tunnel_id=%d, buffer_id=0x%" PRIx64" .hwPq Run fail ret = %d",
+        ctx->GetTunnelId(), buffer->GetExternalId(), ret);
+    return NULL;
+  }
+  ctx->SetAcquireFence(buffer->GetExternalId(),output_fence);
+
+  if(dst_buffer){
+    //Update Crop form Query Result
+    dst_buffer->SetCrop(dst.mCrop_.iLeft_, dst.mCrop_.iTop_, dst.mCrop_.iRight_, dst.mCrop_.iBottom_);
+    return dst_buffer;
+  }else{
+    return NULL;
+  } 
+}
+#endif
 
 // Get Last video buffer
 std::shared_ptr<DrmBuffer> DrmVideoProducer::AcquireBuffer(int display_id,
@@ -230,6 +356,13 @@ std::shared_ptr<DrmBuffer> DrmVideoProducer::AcquireBuffer(int display_id,
 
     acquired_buffer = ctx->lBuffer_.back();
 
+#ifdef USE_LIBPQ_HWPQ
+    if(acquired_buffer->HasHwPqRegs()){
+      HWC2_ALOGD_IF_VERBOSE("tunnel_id=%d, display=%d, Force wait fence for HWPQ buffer");
+      wait_fence = true;
+    }
+#endif
+
     //if wait fence is acquired
     if(wait_fence){
       int ret = 0;
@@ -248,7 +381,8 @@ std::shared_ptr<DrmBuffer> DrmVideoProducer::AcquireBuffer(int display_id,
         return NULL;
       }
     }
-
+    HWC2_ALOGD_IF_VERBOSE("tunnel_id=%d, display=%d, acquired buffer:%" PRIu64 " ,add Release fence Reference",
+                          tunnel_id, display_id, acquired_buffer->GetExternalId());
     //release fence add refCount
     ctx->AddReleaseFenceRefCnt(display_id,acquired_buffer->GetExternalId());
 
@@ -446,6 +580,23 @@ void DrmVideoProducer::Routine(){
     }
     ctx->ReleaseBufferInfo(buffer_id);
     ctx->PrintReleaseFailedBuffer();
+
+#ifdef USE_LIBPQ_HWPQ
+    if(gIsRK3576()){
+      int hwpq_mode = hwc_get_int_property("persist.vendor.tvinput.rkpq.mode","0");
+      if(hwpq_mode == 2){
+        HWC2_ALOGD_IF_DEBUG("persist.vendor.tvinput.rkpq.mode =%d Do pq",hwpq_mode);
+        auto hwpq_buffer=DoHwPq(ctx, buffer);
+
+        if(hwpq_buffer!=NULL){
+          hwpq_buffer->SetExternalId(buffer->GetExternalId());
+          buffer = hwpq_buffer;
+        }
+      }else{
+        buffer->RemoveHwPqRegs();
+      }
+    }
+#endif
 
     //Add buff to list
     ctx->lBuffer_.push_back(buffer);

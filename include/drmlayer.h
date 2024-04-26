@@ -291,6 +291,11 @@ struct DrmHwcLayer {
   bool bUsePq_;
   std::shared_ptr<DrmBuffer> pPqBuffer_;
 
+#ifdef USE_LIBPQ_HWPQ
+  bool bUseVideoHwpq_;
+  std::shared_ptr<rk_hwpq_reg> hwPqReg_;
+#endif
+
   DrmLayerInfoStore storeLayerInfo_;
 
   // next hdr

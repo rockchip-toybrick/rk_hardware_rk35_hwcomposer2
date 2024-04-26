@@ -80,6 +80,9 @@ class DrmCrtc {
   const DrmProperty &max_refresh_rate() const;
   const DrmProperty &min_refresh_rate() const;
   const DrmProperty &hdr_ext_data() const;
+  const DrmProperty &acm_lut_data() const;
+  const DrmProperty &post_csc_data() const;
+  const DrmProperty &post_sharp_data() const;
   const DrmProperty &is_virtual() const;
 
   DrmDevice *getDrmDevice(){ return drm_; }
@@ -131,6 +134,9 @@ class DrmCrtc {
   DrmProperty max_refresh_rate_;
   DrmProperty min_refresh_rate_;
   DrmProperty hdr_ext_data_;
+  DrmProperty acm_lut_data_;
+  DrmProperty post_csc_data_;
+  DrmProperty post_sharp_data_;
   DrmProperty is_virtual_;
 
   /* Vop2 */

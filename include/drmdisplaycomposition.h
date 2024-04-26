@@ -283,6 +283,10 @@ class DrmDisplayComposition {
   // mutable since we need to acquire in HaveQueuedComposites
   mutable pthread_mutex_t lock_;
   bool signal_;
+#ifdef USE_LIBPQ
+  std::shared_ptr<rk_hwpq_reg> hwpq_regs_hdmi_;
+  std::shared_ptr<rk_hwpq_reg> hwpq_regs_fb_;
+#endif
 };
 }  // namespace android
 

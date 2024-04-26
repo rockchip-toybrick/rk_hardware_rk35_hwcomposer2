@@ -98,7 +98,8 @@ typedef enum tagComposeMode{
    HWC_SR_OVERLAY_POLICY,
    HWC_ACCELERATE_POLICY,
    HWC_3D_POLICY,
-   HWC_DEBUG_POLICY
+   HWC_DEBUG_POLICY,
+   HWC_HWPQ_VIDEO_POLICY
 }ComposeMode;
 
 typedef struct RequestContext{
@@ -132,7 +133,7 @@ typedef struct SupportContext{
   int iYuvCnt=0;
   int iRotateCnt=0;
   int iHdrCnt=0;
-
+  bool bCanHwPq=false;
   // Reserved DrmPlane
   char arrayReservedPlaneName[PROPERTY_VALUE_MAX] = {0};
 } SupCtx;
@@ -215,6 +216,10 @@ struct SvepXml{
  public:
   Vop3576()
     : rgaBufferQueue_((std::make_shared<DrmBufferQueue>()))
+#ifdef USE_LIBPQ_HWPQ
+     ,
+     hwPqBufferQueue_((std::make_shared<DrmBufferQueue>()))
+#endif
 #ifdef USE_LIBSR
      ,
      svep_sr_(std::make_shared<SvepSr>()),
@@ -268,7 +273,11 @@ struct SvepXml{
                         std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                         std::vector<PlaneGroup *> &plane_groups);
 #endif
-
+#ifdef USE_LIBPQ_HWPQ
+  int TryHwPqVideoPolicy(std::vector<DrmCompositionPlane> *composition,
+                      std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
+                      std::vector<PlaneGroup *> &plane_groups);
+#endif
   int TryGlesSidebandPolicy(std::vector<DrmCompositionPlane> *composition,
                         std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                         std::vector<PlaneGroup *> &plane_groups);
@@ -361,6 +370,11 @@ struct SvepXml{
  private:
   Vop2Ctx ctx;
   std::shared_ptr<DrmBufferQueue> rgaBufferQueue_;
+#ifdef USE_LIBPQ_HWPQ
+    std::shared_ptr<DrmBufferQueue> hwPqBufferQueue_;
+    HwPqImageInfo hwPqDstInfo_;
+    std::shared_ptr<rk_hwpq_reg> lastHwPqReg_ = NULL;
+#endif
 #ifdef USE_LIBSR
   // SR
   std::shared_ptr<SvepSr> svep_sr_;

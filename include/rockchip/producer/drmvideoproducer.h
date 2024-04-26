@@ -42,7 +42,7 @@ public:
   // Is invalid.
   bool IsValid();
   // Create tunnel connection.
-  int CreateConnection(int display_id, int tunnel_id);
+  int CreateConnection(int display_id, int tunnel_id, android_dataspace_t dataspace = HAL_DATASPACE_UNKNOWN);
   // Destory Connection
   int DestoryConnection(int display_id, int tunnel_id);
   // Get Last video buffer

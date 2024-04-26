@@ -315,6 +315,15 @@ LOCAL_REQUIRED_MODULES += \
 	HwcSvepMemcEnv.xml
 endif
 
+# BOARD_USES_LIBPQ_HWPQ=true
+ifeq ($(strip $(BOARD_USES_LIBPQ_HWPQ)),true)
+
+BOARD_USES_LIBPQ=true
+
+LOCAL_CFLAGS += \
+	-DUSE_LIBPQ_HWPQ=1
+endif
+
 # BOARD_USES_LIBPQ=true
 ifeq ($(strip $(BOARD_USES_LIBPQ)),true)
 LOCAL_C_INCLUDES += \

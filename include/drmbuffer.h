@@ -22,6 +22,10 @@
 
 #include <ui/GraphicBuffer.h>
 
+#ifdef USE_LIBPQ
+#include "Pq.h"
+#endif
+
 namespace android {
 
 class DrmBuffer{
@@ -66,6 +70,20 @@ public:
   int SetReleaseFence(int fence);
   int WaitReleaseFence();
   int DumpData();
+
+#ifdef USE_LIBPQ
+  std::shared_ptr<rk_hwpq_reg> GetHwPqRegs(){
+    if(spHwPqReg_ == NULL)
+      spHwPqReg_ = std::make_shared<rk_hwpq_reg>();
+    return spHwPqReg_;
+  }
+  bool HasHwPqRegs(){
+    return spHwPqReg_!=NULL;
+  }
+  void RemoveHwPqRegs(){
+    spHwPqReg_ = NULL;
+  }
+#endif
 
 #ifdef RK3528
   // RK3528 解码器支持预缩小功能
@@ -119,6 +137,9 @@ private:
   sp<GraphicBuffer> ptrBuffer_;
   DrmGralloc *ptrDrmGralloc_;
   mutable std::mutex mtx_;
+#ifdef USE_LIBPQ
+  std::shared_ptr<rk_hwpq_reg> spHwPqReg_;
+#endif
 };
 
 }// namespace android

@@ -600,7 +600,8 @@ class DrmHwcTwo : public hwc2_device_t {
     }
 
     int DoSvep(bool validate, DrmHwcLayer *drmHwcLayer);
-    int DoPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_drm_display_t* ctx);
+    int DoSwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_drm_display_t* ctx);
+    int DoHwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_drm_display_t* ctx);
 
     // Layer hooks
     HWC2::Error SetCursorPosition(int32_t x, int32_t y);

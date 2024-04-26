@@ -697,6 +697,210 @@ int DrmDisplayCompositor::CommitSidebandStream(drmModeAtomicReqPtr pset,
   return 0;
 }
 
+#ifdef USE_LIBPQ_HWPQ
+int DrmDisplayCompositor::CollectHwPqInfo() {
+  ATRACE_CALL();
+  int ret = 0;
+  if(!pset_){
+    return -1;
+  }
+
+  drmModeAtomicReqPtr pset = pset_;
+  DrmDisplayComposition* current_composition = NULL;
+
+  bool sf_update = false;
+  // collect_composition_map_ 有值则表示当前帧包含 SF 刷新
+  if(collect_composition_map_.count(display_) > 0){
+    current_composition = collect_composition_map_[display_].get();
+    sf_update = true;
+  // collect_composition_map_ 无值，则表示当前帧包含不包含
+  }else if(active_composition_map_.count(display_) > 0){
+    current_composition = active_composition_map_[display_].get();
+  }
+
+  if(current_composition == NULL){
+    HWC2_ALOGE("can't find suitable active DrmDisplayComposition");
+    return 0;
+  }
+
+  std::vector<DrmHwcLayer> &layers = current_composition->layers();
+  std::vector<DrmCompositionPlane> &comp_planes = current_composition
+                                                      ->composition_planes();
+  DrmDevice *drm = resource_manager_->GetDrmDevice(display_);
+
+  DrmConnector *connector = drm->GetConnectorForDisplay(display_);
+  if (!connector) {
+    ALOGE("Could not locate connector for display %d", display_);
+    return -ENODEV;
+  }
+
+  DrmCrtc *crtc = drm->GetCrtcForDisplay(display_);
+  if (!crtc) {
+    HWC2_ALOGE("Could not locate crtc for display %d", display_);
+    return -ENODEV;
+  }
+
+  int zpos = -1;
+  request_mode_set_.hwpq_regs_ = NULL;
+
+  for (DrmCompositionPlane &comp_plane : comp_planes) {
+    DrmPlane *plane = comp_plane.plane();
+    std::vector<size_t> &source_layers = comp_plane.source_layers();
+
+    bool sideband = false;
+    crtc = comp_plane.crtc();
+
+    if (comp_plane.type() == DrmCompositionPlane::Type::kDisable) {
+      continue;
+    }
+
+    if(source_layers.empty()){
+      ALOGE("Can't handle empty source layer CompositionPlane.");
+      continue;
+    }
+
+    if (source_layers.size() > 1) {
+      ALOGE("Can't handle more than one source layer sz=%zu type=%d",
+            source_layers.size(), comp_plane.type());
+      continue;
+    }
+
+    if (source_layers.front() >= layers.size()) {
+      ALOGE("Source layer index %zu out of bounds %zu type=%d",
+            source_layers.front(), layers.size(), comp_plane.type());
+      break;
+    }
+
+    DrmHwcLayer &layer = layers[source_layers.front()];
+
+    if (gIsRK3576() && 
+        plane->win_type()==PLANE_RK3576_CLUSTER0_WIN0 && 
+        crtc->get_port_id()==0 &&
+        plane->dci_data().id() && 
+        crtc->post_sharp_data().id() &&
+        crtc->acm_lut_data().id() && 
+        crtc->post_csc_data().id()) {
+      if(layer.bSidebandStreamLayer_){
+        if(current_sideband2_.enable_ == true && current_sideband2_.buffer_->HasHwPqRegs())
+          request_mode_set_.hwpq_regs_ = current_sideband2_.buffer_->GetHwPqRegs();
+      }else{
+        request_mode_set_.hwpq_regs_ = layer.hwPqReg_;
+      }
+      if(request_mode_set_.hwpq_regs_){
+        hwpq_plane = plane;
+        hwpq_crtc = crtc;
+        HWC2_ALOGD_IF_DEBUG("hwpq enabled,hwpq reg info:");
+        HWC2_ALOGD_IF_DEBUG("%s:len:%" PRIu32, request_mode_set_.hwpq_regs_->rk_hwpq_shp_reg.module_name,request_mode_set_.hwpq_regs_->rk_hwpq_shp_reg.prop_length);
+        HWC2_ALOGD_IF_DEBUG("%s:len:%" PRIu32, request_mode_set_.hwpq_regs_->rk_hwpq_csc_reg.module_name,request_mode_set_.hwpq_regs_->rk_hwpq_csc_reg.prop_length);
+        HWC2_ALOGD_IF_DEBUG("%s:len:%" PRIu32, request_mode_set_.hwpq_regs_->rk_hwpq_acm_reg.module_name,request_mode_set_.hwpq_regs_->rk_hwpq_acm_reg.prop_length);
+        HWC2_ALOGD_IF_DEBUG("%s:len:%" PRIu32, request_mode_set_.hwpq_regs_->rk_hwpq_dci_reg.module_name,request_mode_set_.hwpq_regs_->rk_hwpq_dci_reg.prop_length);
+        break;
+      }
+    }
+  }
+
+  std::shared_ptr<rk_hwpq_reg> hwpq_regs = request_mode_set_.hwpq_regs_;
+
+  if(hwpq_regs!=NULL){
+    //下发HWPQ相关寄存器
+    if(current_mode_set_.hwpq_regs_!=hwpq_regs){
+      HWC2_ALOGD_IF_DEBUG("crtc_id = %" PRIu32" new hwpq setting! update hwpq reg",crtc->id());
+      if(hwpq_plane==NULL || hwpq_crtc == NULL){
+        if(hwpq_plane==NULL){
+          HWC2_ALOGE("Could not found HWPQ Plane, soc_id=%" PRIu32" crtc_id=%" PRIu32, drm->getSocId());
+        if(hwpq_crtc==NULL)
+          HWC2_ALOGE("Could not found HWPQ Crtc, soc_id=%" PRIu32" crtc_id=%" PRIu32, drm->getSocId());
+        return -1;
+      }
+
+      if (hwpq_shp_id_){
+          drm->DestroyPropertyBlob(hwpq_shp_id_);
+          hwpq_shp_id_ = 0;
+      }
+      if (hwpq_csc_id_){
+          drm->DestroyPropertyBlob(hwpq_csc_id_);
+          hwpq_csc_id_ = 0;
+      }
+      if (hwpq_acm_id_){
+          drm->DestroyPropertyBlob(hwpq_acm_id_);
+          hwpq_acm_id_ = 0;
+      }
+      if (hwpq_dci_id_){
+          drm->DestroyPropertyBlob(hwpq_dci_id_);
+          hwpq_dci_id_ = 0;
+      }
+      drm->CreatePropertyBlob(hwpq_regs->rk_hwpq_shp_reg.prop_data, hwpq_regs->rk_hwpq_shp_reg.prop_length, &hwpq_shp_id_);
+      drm->CreatePropertyBlob(hwpq_regs->rk_hwpq_csc_reg.prop_data, hwpq_regs->rk_hwpq_csc_reg.prop_length, &hwpq_csc_id_);
+      drm->CreatePropertyBlob(hwpq_regs->rk_hwpq_acm_reg.prop_data, hwpq_regs->rk_hwpq_acm_reg.prop_length, &hwpq_acm_id_);
+      drm->CreatePropertyBlob(hwpq_regs->rk_hwpq_dci_reg.prop_data, hwpq_regs->rk_hwpq_dci_reg.prop_length, &hwpq_dci_id_);
+      //CRTC
+      ret = drmModeAtomicAddProperty(pset_, hwpq_crtc->id(), hwpq_crtc->post_csc_data().id(), hwpq_csc_id_);
+      if (ret < 0) {
+        HWC2_ALOGE("Failed to add blob to prop %s(id:%d) blob_id:[%" PRIu32"]", hwpq_crtc->post_csc_data().name().c_str(), hwpq_crtc->post_csc_data().id(),hwpq_csc_id_);
+      }
+      ret = drmModeAtomicAddProperty(pset_, hwpq_crtc->id(), hwpq_crtc->acm_lut_data().id(), hwpq_acm_id_);
+      if (ret < 0) {
+        HWC2_ALOGE("Failed to add blob to prop %s(id:%d) blob_id:[%" PRIu32"]", hwpq_crtc->acm_lut_data().name().c_str(), hwpq_crtc->acm_lut_data().id(),hwpq_acm_id_);
+      }
+      ret = drmModeAtomicAddProperty(pset_, hwpq_crtc->id(), hwpq_crtc->post_sharp_data().id(), hwpq_shp_id_);
+      if (ret < 0) {
+        HWC2_ALOGE("Failed to add blob to prop %s(id:%d) blob_id:[%" PRIu32"]", hwpq_crtc->post_sharp_data().name().c_str(), hwpq_crtc->post_sharp_data().id(),hwpq_shp_id_);
+      }
+      //PLANE
+      ret = drmModeAtomicAddProperty(pset_, hwpq_plane->id(), hwpq_plane->dci_data().id(), hwpq_dci_id_);
+      if (ret < 0) {
+        HWC2_ALOGE("Failed to add blob to prop %s(id:%d) blob_id:[%" PRIu32"]", hwpq_plane->dci_data().name().c_str(), hwpq_plane->dci_data().id(),hwpq_dci_id_);
+      }
+        HWC2_ALOGD_IF_DEBUG("Done Setting HWPQ regs for crtc_id=%" PRIu32" plane_name=%s", hwpq_crtc->id(), hwpq_plane->name());
+      }
+    }
+  }else{
+    if(hwpq_plane==NULL || hwpq_crtc == NULL){
+      return 0;
+    }
+    //如果reg为空，删除HWPQ下发的寄存器参数
+    HWC2_ALOGD_IF_DEBUG("crtc_id = %" PRIu32" disable hwpq", crtc->id());
+    if (hwpq_shp_id_){
+        drm->DestroyPropertyBlob(hwpq_shp_id_);
+        hwpq_shp_id_ = 0;
+    }
+    if (hwpq_csc_id_){
+        drm->DestroyPropertyBlob(hwpq_csc_id_);
+        hwpq_csc_id_ = 0;
+    }
+    if (hwpq_acm_id_){
+        drm->DestroyPropertyBlob(hwpq_acm_id_);
+        hwpq_acm_id_ = 0;
+    }
+    if (hwpq_dci_id_){
+        drm->DestroyPropertyBlob(hwpq_dci_id_);
+        hwpq_dci_id_ = 0;
+    }
+
+    //CRTC
+    ret = drmModeAtomicAddProperty(pset_, hwpq_crtc->id(), hwpq_crtc->post_csc_data().id(), hwpq_csc_id_);
+    if (ret < 0) {
+      HWC2_ALOGE("Failed to add blob to prop %s(id:%d) blob_id:[%" PRIu32"]", hwpq_crtc->post_csc_data().name().c_str(), hwpq_crtc->post_csc_data().id(),hwpq_csc_id_);
+    }
+    ret = drmModeAtomicAddProperty(pset_, hwpq_crtc->id(), hwpq_crtc->acm_lut_data().id(), hwpq_acm_id_);
+    if (ret < 0) {
+      HWC2_ALOGE("Failed to add blob to prop %s(id:%d) blob_id:[%" PRIu32"]", hwpq_crtc->acm_lut_data().name().c_str(), hwpq_crtc->acm_lut_data().id(),hwpq_acm_id_);
+    }
+    ret = drmModeAtomicAddProperty(pset_, hwpq_crtc->id(), hwpq_crtc->post_sharp_data().id(), hwpq_shp_id_);
+    if (ret < 0) {
+      HWC2_ALOGE("Failed to add blob to prop %s(id:%d) blob_id:[%" PRIu32"]", hwpq_crtc->post_sharp_data().name().c_str(), hwpq_crtc->post_sharp_data().id(),hwpq_shp_id_);
+    }
+    //PLANE
+    ret = drmModeAtomicAddProperty(pset_, hwpq_plane->id(), hwpq_plane->dci_data().id(), hwpq_dci_id_);
+    if (ret < 0) {
+      HWC2_ALOGE("Failed to add blob to prop %s(id:%d) blob_id:[%" PRIu32"]", hwpq_plane->dci_data().name().c_str(), hwpq_plane->dci_data().id(),hwpq_dci_id_);
+    }
+    HWC2_ALOGD_IF_DEBUG("Done Setting HWPQ regs for crtc_id=%" PRIu32" plane_name=%s", hwpq_crtc->id(), hwpq_plane->name());
+  }
+  return ret<0?-1:0;
+}
+#endif
+
 int DrmDisplayCompositor::CollectModeSetInfo(drmModeAtomicReqPtr pset,
                                              DrmDisplayComposition *display_comp,
                                              bool is_sideband_collect) {
@@ -807,6 +1011,19 @@ int DrmDisplayCompositor::CollectModeSetInfo(drmModeAtomicReqPtr pset,
 
   return 0;
 }
+
+#ifdef USE_LIBPQ_HWPQ
+int DrmDisplayCompositor::UpdateHwPqState() {
+  ATRACE_CALL();
+  AutoLock lock(&lock_, __func__);
+  if (lock.Lock())
+    return -1;
+
+  current_mode_set_.hwpq_regs_ = request_mode_set_.hwpq_regs_;
+
+  return 0;
+}
+#endif
 
 int DrmDisplayCompositor::UpdateModeSetState() {
   ATRACE_CALL();
@@ -1558,6 +1775,9 @@ void DrmDisplayCompositor::Commit() {
     pset_=NULL;
   }else{
     GetTimestamp();
+#ifdef USE_LIBPQ_HWPQ
+    UpdateHwPqState();
+#endif
     UpdateModeSetState();
     UpdateSidebandState();
     UpdateDrmPlaneAssignState();
@@ -3756,6 +3976,12 @@ int DrmDisplayCompositor::Composite() {
   if(IsSidebandMode() && CollectVPInfo()){
     HWC2_ALOGE("CollectVPInfo fail.");
   }
+
+#ifdef USE_LIBPQ_HWPQ
+  if(gIsRK3576() && CollectHwPqInfo()){
+    HWC2_ALOGE("CollectHwPqInfo fail.");
+  }
+#endif
 
   ret = pthread_mutex_unlock(&lock_);
   if (ret) {

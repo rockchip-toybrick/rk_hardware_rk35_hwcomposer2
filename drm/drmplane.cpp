@@ -311,6 +311,11 @@ int DrmPlane::Init() {
 
   }
 
+  ret = drm_->GetPlaneProperty(*this, "DCI_DATA", &dci_data_);
+  if (ret) {
+    ALOGI("Could not get DCI_DATA property");
+  }
+
   AddLocalPlaneInfo();
 
   return 0;
@@ -1061,6 +1066,11 @@ const DrmProperty &DrmPlane::kernel6_1_color_encoding() const{
 }
 const DrmProperty &DrmPlane::kernel6_1_color_range() const{
   return kernel6_1_color_range_;
+
+}
+
+const DrmProperty &DrmPlane::dci_data() const{
+  return dci_data_;
 
 }
 
