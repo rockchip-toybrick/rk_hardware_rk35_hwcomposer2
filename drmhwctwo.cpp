@@ -435,8 +435,7 @@ int DrmHwcTwo::HwcDisplay::ClearDisplay() {
     return -1;
   }
 
-  if(connector_ != NULL &&
-     connector_->hwc_state() != HwcConnnectorStete::RELEASE_CRTC){
+  if(connector_ != NULL){
     compositor_->ClearDisplay();
   }
 
@@ -5859,7 +5858,6 @@ void DrmHwcTwo::DrmHotplugHandler::HandleEvent(uint64_t timestamp_us) {
       }
       ret = 0;
       drmModeConnection cur_state = conn->state();
-      HwcConnnectorStete cur_hwc_state = conn->hwc_state();
       if(cur_state == DRM_MODE_CONNECTED){
         if(conn->hwc_state_change_and_plug()){
           int display_id = conn->display();

@@ -1149,19 +1149,6 @@ bool DrmConnector::hwc_state_change_and_plug(){
   return false;
 }
 
-HwcConnnectorStete DrmConnector::hwc_state(){
-  return hwc_state_;
-}
-
-int DrmConnector::set_hwc_state(HwcConnnectorStete state){
-  if(state == NORMAL &&
-     (hwc_state_ == MIRROR_TO_PRI_CRTC)){
-    plug_ = true;
-  }
-  hwc_state_ = state;
-  return 0;
-}
-
 void DrmConnector::update_hotplug_state(){
   std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
   hotplug_state_ = state_;

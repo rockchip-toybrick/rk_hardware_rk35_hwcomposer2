@@ -1478,7 +1478,6 @@ int DrmDevice::FindAvailableCrtc(int display_id, DrmConnector *conn, DrmCrtc **o
   snprintf(conn_name,50,"%s-%d:connected-no-crtc",connector_type_str(conn->type()),conn->type_id());
   snprintf(property_conn_name,50,"vendor.hwc.device.display-%d", display_id);
   property_set(property_conn_name, conn_name);
-  conn->set_hwc_state(HwcConnnectorStete::NO_CRTC);
   HWC2_ALOGW("Can't find available crtc for display-id=%d with conn[%d].",
       display_id, conn->id());
   return ret;
@@ -1501,7 +1500,6 @@ int DrmDevice::FindAvailableCrtcByFirst(int display_id, DrmConnector *conn, DrmC
         crtc->set_display(conn->display());
         enc->set_crtc(crtc);
         conn->set_encoder(enc);
-        conn->set_hwc_state(HwcConnnectorStete::NORMAL);
         *out_crtc = crtc;
         HWC2_ALOGI("Find display-id=%d with conn[%d] crtc=%d success!\n",
             display_id, conn->id(), crtc->id());
@@ -1532,7 +1530,6 @@ int DrmDevice::FindAvailableCrtcByFirst(int display_id, DrmConnector *conn, DrmC
         crtc->set_display(conn->display());
         enc->set_crtc(crtc);
         conn->set_encoder(enc);
-        conn->set_hwc_state(HwcConnnectorStete::HOLD_CRTC);
         *out_crtc = crtc;
         HWC2_ALOGI("Find display-id=%d with conn[%d] crtc=%d success!",
             display_id, conn->id(), crtc->id());
@@ -1565,8 +1562,6 @@ int DrmDevice::FindAvailableCrtcByMirror(int display_id, DrmConnector *conn, Drm
           // crtc->set_display(conn->display());
           enc->set_crtc(crtc);
           conn->set_encoder(enc);
-          conn->set_hwc_state(HwcConnnectorStete::MIRROR_CRTC);
-          temp_conn->set_hwc_state(HwcConnnectorStete::MIRROR_CRTC);
           *out_crtc = crtc;
           HWC2_ALOGI("Find display-id=%d with conn[%d] crtc=%d success!",
               display_id, conn->id(), crtc->id());
@@ -1600,7 +1595,6 @@ int DrmDevice::FindAvailableCrtcByCompete(int display_id, DrmConnector *conn, Dr
           crtc->set_display(conn->display());
           enc->set_crtc(crtc);
           conn->set_encoder(enc);
-          conn->set_hwc_state(HwcConnnectorStete::HOLD_CRTC);
           *out_crtc = crtc;
           HWC2_ALOGI("Find display-id=%d with conn[%d] crtc=%d success!",
               display_id, conn->id(), crtc->id());
@@ -1614,7 +1608,6 @@ int DrmDevice::FindAvailableCrtcByCompete(int display_id, DrmConnector *conn, Dr
             crtc->set_display(conn->display());
             enc->set_crtc(crtc);
             conn->set_encoder(enc);
-            conn->set_hwc_state(HwcConnnectorStete::HOLD_CRTC);
             *out_crtc = crtc;
             HWC2_ALOGI("Find display-id=%d with conn[%d] crtc=%d success!",
                 display_id, conn->id(), crtc->id());
@@ -1635,7 +1628,6 @@ int DrmDevice::FindAvailableCrtcByCompete(int display_id, DrmConnector *conn, Dr
           crtc->set_display(conn->display());
           enc->set_crtc(crtc);
           conn->set_encoder(enc);
-          conn->set_hwc_state(HwcConnnectorStete::HOLD_CRTC);
           *out_crtc = crtc;
           HWC2_ALOGI("Find display-id=%d with conn[%d] crtc=%d success!",
               display_id, conn->id(), crtc->id());
@@ -1652,13 +1644,7 @@ int DrmDevice::BindConnectorAndCrtc(int display_id, DrmConnector* conn, DrmCrtc*
   // 更新状态查询接口信息
   char conn_name[50];
   char property_conn_name[50];
-  if(conn->hwc_state() == MIRROR_CRTC){
-    snprintf(conn_name,50,"%s-%d:%d:connected:mirror",connector_type_str(conn->type()),conn->type_id(),crtc->id());
-  }else if(conn->hwc_state() == HOLD_CRTC){
-    snprintf(conn_name,50,"%s-%d:%d:connected:compete",connector_type_str(conn->type()),conn->type_id(),crtc->id());
-  }else{
-    snprintf(conn_name,50,"%s-%d:%d:connected",connector_type_str(conn->type()),conn->type_id(),crtc->id());
-  }
+  snprintf(conn_name,50,"%s-%d:%d:connected",connector_type_str(conn->type()),conn->type_id(),crtc->id());
   snprintf(property_conn_name,50,"vendor.hwc.device.display-%d", display_id);
   property_set(property_conn_name, conn_name);
 
@@ -1807,7 +1793,6 @@ int DrmDevice::ReleaseConnectorAndCrtcNoCommit(int display_id,
                                                                  crtc->id());
   crtc->set_display(-1);
   conn->set_encoder(NULL);
-  conn->set_hwc_state(HwcConnnectorStete::RELEASE_CRTC);
 
   // 更新属性状态
   char conn_name[50];
@@ -1871,7 +1856,6 @@ int DrmDevice::ReleaseConnectorAndCrtc(int display_id, DrmConnector* conn, DrmCr
 
   crtc->set_display(-1);
   conn->set_encoder(NULL);
-  conn->set_hwc_state(HwcConnnectorStete::RELEASE_CRTC);
   // 更新属性状态
   char conn_name[50];
   char property_conn_name[50];
@@ -2144,7 +2128,6 @@ int DrmDevice::ReleaseDpyResByMirror(int display_id,
 
       if(c->encoder() && c->encoder()->crtc() == crtc){
         crtc->set_display(c->display());
-        c->set_hwc_state(HwcConnnectorStete::MIRROR_TO_PRI_CRTC);
         new_display_id = c->display();
         char conn_name[50];
         char property_conn_name[50];
