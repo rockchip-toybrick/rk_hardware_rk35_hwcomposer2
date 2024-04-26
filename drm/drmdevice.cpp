@@ -1997,37 +1997,6 @@ int DrmDevice::BindDpyRes(int display_id){
     return ret;
   }
 
-  // 若上次休眠当前 display-id 存在 Mirror Connector
-  // 则恢复上次休眠前状态
-  if(mMapMirrorStateStore_.count(display_id)){
-    auto mirror_connectors = mMapMirrorStateStore_.find(display_id);
-    if(mirror_connectors != mMapMirrorStateStore_.end()){
-      for(auto temp_connector : mirror_connectors->second){
-        if(!temp_connector)
-          continue;
-        // 1. 检查 Connector 状态
-        ret = CheckConnectorState(temp_connector->display(), temp_connector);
-        if(ret){
-          return ret;
-        }
-
-        // 2. 获取可用的 crtc 资源
-        DrmCrtc *tmp_crtc = NULL;
-        ret = FindAvailableCrtc(temp_connector->display(), temp_connector, &tmp_crtc);
-        if(ret){
-          return ret;
-        }
-
-        // 3. 绑定 Connector and Crtc 资源并使能
-        ret = BindConnectorAndCrtc(temp_connector->display(), temp_connector, tmp_crtc);
-        if(ret){
-          return ret;
-        }
-      }
-    }
-    mMapMirrorStateStore_.erase(mirror_connectors);
-  }
-
   return 0;
 }
 

@@ -228,8 +228,6 @@ class DrmDevice {
   std::vector<DrmMode> white_modes_;
   struct DisplayModeXml DmXml_;
 
-  std::map<int, std::vector<DrmConnector*>> mMapMirrorStateStore_;
-
   mutable std::recursive_mutex mRecursiveMutex;
 };
 }  // namespace android
