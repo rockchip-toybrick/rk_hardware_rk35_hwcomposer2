@@ -1252,7 +1252,7 @@ int DrmDevice::UpdateDisplayMode(int display_id){
       // 若当前 Connector 不存在 Mirror模式
       if(!mirror_exist_mode){
         // 若存在Mirror模式
-        int ret = ReleaseDpyResByMirror(conn_mirror->display(), conn_mirror, crtc, DmcuNone);
+        int ret = ReleaseDpyResByMirror(conn_mirror->display(), conn_mirror, crtc);
         if(ret){
           HWC2_ALOGE("display-id=%d ReleaseDpyResByMirror fail!.\n", display_id);
           return ret;
@@ -2001,7 +2001,7 @@ int DrmDevice::BindDpyRes(int display_id){
 }
 
 // Release DrmConnector and DrmCrtc resource.
-int DrmDevice::ReleaseDpyRes(int display_id, DrmModeChangeUsage usage ){
+int DrmDevice::ReleaseDpyRes(int display_id){
   std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
   int ret;
   DrmConnector *conn = GetConnectorForDisplay(display_id);
@@ -2033,7 +2033,7 @@ int DrmDevice::ReleaseDpyRes(int display_id, DrmModeChangeUsage usage ){
         return ret;
       }
     }else{// 若存在Mirror模式
-      ret = ReleaseDpyResByMirror(display_id, conn, crtc, usage);
+      ret = ReleaseDpyResByMirror(display_id, conn, crtc);
       if(ret){
         HWC2_ALOGE("display-id=%d ReleaseDpyResByMirror fail!.\n", display_id);
         return ret;
@@ -2054,8 +2054,7 @@ int DrmDevice::ReleaseDpyRes(int display_id, DrmModeChangeUsage usage ){
 // Release DrmConnector and DrmCrtc resource.
 int DrmDevice::ReleaseDpyResByMirror(int display_id,
                                      DrmConnector* conn,
-                                     DrmCrtc* crtc,
-                                     DrmModeChangeUsage usage){
+                                     DrmCrtc* crtc){
 
   int ret;
   drmModeAtomicReqPtr pset = drmModeAtomicAlloc();

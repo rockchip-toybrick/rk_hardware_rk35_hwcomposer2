@@ -2698,7 +2698,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetPowerMode(int32_t mode_in) {
 
   if(dpms_value == DRM_MODE_DPMS_OFF){
     ClearDisplay();
-    ret = drm_->ReleaseDpyRes(handle_, DmcuReleaseByPowerMode);
+    ret = drm_->ReleaseDpyRes(handle_);
     if (ret) {
       HWC2_ALOGE("Failed to ReleaseDpyRes for display=%" PRIu64 " %d\n", handle_, ret);
     }

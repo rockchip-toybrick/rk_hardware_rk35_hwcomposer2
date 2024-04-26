@@ -44,12 +44,6 @@ namespace android {
     } \
   }
 
-
-enum DrmModeChangeUsage{
-  DmcuNone = 0,
-  DmcuReleaseByPowerMode = 1,
-};
-
 class DrmDevice {
  public:
   DrmDevice();
@@ -124,7 +118,7 @@ class DrmDevice {
   int UpdateDisplayMode(int display_id);
   int UpdateVrrRefreshRate(int display_id, int refresh_rate);
   int BindDpyRes(int display_id);
-  int ReleaseDpyRes(int display_id, DrmModeChangeUsage usage = DrmModeChangeUsage::DmcuNone);
+  int ReleaseDpyRes(int display_id);
   void ClearDisplay(void);
   void ClearDisplay(int display);
   void ClearAllDisplay(void);
@@ -191,8 +185,7 @@ class DrmDevice {
                             DrmCrtc* crtc);
   int ReleaseDpyResByMirror(int display_id,
                             DrmConnector* conn,
-                            DrmCrtc* crtc,
-                            DrmModeChangeUsage usage);
+                            DrmCrtc* crtc);
   // 关闭当前 Crtc 与 Connector 资源
   int DisableAllPlaneForCrtc(int display_id, DrmCrtc *crtc,
                              bool commit, drmModeAtomicReqPtr pset);
