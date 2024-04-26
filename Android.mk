@@ -328,8 +328,24 @@ endif
 
 # BOARD_USES_LIBPQ=true
 ifeq ($(strip $(BOARD_USES_LIBPQ)),true)
+
+CHECKED_DIRECTORY := hardware/rockchip/libpq
+ifeq ($(wildcard $(CHECKED_DIRECTORY)),)
+    $(error Directory $(CHECKED_DIRECTORY) does not exist, Please upgrade the libpq version!)
+else
+    $(info Directory $(CHECKED_DIRECTORY) exists)
+endif
+
+CHECKED_DIRECTORY := hardware/rockchip/libvisionpq
+ifeq ($(wildcard $(CHECKED_DIRECTORY)),)
+    $(error Directory $(CHECKED_DIRECTORY) does not exist, Please upgrade the libvisionpq version!)
+else
+    $(info Directory $(CHECKED_DIRECTORY) exists)
+endif
+
 LOCAL_C_INCLUDES += \
-  hardware/rockchip/libpq/include
+  hardware/rockchip/libpq/include \
+  hardware/rockchip/libvisionpq/lib/Android/$(TARGET_SOC_PLATFORM)/include
 
 LOCAL_SHARED_LIBRARIES += \
 	libpq
