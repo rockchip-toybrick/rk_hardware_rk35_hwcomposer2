@@ -1493,7 +1493,7 @@ int DrmDevice::FindAvailableCrtcByFirst(int display_id, DrmConnector *conn, DrmC
     for (DrmCrtc *crtc : enc->possible_crtcs()) {
       if(crtc->can_bind(conn->display())){
         if(check_crtc_cap && CheckCrtcOutputCapability(display_id, crtc, current_mode)){
-          HWC2_ALOGI("CheckCrtc : display-id=%d conn[%d] Skip crtc=%d to try more.\n",
+          HWC2_ALOGI("check_crtc_cap : display-id=%d conn[%d] Skip crtc=%d to try more.\n",
               display_id, conn->id(), crtc->id());
           continue;
         }
@@ -1519,7 +1519,7 @@ int DrmDevice::FindAvailableCrtcByFirst(int display_id, DrmConnector *conn, DrmC
       if(ret){ // 状态不正常
         // 检查是否满足
         if(check_crtc_cap && CheckCrtcOutputCapability(display_id, crtc, current_mode)){
-          HWC2_ALOGI("CheckCrtc : display-id=%d conn[%d] Skip crtc=%d to try more.\n",
+          HWC2_ALOGI("check_crtc_cap : display-id=%d conn[%d] Skip crtc=%d to try more.\n",
               display_id, conn->id(), crtc->id());
           continue;
         }
@@ -1939,7 +1939,7 @@ int DrmDevice::CheckCrtcOutputCapability(int display_id, DrmCrtc *crtc, DrmMode 
 
   // 不存在 output_width_property 属性，则说明底层未上报限制信息
   if(crtc->output_width_property().id() <= 0){
-    HWC2_ALOGD_IF_WARN("display-id=%d invalid output_width_property mode id =%d", display_id,
+    HWC2_ALOGW("display-id=%d invalid output_width_property mode id =%d, skip check crtc cap.", display_id,
       crtc->output_width_property().id());
     return 0;
   }
