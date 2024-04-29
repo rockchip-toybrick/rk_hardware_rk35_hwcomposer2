@@ -84,6 +84,7 @@ class DrmHwcTwo : public hwc2_device_t {
       lastTimeRecod_ = 0;
       last_buffer_id_ = 0;
       mSvepFps_ = 0;
+      acquire_fence_ = AcquireFence::NO_FENCE;
       layer_name_ = std::string("UnSet");
     };
 

@@ -1398,7 +1398,7 @@ int DrmDisplayCompositor::CollectCommitInfo(drmModeAtomicReqPtr pset,
 
       DrmHwcLayer &layer = layers[source_layers.front()];
 
-      if (!test_only && layer.acquire_fence->isValid()){
+      if (!test_only && layer.acquire_fence && layer.acquire_fence->isValid()){
         if(layer.acquire_fence->wait(500)){
           HWC2_ALOGE("display=%d Wait AcquireFence 500ms failed! frame = %" PRIu64 " Info: size=%d act=%d signal=%d err=%d ,LayerName=%s ",
                             display_,
