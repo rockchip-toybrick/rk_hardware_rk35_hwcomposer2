@@ -391,6 +391,7 @@ struct SvepXml{
   int last_enhancement_rate = 0;
   int last_contrast_mode = 0;
   int last_contrast_offset = 0;
+  bool mSrSupportScale_;
 #endif
 
 #ifdef USE_LIBSVEP_MEMC

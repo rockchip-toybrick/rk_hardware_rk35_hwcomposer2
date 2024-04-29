@@ -74,6 +74,33 @@ void Vop3588::Init(){
 int Vop3588::InitSvep(){
 
 #ifdef USE_LIBSR
+  // 2. 解析外部传入版本号
+  int intput_major      = 0;
+  int input_minor       = 0;
+  int input_patch_level = 0;
+  int input_beta_level  = 0;
+  int ret = sscanf(SR_VERSION SVEPSR_VERSION_SUFFIX, "SR-%d.%d.%db%d", &intput_major, &input_minor,
+                    &input_patch_level, &input_beta_level);
+  if (ret != 4)
+  {
+      ret = sscanf(SR_VERSION, "Sr-%d.%d.%d", &intput_major, &input_minor,
+                    &input_patch_level);
+      if (ret != 3)
+      {
+          HWC2_ALOGW("Unable to parse %s version number", SR_VERSION);
+      }
+  }
+  mSrSupportScale_ = false;
+  // SR 版本大于 V2.1.1b4 支持SR输出缩放功能
+  if(intput_major > 2 ||
+     (intput_major == 2 && input_minor > 1) ||
+     (intput_major == 2 && input_minor == 1 && input_patch_level > 1) ||
+     (intput_major == 2 && input_minor == 1 && input_patch_level == 1 && input_beta_level >= 4)){
+      mSrSupportScale_ = true;
+  }
+
+  HWC2_ALOGI("Init SVEP verison=%s SupportScale=%d", SR_VERSION SVEPSR_VERSION_SUFFIX, mSrSupportScale_);
+
   InitSvepSrEnv();
 #endif
 
@@ -2317,8 +2344,8 @@ bool Vop3588::TrySvepOverlay(){
 
 #ifdef USE_LIBSR
 int Vop3588::TrySrPolicy(std::vector<DrmCompositionPlane> *composition,
-                      std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
-                      std::vector<PlaneGroup *> &plane_groups){
+                         std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
+                         std::vector<PlaneGroup *> &plane_groups){
   ALOGD_IF(LogLevel(DBG_DEBUG), "%s:line=%d",__FUNCTION__,__LINE__);
   std::vector<DrmHwcLayer*> tmp_layers;
   ResetLayer(layers);
@@ -2488,9 +2515,24 @@ int Vop3588::TrySrPolicy(std::vector<DrmCompositionPlane> *composition,
             continue;
           }
 
+          // SR 目标图像参数
+          int sr_dst_w = target_image_info.mBufferInfo_.iWidth_;
+          int sr_dst_h = target_image_info.mBufferInfo_.iHeight_;
+          bool use_sr_scale = false;
+          if(mSrSupportScale_){
+            int disp_w = ALIGN_DOWN(drmLayer->display_frame.right - drmLayer->display_frame.left, 2);
+            int disp_h = ALIGN_DOWN(drmLayer->display_frame.bottom - drmLayer->display_frame.top, 2);
+
+            if(sr_dst_w > disp_w || sr_dst_h > disp_h){
+                sr_dst_w = disp_w;
+                sr_dst_h = disp_h;
+                use_sr_scale = true;
+            }
+          }
+
           // 4. Alloc dst_buffer
-            dst_buffer = bufferQueue_->DequeueDrmBuffer(target_image_info.mBufferInfo_.iWidth_,
-                                                        target_image_info.mBufferInfo_.iHeight_,
+            dst_buffer = bufferQueue_->DequeueDrmBuffer(sr_dst_w,
+                                                        sr_dst_h,
                                                         HAL_PIXEL_FORMAT_YCrCb_NV12,
                                                         RK_GRALLOC_USAGE_STRIDE_ALIGN_64 |
                                                         RK_GRALLOC_USAGE_WITHIN_4G |
@@ -2547,21 +2589,37 @@ int Vop3588::TrySrPolicy(std::vector<DrmCompositionPlane> *composition,
           sr_dst_.mBufferInfo_.iSize_   = dst_buffer->GetSize();
           sr_dst_.mBufferInfo_.uBufferId_ = dst_buffer->GetBufferId();
 
-          sr_dst_.mCrop_.iLeft_  = target_image_info.mCrop_.iLeft_;
-          sr_dst_.mCrop_.iTop_   = target_image_info.mCrop_.iTop_;
-          sr_dst_.mCrop_.iRight_ = target_image_info.mCrop_.iRight_;
-          sr_dst_.mCrop_.iBottom_= target_image_info.mCrop_.iBottom_;
-
-
           hwc_frect_t source_crop;
-          source_crop.left   = target_image_info.mCrop_.iLeft_;
-          source_crop.top    = target_image_info.mCrop_.iTop_;
-          source_crop.right  = target_image_info.mCrop_.iRight_;
-          source_crop.bottom = target_image_info.mCrop_.iBottom_;
-          dst_buffer->SetCrop(target_image_info.mCrop_.iLeft_,
-                              target_image_info.mCrop_.iTop_,
-                              target_image_info.mCrop_.iRight_,
-                              target_image_info.mCrop_.iBottom_);
+          // 使用 SR scale输出
+          if(use_sr_scale){
+            sr_dst_.mCrop_.iLeft_  = 0;
+            sr_dst_.mCrop_.iTop_   = 0;
+            sr_dst_.mCrop_.iRight_ = sr_dst_w;
+            sr_dst_.mCrop_.iBottom_= sr_dst_h;
+
+            source_crop.left   = 0.0;
+            source_crop.top    = 0.0;
+            source_crop.right  = (float)sr_dst_w;
+            source_crop.bottom = (float)sr_dst_h;
+            dst_buffer->SetCrop((int)source_crop.left,
+                                (int)source_crop.top,
+                                (int)source_crop.right,
+                                (int)source_crop.bottom);
+          }else{
+            sr_dst_.mCrop_.iLeft_  = target_image_info.mCrop_.iLeft_;
+            sr_dst_.mCrop_.iTop_   = target_image_info.mCrop_.iTop_;
+            sr_dst_.mCrop_.iRight_ = target_image_info.mCrop_.iRight_;
+            sr_dst_.mCrop_.iBottom_= target_image_info.mCrop_.iBottom_;
+
+            source_crop.left   = target_image_info.mCrop_.iLeft_;
+            source_crop.top    = target_image_info.mCrop_.iTop_;
+            source_crop.right  = target_image_info.mCrop_.iRight_;
+            source_crop.bottom = target_image_info.mCrop_.iBottom_;
+            dst_buffer->SetCrop(target_image_info.mCrop_.iLeft_,
+                                target_image_info.mCrop_.iTop_,
+                                target_image_info.mCrop_.iRight_,
+                                target_image_info.mCrop_.iBottom_);
+          }
           drmLayer->UpdateAndStoreInfoFromDrmBuffer(dst_buffer->GetHandle(),
                                                     dst_buffer->GetFd(),
                                                     dst_buffer->GetFormat(),
