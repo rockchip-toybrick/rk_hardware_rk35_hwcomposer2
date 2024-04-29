@@ -1545,26 +1545,29 @@ int DrmDevice::FindAvailableCrtcByMirror(int display_id, DrmConnector *conn, Drm
   // 2. 尝试使用 ConnectorMirror方式
   for (DrmEncoder *enc : conn->possible_encoders()) {
     for (DrmCrtc *crtc : enc->possible_crtcs()) {
-      int temp_display_id = crtc->display();
-      DrmConnector* temp_conn = GetConnectorForDisplay(temp_display_id);
+      int mirror_primary_display_id = crtc->display();
+      DrmConnector* mirror_primary_conn = GetConnectorForDisplay(mirror_primary_display_id);
       // 2.1. 检查待竞争的Connector状态
       //      -> 若状态不正常，则直接退出Mirror方式
       //      -> 若状态正常，则进行Mirror匹配
-      int ret = CheckConnectorState(temp_display_id, temp_conn);
+      int ret = CheckConnectorState(mirror_primary_display_id, mirror_primary_conn);
       if(ret){ // 状态不正常
         continue;
       }else{
-        DrmMode mirror_mode = temp_conn->active_mode();
+        DrmMode mirror_mode = mirror_primary_conn->active_mode();
         DrmMode current_mode = conn->current_mode();
         if(mirror_mode.id() > 0 && current_mode.id() > 0 &&
            current_mode.equal_no_flag_and_type(mirror_mode)){
           // mirror 不会修改crtc diplsy id
           // crtc->set_display(conn->display());
+          // 设置mirror_primary信息
+          mirror_primary_conn->enable_connector_mirror_mode(mirror_primary_display_id);
+          conn->enable_connector_mirror_mode(mirror_primary_display_id);
           enc->set_crtc(crtc);
           conn->set_encoder(enc);
           *out_crtc = crtc;
-          HWC2_ALOGI("Find display-id=%d with conn[%d] crtc=%d success!",
-              display_id, conn->id(), crtc->id());
+          HWC2_ALOGI("Find display-id=%d with conn[%d] crtc=%d mirror success! mirror_primary = %d conn=%d",
+              display_id, conn->id(), crtc->id(), mirror_primary_display_id, mirror_primary_conn->id());
           return 0;
         }
       }
@@ -2086,30 +2089,9 @@ int DrmDevice::ReleaseDpyResByMirror(int display_id,
 
   conn->set_encoder(NULL);
 
-  // 当前crtc资源的display_id 信息需要迁移到另外一个屏幕上
-  int new_display_id = -1;
-  if(crtc->display() == display_id){
-    for(auto &c : connectors_){
-      if(c->display() == display_id){
-        continue;
-      }
-
-      if(c->encoder() && c->encoder()->crtc() == crtc){
-        crtc->set_display(c->display());
-        new_display_id = c->display();
-        char conn_name[50];
-        char property_conn_name[50];
-        snprintf(conn_name,50,"%s-%d:%d:connected",connector_type_str(c->type()),c->type_id(),crtc->id());
-        snprintf(property_conn_name,50,"vendor.hwc.device.display-%d",c->display());
-        property_set(property_conn_name, conn_name);
-        break;
-      }
-    }
-  }
-
-  HWC2_ALOGI("display-id=%d %s-%d Crtc-id=%d(%d->%d) Release Mirror Mode Success! .",
+  HWC2_ALOGI("display-id=%d %s-%d Crtc-id=%d Release Mirror Mode Success! .",
               display_id, connector_type_str(conn->type()),
-              conn->type_id(), display_id, new_display_id, crtc->id());
+              conn->type_id(), crtc->id());
 
   char conn_name[50];
   char property_conn_name[50];

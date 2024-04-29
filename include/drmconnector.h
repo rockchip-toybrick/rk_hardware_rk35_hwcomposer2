@@ -190,6 +190,23 @@ class DrmConnector {
   int32_t get_kernel_crtc_id() const { return mKernelCrtcId_;}
   void reset_kernel_crtc_id() { mKernelCrtcId_ = 0; }
 
+  // Connector Mirror 功能
+  void enable_connector_mirror_mode(int display_id){
+    if(display_id == display_){
+      mirror_mode = true;
+    }
+    connector_mirror_display_id = display_id;
+  }
+
+  void disable_connector_mirror_mode(){
+    mirror_mode = false;
+    connector_mirror_display_id = -1;
+  }
+
+  bool is_connector_mirror_mode(){ return mirror_mode; }
+  bool is_connector_mirror_primary(){ return mirror_mode && connector_mirror_display_id != id_; }
+  bool get_connector_mirror_display_id(){ return connector_mirror_display_id; }
+  // Connector Mirror 功能
 
  private:
   DrmDevice *drm_;
@@ -283,7 +300,8 @@ class DrmConnector {
   int32_t iCropSpiltTransform = 0;
 
   // Connector mirror
-  std::map<DrmCrtc*, std::vector<int>> mMapCrtcDisplays_;
+  bool mirror_mode = false;
+  int connector_mirror_display_id;
 
   uint32_t blob_id_ = 0;
   struct dummyEdid{
