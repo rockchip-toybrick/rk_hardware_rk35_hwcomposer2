@@ -23,6 +23,7 @@
 #include "rockchip/drmtype.h"
 #include "rockchip/drmbaseparameter.h"
 #include "DrmUnique.h"
+#include "rockchip/utils/drmdebug.h"
 
 #include <stdint.h>
 #include <xf86drmMode.h>
@@ -191,21 +192,34 @@ class DrmConnector {
   void reset_kernel_crtc_id() { mKernelCrtcId_ = 0; }
 
   // Connector Mirror 功能
-  void enable_connector_mirror_mode(int display_id){
-    if(display_id == display_){
-      mirror_mode = true;
+  void enable_connector_mirror_mode(bool primary, int display_id){
+    mirror_mode = true;
+    if(primary){
+      mirror_primary = primary;
+      if(connector_mirror_display_id_set.count(display_id) == 0){
+        connector_mirror_display_id_set.insert(display_id);
+        HWC2_ALOGI("MirrorDisplay: MirrorPrimary dpy-id=%d, insert dpy-id=%d, mirror display size=%zu",
+          id_, display_id, connector_mirror_display_id_set.size());
+      }
     }
-    connector_mirror_display_id = display_id;
   }
 
-  void disable_connector_mirror_mode(){
+  void disable_connector_mirror_mode(bool primary, int display_id){
+    if(primary){
+      if(connector_mirror_display_id_set.count(display_id) > 0){
+        connector_mirror_display_id_set.erase(display_id);
+      }
+      if(connector_mirror_display_id_set.size() == 0){
+        mirror_mode = false;
+        mirror_primary = false;
+      }
+    }
     mirror_mode = false;
-    connector_mirror_display_id = -1;
   }
 
   bool is_connector_mirror_mode(){ return mirror_mode; }
-  bool is_connector_mirror_primary(){ return mirror_mode && connector_mirror_display_id != id_; }
-  bool get_connector_mirror_display_id(){ return connector_mirror_display_id; }
+  bool is_connector_mirror_primary(){ return mirror_mode && mirror_primary; }
+  std::set<int> &get_connector_mirror_display_id(){ return connector_mirror_display_id_set; }
   // Connector Mirror 功能
 
  private:
@@ -301,7 +315,8 @@ class DrmConnector {
 
   // Connector mirror
   bool mirror_mode = false;
-  int connector_mirror_display_id;
+  bool mirror_primary = false;
+  std::set<int> connector_mirror_display_id_set;
 
   uint32_t blob_id_ = 0;
   struct dummyEdid{

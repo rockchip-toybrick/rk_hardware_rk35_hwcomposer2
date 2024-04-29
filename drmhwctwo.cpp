@@ -2698,7 +2698,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetPowerMode(int32_t mode_in) {
 
   if(dpms_value == DRM_MODE_DPMS_OFF){
     ClearDisplay();
-    ret = drm_->ReleaseDpyRes(handle_);
+    ret = drm_->SetPowerMode(handle_, DRM_MODE_DPMS_OFF);
     if (ret) {
       HWC2_ALOGE("Failed to ReleaseDpyRes for display=%" PRIu64 " %d\n", handle_, ret);
     }
@@ -2709,7 +2709,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetPowerMode(int32_t mode_in) {
         int extend_display_id = extend->display();
         auto &display = resource_manager_->GetHwc2()->displays_.at(extend_display_id);
         display.ClearDisplay();
-        ret = drm_->ReleaseDpyRes(extend_display_id);
+        ret = drm_->SetPowerMode(extend_display_id, DRM_MODE_DPMS_OFF);
         if (ret) {
           HWC2_ALOGE("Failed to ReleaseDpyRes for display=%d %d\n", extend_display_id, ret);
         }
@@ -2727,7 +2727,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetPowerMode(int32_t mode_in) {
     if (ret) {
       HWC2_ALOGE("Failed to UpdateDisplayMode for display=%" PRIu64 " ret=%d\n", handle_, ret);
     }
-    ret = drm_->BindDpyRes(handle_);
+    ret = drm_->SetPowerMode(handle_, DRM_MODE_DPMS_ON);
     if (ret) {
       HWC2_ALOGE("Failed to BindDpyRes for display=%" PRIu64 " ret=%d\n", handle_, ret);
     }
@@ -2738,7 +2738,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetPowerMode(int32_t mode_in) {
       DrmConnector *extend = drm_->GetConnectorForDisplay(display_id);
       if(extend != NULL){
         int extend_display_id = extend->display();
-        ret = drm_->BindDpyRes(extend_display_id);
+        ret = drm_->SetPowerMode(extend_display_id, DRM_MODE_DPMS_ON);
         if (ret) {
           HWC2_ALOGE("Failed to BindDpyRes for display=%d ret=%d\n", extend_display_id, ret);
         }

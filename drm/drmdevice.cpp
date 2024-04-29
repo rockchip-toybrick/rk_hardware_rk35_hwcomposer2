@@ -1427,7 +1427,8 @@ int DrmDevice::UpdateVrrRefreshRate(int display_id, int refresh_rate){
 }
 
 // 检查 Connector 状态
-int DrmDevice::CheckConnectorState(int display_id, DrmConnector *conn){
+int DrmDevice::CheckConnectorState(int display_id, DrmConnector *conn, bool all){
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
   if (!conn) {
     HWC2_ALOGE("Failed to find display-id=%d connector\n", display_id);
     return -EINVAL;
@@ -1437,6 +1438,30 @@ int DrmDevice::CheckConnectorState(int display_id, DrmConnector *conn){
     HWC2_ALOGE("display-id=%d connector state is disconnected\n",display_id);
     return -EINVAL;
   }
+
+  // 仅需要对连接状态做检查
+  if(all == false){
+    return 0;
+  }
+
+  if(conn->encoder() == NULL){
+    HWC2_ALOGE("display-id=%d connector encorder is null \n",display_id);
+    return -EINVAL;
+  }
+
+  if(conn->encoder()->crtc() == NULL){
+    HWC2_ALOGE("display-id=%d connector crtc is null \n",display_id);
+    return -EINVAL;
+  }
+
+  // Check display mode.
+  DrmMode current_mode = conn->current_mode();
+  if(!current_mode.id()){
+    HWC2_ALOGE("display-id=%d conn-id=%d current-id=%d is invalid.",
+              display_id,conn->id(),conn->current_mode().id());
+    return -EINVAL;
+  }
+
   return 0;
 }
 
@@ -1561,8 +1586,8 @@ int DrmDevice::FindAvailableCrtcByMirror(int display_id, DrmConnector *conn, Drm
           // mirror 不会修改crtc diplsy id
           // crtc->set_display(conn->display());
           // 设置mirror_primary信息
-          mirror_primary_conn->enable_connector_mirror_mode(mirror_primary_display_id);
-          conn->enable_connector_mirror_mode(mirror_primary_display_id);
+          mirror_primary_conn->enable_connector_mirror_mode(true, display_id);
+          conn->enable_connector_mirror_mode(false, display_id);
           enc->set_crtc(crtc);
           conn->set_encoder(enc);
           *out_crtc = crtc;
@@ -1647,8 +1672,13 @@ int DrmDevice::BindConnectorAndCrtc(int display_id, DrmConnector* conn, DrmCrtc*
   // 更新状态查询接口信息
   char conn_name[50];
   char property_conn_name[50];
-  snprintf(conn_name,50,"%s-%d:%d:connected",connector_type_str(conn->type()),conn->type_id(),crtc->id());
-  snprintf(property_conn_name,50,"vendor.hwc.device.display-%d", display_id);
+  if(conn->is_connector_mirror_mode() && conn->is_connector_mirror_primary() == false){
+    snprintf(conn_name,50,"%s-%d:%d:connected:mirror",connector_type_str(conn->type()),conn->type_id(),crtc->id());
+    snprintf(property_conn_name,50,"vendor.hwc.device.display-%d", display_id);
+  }else{
+    snprintf(conn_name,50,"%s-%d:%d:connected",connector_type_str(conn->type()),conn->type_id(),crtc->id());
+    snprintf(property_conn_name,50,"vendor.hwc.device.display-%d", display_id);
+  }
   property_set(property_conn_name, conn_name);
 
   // Check display mode.
@@ -1969,6 +1999,393 @@ int DrmDevice::CheckCrtcOutputCapability(int display_id, DrmCrtc *crtc, DrmMode 
 
   return 0;
 }
+
+int DrmDevice::SetPowerMode(int display_id, int power_mode){
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
+  switch(power_mode){
+    case DRM_MODE_DPMS_ON:
+      return DoPowerOn(display_id);
+    case DRM_MODE_DPMS_OFF:
+      return DoPowerOff(display_id);
+    default:
+      HWC2_ALOGE("unknow power mode = %d", power_mode);
+      return -1;
+  }
+  return -1;
+}
+
+int DrmDevice::DoPowerOn(int display_id){
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
+  DrmConnector *conn = GetConnectorForDisplay(display_id);
+  // 1. 检查 Connector 状态
+  bool check_all_state = true;
+  int ret = CheckConnectorState(display_id, conn, check_all_state);
+  if(ret){
+    return ret;
+  }
+
+  // 如果Connector使能了Mirror模式
+  if(conn->is_connector_mirror_mode()){
+    return DoPowerOnMirror(display_id);
+  }else{ // 正常使能PowerOn模式
+    return DoPowerOnNormal(display_id);
+  }
+
+  return 0;
+}
+
+int DrmDevice::DoPowerOnNormal(int display_id){
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
+  DrmConnector *conn = GetConnectorForDisplay(display_id);
+
+  DrmCrtc *crtc = NULL;
+  if(conn->encoder() != NULL &&
+     conn->encoder()->crtc() != NULL){
+    crtc = conn->encoder()->crtc();
+  }else{
+    HWC2_ALOGE("display_id=%d encoder or crtc is null");
+    return -1;
+  }
+
+  drmModeAtomicReqPtr pset = drmModeAtomicAlloc();
+  if (!pset) {
+    ALOGE("%s:line=%d Failed to allocate property set",__FUNCTION__, __LINE__);
+    return -ENOMEM;
+  }
+
+  // Config display mode
+  int ret;
+  uint32_t blob_id[1] = {0};
+  struct drm_mode_modeinfo drm_mode;
+  memset(&drm_mode, 0, sizeof(drm_mode));
+  conn->current_mode().ToDrmModeModeInfo(&drm_mode);
+  CreatePropertyBlob(&drm_mode, sizeof(drm_mode), &blob_id[0]);
+
+  // Enable DrmConnector DPMS on.
+  // The note is due to HJC's suggestion that the DRM driver
+  // will actively call the DPMS_ON interface when connecting Crtc and Connector,
+  // and no additional calls are required.
+  // conn->SetDpmsMode(DRM_MODE_DPMS_ON);
+
+  // Bind DrmCrtc and DrmConnector
+  DRM_ATOMIC_ADD_PROP(conn->id(), conn->crtc_id_property().id(), crtc->id());
+  DRM_ATOMIC_ADD_PROP(crtc->id(), crtc->mode_property().id(), blob_id[0]);
+  DRM_ATOMIC_ADD_PROP(crtc->id(), crtc->active_property().id(), 1);
+
+
+  uint32_t flags = DRM_MODE_ATOMIC_ALLOW_MODESET;
+  ret = drmModeAtomicCommit(fd_.get(), pset, flags, this);
+  if (ret < 0) {
+    HWC2_ALOGE("display-id=%d Connector-id=%d Crtc-id=%d mode=%dx%d@%f PowerOn fail! ret=%d.",
+              display_id, conn->id(), crtc->id(),
+              conn->current_mode().h_display(),
+              conn->current_mode().v_display(),
+              conn->current_mode().v_refresh(),
+              ret);
+    drmModeAtomicFree(pset);
+    pset=NULL;
+    return ret;
+  }
+  drmModeAtomicFree(pset);
+  pset=NULL;
+
+  HWC2_ALOGI("display-id=%d Connector-id=%d Crtc-id=%d mode=%dx%d@%f PowerOn success!.",
+              display_id, conn->id(), crtc->id(),
+              conn->current_mode().h_display(),
+              conn->current_mode().v_display(),
+              conn->current_mode().v_refresh());
+
+  DestroyPropertyBlob(blob_id[0]);
+
+  conn->set_active_mode(conn->current_mode());
+
+  // 更新状态查询接口信息
+  char conn_name[50];
+  char property_conn_name[50];
+  snprintf(conn_name,50,"%s-%d:%d:connected",connector_type_str(conn->type()),conn->type_id(),crtc->id());
+  snprintf(property_conn_name,50,"vendor.hwc.device.display-%d", display_id);
+  property_set(property_conn_name, conn_name);
+
+  return 0;
+}
+
+
+int DrmDevice::DoPowerOnMirror(int display_id){
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
+  DrmConnector *conn = GetConnectorForDisplay(display_id);
+
+  DrmCrtc *crtc = NULL;
+  if(conn->encoder() != NULL &&
+     conn->encoder()->crtc() != NULL){
+    crtc = conn->encoder()->crtc();
+  }else{
+    HWC2_ALOGE("display_id=%d encoder or crtc is null");
+    return -1;
+  }
+
+  // 非 MirrorPrimary 不进行PowerOn操作
+  if(conn->is_connector_mirror_primary() == false){
+    HWC2_ALOGE("display_id=%d is not MirrorPrimary, skip PowerOn.");
+    return -1;
+  }
+
+  drmModeAtomicReqPtr pset = drmModeAtomicAlloc();
+  if (!pset) {
+    ALOGE("%s:line=%d Failed to allocate property set",__FUNCTION__, __LINE__);
+    return -ENOMEM;
+  }
+
+  // Config display mode
+  int ret;
+  uint32_t blob_id[1] = {0};
+  struct drm_mode_modeinfo drm_mode;
+  memset(&drm_mode, 0, sizeof(drm_mode));
+  conn->current_mode().ToDrmModeModeInfo(&drm_mode);
+  CreatePropertyBlob(&drm_mode, sizeof(drm_mode), &blob_id[0]);
+
+  // Enable DrmConnector DPMS on.
+  // The note is due to HJC's suggestion that the DRM driver
+  // will actively call the DPMS_ON interface when connecting Crtc and Connector,
+  // and no additional calls are required.
+  // conn->SetDpmsMode(DRM_MODE_DPMS_ON);
+
+  // Bind DrmCrtc and DrmConnector
+  DRM_ATOMIC_ADD_PROP(conn->id(), conn->crtc_id_property().id(), crtc->id());
+  DRM_ATOMIC_ADD_PROP(crtc->id(), crtc->mode_property().id(), blob_id[0]);
+  DRM_ATOMIC_ADD_PROP(crtc->id(), crtc->active_property().id(), 1);
+
+  // 配置Mirror Connector信息
+  for(auto mirror_dpy_id : conn->get_connector_mirror_display_id()){
+    DrmConnector *mirror_conn = GetConnectorForDisplay(mirror_dpy_id);
+    if(mirror_conn->encoder() != NULL &&
+       mirror_conn->encoder()->crtc() != NULL &&
+       mirror_conn->encoder()->crtc() == crtc){
+      DRM_ATOMIC_ADD_PROP(mirror_conn->id(), mirror_conn->crtc_id_property().id(), crtc->id());
+      HWC2_ALOGI("MirrorDisplay: display-id=%d Connector-id=%d Crtc-id=%d request PowerOn!.",
+                  mirror_conn->id(), mirror_conn->id(), crtc->id());
+    }
+  }
+
+  uint32_t flags = DRM_MODE_ATOMIC_ALLOW_MODESET;
+  ret = drmModeAtomicCommit(fd_.get(), pset, flags, this);
+  if (ret < 0) {
+    HWC2_ALOGE("MirrorDisplay: display-id=%d Connector-id=%d Crtc-id=%d mode=%dx%d@%f PowerOn fail! ret=%d",
+              display_id, conn->id(), crtc->id(),
+              conn->current_mode().h_display(),
+              conn->current_mode().v_display(),
+              conn->current_mode().v_refresh(),
+              ret);
+    drmModeAtomicFree(pset);
+    pset=NULL;
+    return ret;
+  }
+  drmModeAtomicFree(pset);
+  pset=NULL;
+
+  HWC2_ALOGI("MirrorDisplay: display-id=%d Connector-id=%d Crtc-id=%d mode=%dx%d@%f PowerOn success!.",
+              display_id, conn->id(), crtc->id(),
+              conn->current_mode().h_display(),
+              conn->current_mode().v_display(),
+              conn->current_mode().v_refresh());
+
+  DestroyPropertyBlob(blob_id[0]);
+
+  conn->set_active_mode(conn->current_mode());
+
+  // 更新状态查询接口信息
+  char conn_name[50];
+  char property_conn_name[50];
+  snprintf(conn_name,50,"%s-%d:%d:connected",connector_type_str(conn->type()),conn->type_id(),crtc->id());
+  snprintf(property_conn_name,50,"vendor.hwc.device.display-%d", display_id);
+  property_set(property_conn_name, conn_name);
+
+  // 更新Mirror Connector信息
+  for(auto mirror_dpy_id : conn->get_connector_mirror_display_id()){
+    DrmConnector *mirror_conn = GetConnectorForDisplay(mirror_dpy_id);
+    snprintf(conn_name,50,"%s-%d:%d:connected:mirror",connector_type_str(mirror_conn->type()),mirror_conn->type_id(),crtc->id());
+    snprintf(property_conn_name,50,"vendor.hwc.device.display-%d", mirror_dpy_id);
+    property_set(property_conn_name, conn_name);
+  }
+
+  return 0;
+}
+
+int DrmDevice::DoPowerOff(int display_id){
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
+  DrmConnector *conn = GetConnectorForDisplay(display_id);
+  // 1. 检查 Connector 状态
+  bool check_all_state = true;
+  int ret = CheckConnectorState(display_id, conn, check_all_state);
+  if(ret){
+    return ret;
+  }
+
+  // 如果Connector使能了Mirror模式
+  if(conn->is_connector_mirror_mode()){
+    return DoPowerOffMirror(display_id);
+  }else{ // 正常使能PowerOn模式
+    return DoPowerOffNormal(display_id);
+  }
+  return 0;
+}
+
+int DrmDevice::DoPowerOffNormal(int display_id){
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
+
+  DrmConnector *conn = GetConnectorForDisplay(display_id);
+
+  DrmCrtc *crtc = NULL;
+  if(conn->encoder() != NULL &&
+     conn->encoder()->crtc() != NULL){
+    crtc = conn->encoder()->crtc();
+  }else{
+    HWC2_ALOGE("display_id=%d encoder or crtc is null");
+    return -1;
+  }
+
+  int ret;
+  drmModeAtomicReqPtr pset = drmModeAtomicAlloc();
+  if (!pset) {
+    HWC2_ALOGE("%s:line=%d Failed to allocate property set",__FUNCTION__, __LINE__);
+    return -ENOMEM;
+  }
+
+  // Disable DrmConnector resource.
+  // The note is due to HJC's suggestion that the DRM driver
+  // will actively call the DPMS_OFF interface when disconnecting the CRTC from the Connector,
+  // and no additional calls are required.
+  // conn->SetDpmsMode(DRM_MODE_DPMS_OFF);
+  DRM_ATOMIC_ADD_PROP(conn->id(), conn->crtc_id_property().id(), 0);
+
+  // Disable DrmPlane resource.
+  DisableAllPlaneForCrtc(display_id, crtc, false, pset);
+
+  // Disable DrmCrtc resource.
+  DRM_ATOMIC_ADD_PROP(crtc->id(), crtc->mode_property().id(), 0);
+  DRM_ATOMIC_ADD_PROP(crtc->id(), crtc->active_property().id(), 0);
+
+  // AtomicCommit
+  uint32_t flags = DRM_MODE_ATOMIC_ALLOW_MODESET;
+  ret = drmModeAtomicCommit(fd_.get(), pset, flags, this);
+  if (ret < 0) {
+    HWC2_ALOGE("display-id=%d PowerOff fail! ret=%d", display_id, ret);
+    drmModeAtomicFree(pset);
+    pset=NULL;
+    return ret;
+  }
+
+  drmModeAtomicFree(pset);
+  pset=NULL;
+
+  HWC2_ALOGI("display-id=%d PowerOff success!.", display_id);
+
+  char conn_name[50];
+  char property_conn_name[50];
+  snprintf(conn_name,50,"%s-%d:%d:off",connector_type_str(conn->type()),conn->type_id(),crtc->id());
+  snprintf(property_conn_name,50,"vendor.hwc.device.display-%d",display_id);
+  property_set(property_conn_name, conn_name);
+  return 0;
+}
+
+int DrmDevice::DoPowerOffMirror(int display_id){
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
+  DrmConnector *conn = GetConnectorForDisplay(display_id);
+
+  // 非 MirrorPrimary 不进行PowerOn操作
+  if(conn->is_connector_mirror_primary() == false){
+    HWC2_ALOGE("display_id=%d is not MirrorPrimary, skip PowerOn.");
+    return -1;
+  }
+
+  DrmCrtc *crtc = NULL;
+  if(conn->encoder() != NULL &&
+     conn->encoder()->crtc() != NULL){
+    crtc = conn->encoder()->crtc();
+  }else{
+    HWC2_ALOGE("display_id=%d encoder or crtc is null");
+    return -1;
+  }
+
+  // 先断开 MirrorConnector
+  for(auto mirror_dpy_id : conn->get_connector_mirror_display_id()){
+    DrmConnector *mirror_conn = GetConnectorForDisplay(mirror_dpy_id);
+    if(mirror_conn->encoder() != NULL &&
+       mirror_conn->encoder()->crtc() != NULL &&
+       mirror_conn->encoder()->crtc() == crtc){
+      int ret;
+      drmModeAtomicReqPtr pset = drmModeAtomicAlloc();
+      if (!pset) {
+        HWC2_ALOGE("%s:line=%d Failed to allocate property set",__FUNCTION__, __LINE__);
+        return -ENOMEM;
+      }
+      DRM_ATOMIC_ADD_PROP(mirror_conn->id(), mirror_conn->crtc_id_property().id(), 0);
+      // AtomicCommit
+      uint32_t flags = DRM_MODE_ATOMIC_ALLOW_MODESET;
+      ret = drmModeAtomicCommit(fd_.get(), pset, flags, this);
+      if (ret < 0) {
+        ALOGE("%s:line=%d Failed to commit pset ret=%d\n", __FUNCTION__, __LINE__, ret);
+        drmModeAtomicFree(pset);
+        pset=NULL;
+        return ret;
+      }
+      drmModeAtomicFree(pset);
+      pset=NULL;
+
+      HWC2_ALOGI("MirrorDisplay: display-id=%d Connector-id=%d Crtc-id=%d PowerOff Success!.",
+                  mirror_conn->display(), mirror_conn->id(), crtc->id());
+
+      char conn_name[50];
+      char property_conn_name[50];
+      snprintf(conn_name,50,"%s-%d:%d:mirror:off",connector_type_str(mirror_conn->type()),mirror_conn->type_id(),crtc->id());
+      snprintf(property_conn_name,50,"vendor.hwc.device.display-%d", mirror_dpy_id);
+      property_set(property_conn_name, conn_name);
+    }
+  }
+
+  int ret;
+  drmModeAtomicReqPtr pset = drmModeAtomicAlloc();
+  if (!pset) {
+    HWC2_ALOGE("%s:line=%d Failed to allocate property set",__FUNCTION__, __LINE__);
+    return -ENOMEM;
+  }
+
+  // Disable DrmConnector resource.
+  // The note is due to HJC's suggestion that the DRM driver
+  // will actively call the DPMS_OFF interface when disconnecting the CRTC from the Connector,
+  // and no additional calls are required.
+  // conn->SetDpmsMode(DRM_MODE_DPMS_OFF);
+  DRM_ATOMIC_ADD_PROP(conn->id(), conn->crtc_id_property().id(), 0);
+
+  // Disable DrmPlane resource.
+  DisableAllPlaneForCrtc(display_id, crtc, false, pset);
+
+  // Disable DrmCrtc resource.
+  DRM_ATOMIC_ADD_PROP(crtc->id(), crtc->mode_property().id(), 0);
+  DRM_ATOMIC_ADD_PROP(crtc->id(), crtc->active_property().id(), 0);
+
+  // AtomicCommit
+  uint32_t flags = DRM_MODE_ATOMIC_ALLOW_MODESET;
+  ret = drmModeAtomicCommit(fd_.get(), pset, flags, this);
+  if (ret < 0) {
+    HWC2_ALOGE("display-id=%d PowerOff fail! ret=%d", display_id, ret);
+    drmModeAtomicFree(pset);
+    pset=NULL;
+    return ret;
+  }
+
+  drmModeAtomicFree(pset);
+  pset=NULL;
+
+  HWC2_ALOGI("MirrorDisplay: display-id=%d PowerOff success!.", display_id);
+
+  char conn_name[50];
+  char property_conn_name[50];
+  snprintf(conn_name,50,"%s-%d:%d:off",connector_type_str(conn->type()),conn->type_id(),crtc->id());
+  snprintf(property_conn_name,50,"vendor.hwc.device.display-%d",display_id);
+  property_set(property_conn_name, conn_name);
+  return 0;
+}
+
 
 // Bind DrmConnector and DrmCrtc resource.
 int DrmDevice::BindDpyRes(int display_id){

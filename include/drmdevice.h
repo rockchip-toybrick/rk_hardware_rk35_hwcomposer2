@@ -119,6 +119,16 @@ class DrmDevice {
   int UpdateVrrRefreshRate(int display_id, int refresh_rate);
   int BindDpyRes(int display_id);
   int ReleaseDpyRes(int display_id);
+
+  // Power接口
+  int SetPowerMode(int display_id, int power_mode);
+  int DoPowerOn(int display_id);
+  int DoPowerOnNormal(int display_id);
+  int DoPowerOnMirror(int display_id);
+  int DoPowerOff(int display_id);
+  int DoPowerOffNormal(int display_id);
+  int DoPowerOffMirror(int display_id);
+
   void ClearDisplay(void);
   void ClearDisplay(int display);
   void ClearAllDisplay(void);
@@ -162,7 +172,7 @@ class DrmDevice {
   int AttachWriteback(DrmConnector *display_conn);
 
   // 检查 Connector 状态
-  int CheckConnectorState(int display_id, DrmConnector *conn);
+  int CheckConnectorState(int display_id, DrmConnector *conn, bool all = false);
   // 绑定 Connector 与 Crtc 资源
   int BindConnectorAndCrtc(int display_id, DrmConnector* conn, DrmCrtc* crtc);
   // 获取可用的 Crtc 资源
