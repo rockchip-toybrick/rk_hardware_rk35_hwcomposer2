@@ -1586,8 +1586,8 @@ int DrmDevice::FindAvailableCrtcByMirror(int display_id, DrmConnector *conn, Drm
           // mirror 不会修改crtc diplsy id
           // crtc->set_display(conn->display());
           // 设置mirror_primary信息
-          mirror_primary_conn->enable_connector_mirror_mode(true, display_id);
-          conn->enable_connector_mirror_mode(false, display_id);
+          mirror_primary_conn->enable_connector_mirror_mode(mirror_primary_display_id, display_id);
+          conn->enable_connector_mirror_mode(mirror_primary_display_id, display_id);
           enc->set_crtc(crtc);
           conn->set_encoder(enc);
           *out_crtc = crtc;
@@ -2432,30 +2432,17 @@ int DrmDevice::ReleaseDpyRes(int display_id){
 
   if(conn->encoder() && conn->encoder()->crtc()) {
     DrmCrtc* crtc = conn->encoder()->crtc();
-    // 检查是否存在 ConnectorMirror方式
-    // 若存在，解除 ConnectorMirrot方式，断开所有与 crtc 绑定的 Connector
-    // 若不存在，正常解绑 Connector 与 Crtc
-    bool is_mirror = false;
-    for(auto &temp_conn : connectors_){
-      if(temp_conn.get() == conn)
-        continue;
-      if(temp_conn->encoder() &&
-          temp_conn->encoder()->crtc() &&
-          temp_conn->encoder()->crtc() == crtc){
-        is_mirror = true;
-      }
-    }
     // 若当前 Connector 不存在 Mirror模式
-    if(!is_mirror){
-      ret = ReleaseDpyResByNormal(display_id, conn, crtc);
-      if(ret){
-        HWC2_ALOGE("display-id=%d ReleaseDpyResByNormal fail!.\n", display_id);
-        return ret;
-      }
-    }else{// 若存在Mirror模式
+    if(conn->is_connector_mirror_mode()){// 若存在Mirror模式
       ret = ReleaseDpyResByMirror(display_id, conn, crtc);
       if(ret){
         HWC2_ALOGE("display-id=%d ReleaseDpyResByMirror fail!.\n", display_id);
+        return ret;
+      }
+    }else{
+      ret = ReleaseDpyResByNormal(display_id, conn, crtc);
+      if(ret){
+        HWC2_ALOGE("display-id=%d ReleaseDpyResByNormal fail!.\n", display_id);
         return ret;
       }
     }
@@ -2483,6 +2470,8 @@ int DrmDevice::ReleaseDpyResByMirror(int display_id,
     return -ENOMEM;
   }
 
+  int mirror_display_primary_id = -1;
+  DrmConnector *mirror_primary = NULL;
 
   // Disable DrmConnector resource.
   // The note is due to HJC's suggestion that the DRM driver
@@ -2491,11 +2480,39 @@ int DrmDevice::ReleaseDpyResByMirror(int display_id,
   // conn->SetDpmsMode(DRM_MODE_DPMS_OFF);
   DRM_ATOMIC_ADD_PROP(conn->id(), conn->crtc_id_property().id(), 0);
 
+  bool release_crtc = false;
+  // 执行MirrorDisplay后处理, 如果是MirrorDisplayExternal执行断开，则需要更新Connector Mirror的信息
+  if(conn->is_connector_mirror_primary() == false){
+    mirror_display_primary_id = conn->get_connector_mirror_primary_id();
+    if(mirror_display_primary_id > 0){
+      mirror_primary = GetConnectorForDisplay(mirror_display_primary_id);
+      if(mirror_primary != NULL){
+        // 如果 MirrorPrimary 是未连接状态，且当前断开的Display是最后一个MirrorDisplay
+        // 则需要将整个crtc资源全部关闭以及释放
+        if(mirror_primary->hotplug_state() == DRM_MODE_DISCONNECTED &&
+           mirror_primary->is_last_mirror_display_id(display_id)){
+          // Disable DrmPlane resource.
+          DisableAllPlaneForCrtc(mirror_display_primary_id, crtc, false, pset);
+          // Disable DrmCrtc resource.
+          DRM_ATOMIC_ADD_PROP(crtc->id(), crtc->mode_property().id(), 0);
+          DRM_ATOMIC_ADD_PROP(crtc->id(), crtc->active_property().id(), 0);
+          release_crtc = true;
+          HWC2_ALOGI("display-id=%d %s-%d Crtc-id=%d, MirrorPrimary display-id=%d %s-%d need to release crtc.",
+              display_id, connector_type_str(conn->type()),
+              conn->type_id(), crtc->id(),
+              mirror_display_primary_id, connector_type_str(mirror_primary->type()),
+              mirror_primary->type_id());
+        }
+      }
+    }
+  }
+
   // AtomicCommit
   uint32_t flags = DRM_MODE_ATOMIC_ALLOW_MODESET;
   ret = drmModeAtomicCommit(fd_.get(), pset, flags, this);
   if (ret < 0) {
-    ALOGE("%s:line=%d Failed to commit pset ret=%d\n", __FUNCTION__, __LINE__, ret);
+    HWC2_ALOGE("display-id=%d %s-%d Failed to commit pset ret=%d\n",
+                display_id, connector_type_str(conn->type()), conn->type_id(), ret);
     drmModeAtomicFree(pset);
     pset=NULL;
     return ret;
@@ -2504,7 +2521,6 @@ int DrmDevice::ReleaseDpyResByMirror(int display_id,
   drmModeAtomicFree(pset);
   pset=NULL;
 
-  conn->set_encoder(NULL);
 
   HWC2_ALOGI("display-id=%d %s-%d Crtc-id=%d Release Mirror Mode Success! .",
               display_id, connector_type_str(conn->type()),
@@ -2515,6 +2531,15 @@ int DrmDevice::ReleaseDpyResByMirror(int display_id,
   snprintf(conn_name,50,"%s-%d:disconnected",connector_type_str(conn->type()),conn->type_id());
   snprintf(property_conn_name,50,"vendor.hwc.device.display-%d",display_id);
   property_set(property_conn_name, conn_name);
+
+  conn->disable_connector_mirror_mode(display_id);
+
+  if(conn->is_connector_mirror_primary() == false){
+    conn->set_encoder(NULL);
+    if(mirror_primary != NULL){
+      mirror_primary->disable_connector_mirror_mode(display_id);
+    }
+  }
 
   return 0;
 }
@@ -2557,7 +2582,7 @@ int DrmDevice::ReleaseDpyResByNormal(int display_id,
   drmModeAtomicFree(pset);
   pset=NULL;
 
-  HWC2_ALOGI("display-id=%d PowerDown success!.", display_id);
+  HWC2_ALOGI("display-id=%d conn-id==%d unbind crtc-id=%d success!.", display_id, conn->id(), crtc->id());
 
   crtc->set_display(-1);
   conn->set_encoder(NULL);

@@ -192,34 +192,53 @@ class DrmConnector {
   void reset_kernel_crtc_id() { mKernelCrtcId_ = 0; }
 
   // Connector Mirror 功能
-  void enable_connector_mirror_mode(bool primary, int display_id){
+  void enable_connector_mirror_mode(int primary_display_id, int mirror_display_id){
     mirror_mode = true;
-    if(primary){
-      mirror_primary = primary;
-      if(connector_mirror_display_id_set.count(display_id) == 0){
-        connector_mirror_display_id_set.insert(display_id);
-        HWC2_ALOGI("MirrorDisplay: MirrorPrimary dpy-id=%d, insert dpy-id=%d, mirror display size=%zu",
-          id_, display_id, connector_mirror_display_id_set.size());
+    mirror_primary = false;
+    mirror_primary_id = primary_display_id;
+    // MirrorPrimary ID 等于当前Connector DisplayId信息，则为MirrorPrimary
+    if(mirror_primary_id == display_){
+        mirror_primary = true;
+        if(connected_mirror_display_id_set.count(mirror_display_id) == 0){
+          connected_mirror_display_id_set.insert(mirror_display_id);
+          HWC2_ALOGI("MirrorDisplay: MirrorPrimary dpy-id=%d, insert dpy-id=%d, mirror display size=%zu",
+            id_, mirror_display_id, connected_mirror_display_id_set.size());
       }
+    }else{
+      mirror_primary = false;
+      connected_mirror_display_id_set.clear();
+      HWC2_ALOGI("MirrorDisplay: MirrorExternal display-id=%d, MirrorPrimary display-id=%d", mirror_display_id, primary_display_id);
     }
   }
 
-  void disable_connector_mirror_mode(bool primary, int display_id){
-    if(primary){
-      if(connector_mirror_display_id_set.count(display_id) > 0){
-        connector_mirror_display_id_set.erase(display_id);
+  void disable_connector_mirror_mode(int display_id){
+    if(mirror_primary){
+      if(connected_mirror_display_id_set.count(display_id) > 0){
+        connected_mirror_display_id_set.erase(display_id);
+        HWC2_ALOGI("MirrorDisplay: MirrorPrimary display-id=%d, MirrorPrimary display-id=%d connected_mirror_cnt=%zu", id_, display_id, connected_mirror_display_id_set.size());
       }
-      if(connector_mirror_display_id_set.size() == 0){
+
+      if(connected_mirror_display_id_set.size() == 0){
         mirror_mode = false;
         mirror_primary = false;
       }
+    }else{
+      mirror_mode = false;
     }
-    mirror_mode = false;
   }
 
   bool is_connector_mirror_mode(){ return mirror_mode; }
   bool is_connector_mirror_primary(){ return mirror_mode && mirror_primary; }
-  std::set<int> &get_connector_mirror_display_id(){ return connector_mirror_display_id_set; }
+  int get_connector_mirror_primary_id() { return mirror_mode ? mirror_primary_id : -1; }
+  std::set<int> &get_connector_mirror_display_id(){ return connected_mirror_display_id_set; }
+
+  bool is_last_mirror_display_id(int display_id){
+    if(connected_mirror_display_id_set.size() != 1){
+      return false;
+    }
+
+    return connected_mirror_display_id_set.count(display_id) > 0;
+  }
   // Connector Mirror 功能
 
  private:
@@ -316,7 +335,8 @@ class DrmConnector {
   // Connector mirror
   bool mirror_mode = false;
   bool mirror_primary = false;
-  std::set<int> connector_mirror_display_id_set;
+  int mirror_primary_id = -1;
+  std::set<int> connected_mirror_display_id_set;
 
   uint32_t blob_id_ = 0;
   struct dummyEdid{

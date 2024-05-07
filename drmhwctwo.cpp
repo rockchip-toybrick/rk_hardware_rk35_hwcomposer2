@@ -777,10 +777,13 @@ HWC2::Error DrmHwcTwo::HwcDisplay::CheckDisplayState(){
   }
 
   if(connector_->state() != DRM_MODE_CONNECTED){
-    ALOGE_IF(LogLevel(DBG_ERROR),"Connector %u type=%s, type_id=%d, state is DRM_MODE_DISCONNECTED, skip init, %s,line=%d\n",
-          connector_->id(),drm_->connector_type_str(connector_->type()),connector_->type_id(),
-          __FUNCTION__, __LINE__);
-    return HWC2::Error::NoResources;
+    // Mirror Primary Display 允许主屏disconnect状态下送显，因为Mirror Display连接状态还是正常的
+    if(connector_->is_connector_mirror_primary() == false){
+      ALOGE_IF(LogLevel(DBG_ERROR),"Connector %u type=%s, type_id=%d, state is DRM_MODE_DISCONNECTED, skip init, %s,line=%d\n",
+            connector_->id(),drm_->connector_type_str(connector_->type()),connector_->type_id(),
+            __FUNCTION__, __LINE__);
+      return HWC2::Error::NoResources;
+    }
   }
 
   crtc_ = drm_->GetCrtcForDisplay(display);
@@ -5736,6 +5739,7 @@ void DrmHwcTwo::DrmHotplugHandler::HandleEvent(uint64_t timestamp_us) {
   PLUG_EVENT_TYPE event_type = DRM_HOTPLUG_NONE;
   for (auto &conn : drm_->connectors()) {
     ret = 0;
+
     // RK3528 TV 不需要处理TV的热插拔事件
     if(gIsRK3528() && conn->type() == DRM_MODE_CONNECTOR_TV){
       ALOGI("hwc_hotplug: RK3528 not handle type=%s-%d hotplug event.\n",
@@ -5750,8 +5754,14 @@ void DrmHwcTwo::DrmHotplugHandler::HandleEvent(uint64_t timestamp_us) {
     drmModeConnection cur_state = conn->hotplug_state();
     if(!conn->ModesReady())
       continue;
+
     if (cur_state == old_state)
       continue;
+
+    ALOGI("hwc_hotplug: %s event @%" PRIu64 " for connector %u type=%s, type_id=%d\n",
+          cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug", timestamp_us, conn->id(),
+          drm_->connector_type_str(conn->type()),conn->type_id());
+
 
     // 当前状态为未连接，则为拔出事件
     if(cur_state == DRM_MODE_DISCONNECTED){
@@ -5759,10 +5769,6 @@ void DrmHwcTwo::DrmHotplugHandler::HandleEvent(uint64_t timestamp_us) {
     }else{
       event_type = DRM_HOTPLUG_PLUG_EVENT;
     }
-
-    ALOGI("hwc_hotplug: %s event @%" PRIu64 " for connector %u type=%s, type_id=%d\n",
-          cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug", timestamp_us, conn->id(),
-          drm_->connector_type_str(conn->type()),conn->type_id());
 
     // RK3528 HDMI/TV 互斥功能需要提前处理 TV display
     if(gIsRK3528() && conn->type() == DRM_MODE_CONNECTOR_HDMIA)
@@ -5792,23 +5798,86 @@ void DrmHwcTwo::DrmHotplugHandler::HandleEvent(uint64_t timestamp_us) {
         display.SyncPowerMode();
       }
     }else{
-      ret |= (int32_t)display.ClearDisplay();
-      ret |= (int32_t)drm_->ReleaseDpyRes(display_id);
-      if(ret != 0){
-        HWC2_ALOGE("hwc_hotplug: %s connector %u type=%s type_id=%d state is error, skip hotplug.",
-                   cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
-                   conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
-      }else if(conn->isCropSpilt()){
-          HWC2_ALOGI("hwc_hotplug: %s connector %u type=%s type_id=%d isCropSpilt skip hotplug.",
+      // 当前拔出的设备是Mirror的主屏
+      if(conn->is_connector_mirror_mode()){
+        // 如果是MirrorPrimary,说明还存在MirrorExternal屏幕，故仅执行断开drm资源操作，不上报拔出事件
+        if(conn->is_connector_mirror_primary()){
+          ret = (int32_t)drm_->ReleaseDpyRes(display_id);
+          if(ret){
+            HWC2_ALOGE("hwc_hotplug: MirrorDisplayPrimary %s connector %u type=%s type_id=%d state is error.",
+                      cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
+                      conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
+            continue;
+          }
+          HWC2_ALOGI("hwc_hotplug: MirrorDisplayPrimary %s connector %u type=%s type_id=%d, skip hotplug.",
                     cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
                     conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
-        // display.SetPowerMode(HWC2_POWER_MODE_OFF);
+          continue;
+        }else{ // 非MirrorPrimary设备，故仅执行断开drm资源操作
+          int mirror_primary_id = conn->get_connector_mirror_primary_id();
+          ret = (int32_t)drm_->ReleaseDpyRes(display_id);
+          if(ret){
+            HWC2_ALOGE("hwc_hotplug: MirrorDisplayExternal %s connector %u type=%s type_id=%d state is error.",
+                      cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
+                      conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
+            continue;
+          }
+
+          HWC2_ALOGI("hwc_hotplug: MirrorDisplayExternal %s connector %u type=%s type_id=%d, skip hotplug.",
+                    cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
+                    conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
+
+          // 检查MirrorPrimary的连接状态，如果此MirrorPrimary设备已断开，且没有其他MirrorExternal，则需要上报拔出事件，销毁对应的SF Display
+          if(mirror_primary_id > 0){
+            auto &mirror_primary_display = hwc2_->displays_.at(mirror_primary_id);
+            DrmConnector *mirror_primary = drm_->GetConnectorForDisplay(mirror_primary_id);
+            // MirrorPrimary 变为非MirrorMode状态，说明所有MirrorExternal都已经断开
+            // 如果此时 MirrorPrimary 也是断开，就需要上报拔出事件，销毁对应的SF Display
+            if(mirror_primary != NULL &&
+               mirror_primary->hotplug_state() == DRM_MODE_DISCONNECTED &&
+               mirror_primary->is_connector_mirror_mode() == false){
+              ret |= (int32_t)mirror_primary_display.ClearDisplay();
+              ret |= (int32_t)drm_->ReleaseDpyRes(mirror_primary_id);
+              if(ret != 0){
+                HWC2_ALOGE("hwc_hotplug: MirrorDisplay Unplug primary-display-id=%d connector %u type=%s type_id=%d state is error, skip hotplug.",
+                          mirror_primary_id,
+                          mirror_primary->id(),drm_->connector_type_str(mirror_primary->type()),mirror_primary->type_id());
+              }else if(conn->isCropSpilt()){
+                HWC2_ALOGI("hwc_hotplug: MirrorDisplay Unplug primary-display-id=%d connector %u type=%s type_id=%d isCropSpilt skip hotplug.",
+                          mirror_primary_id,
+                          mirror_primary->id(),drm_->connector_type_str(mirror_primary->type()),mirror_primary->type_id());
+                // display.SetPowerMode(HWC2_POWER_MODE_OFF);
+              }else{
+                HWC2_ALOGI("hwc_hotplug: MirrorDisplay Unplug primary-display-id=%d connector %u type=%s type_id=%d send hotplug event to SF.",
+                          mirror_primary_id,
+                          mirror_primary->id(),drm_->connector_type_str(mirror_primary->type()),mirror_primary->type_id());
+                hwc2_->HandleDisplayHotplug(mirror_primary_id, DRM_MODE_DISCONNECTED);
+              }
+            }
+          }
+
+          continue;
+        }
       }else{
-        HWC2_ALOGI("hwc_hotplug: %s connector %u type=%s type_id=%d send hotplug event to SF.",
-                   cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
-                   conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
-        hwc2_->HandleDisplayHotplug(display_id, cur_state);
+        ret |= (int32_t)display.ClearDisplay();
+        ret |= (int32_t)drm_->ReleaseDpyRes(display_id);
+        if(ret != 0){
+          HWC2_ALOGE("hwc_hotplug: %s connector %u type=%s type_id=%d state is error, skip hotplug.",
+                    cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
+                    conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
+        }else if(conn->isCropSpilt()){
+            HWC2_ALOGI("hwc_hotplug: %s connector %u type=%s type_id=%d isCropSpilt skip hotplug.",
+                      cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
+                      conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
+          // display.SetPowerMode(HWC2_POWER_MODE_OFF);
+        }else{
+          HWC2_ALOGI("hwc_hotplug: %s connector %u type=%s type_id=%d send hotplug event to SF.",
+                    cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
+                    conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
+          hwc2_->HandleDisplayHotplug(display_id, cur_state);
+        }
       }
+
     }
 
     // SpiltDisplay Hoplug.

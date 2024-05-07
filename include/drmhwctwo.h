@@ -923,7 +923,6 @@ class DrmHwcTwo : public hwc2_device_t {
 #endif
   };
 
-
   enum PLUG_EVENT_TYPE{
     DRM_HOTPLUG_NONE = 0,
     DRM_HOTPLUG_PLUG_EVENT = 1,
