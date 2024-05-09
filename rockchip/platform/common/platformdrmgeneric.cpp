@@ -20,7 +20,12 @@
 #include "drmdevice.h"
 #if USE_GRALLOC_4
 #else
+//for rk356x Android 9.1
+#if (defined(RK356x)||defined(RK3576)) && (PLATFORM_SDK_VERSION <= 28)
+#include "gralloc_drm_priv.h"
+#else
 #include "gralloc_priv.h"
+#endif
 #endif
 #include "rockchip/drmgralloc.h"
 

@@ -943,7 +943,6 @@ int DrmConnector::UpdateOutputFormat(int display_id, int update_base_timeline){
 }
 
 int DrmConnector::UpdateOutputFormat(drmModeAtomicReqPtr pset){
-  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
   if(!(color_format_property().id() > 0 || color_depth_property().id() > 0)){
     return 0;
   }

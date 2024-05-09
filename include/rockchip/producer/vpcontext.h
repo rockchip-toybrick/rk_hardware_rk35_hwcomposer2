@@ -20,6 +20,7 @@
 #include <map>
 #include <set>
 #include <utility>
+#include <inttypes.h>
 
 #include "utils/drmfence.h"
 #include "drmbuffer.h"

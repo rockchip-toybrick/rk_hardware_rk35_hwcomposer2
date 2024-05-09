@@ -44,8 +44,13 @@
 #if USE_GRALLOC_4
 #include "rockchip/drmgralloc4.h"
 #else
+#if (defined(RK356x)||defined(RK3576)) && (PLATFORM_SDK_VERSION <= 28)
+#include "gralloc_drm_priv.h"
+#include "gralloc_drm_handle.h"
+#else
 #include "gralloc_priv.h"
 #include "include/gralloc/formats.h"
+#endif
 #endif
 #include "rockchip/drmgralloc.h"
 #include "drm_fourcc.h"
@@ -603,6 +608,17 @@ int DrmGralloc::hwc_get_handle_buffer_id(buffer_handle_t hnd, uint64_t *buffer_i
 
 	if(ret != 0)
 	{
+#if (defined(RK356x)||defined(RK3576)) && (PLATFORM_SDK_VERSION <= 28)
+    if(hnd == NULL){
+        *buffer_id = -1;
+        return -1;
+    }
+    gralloc_drm_handle_t *gd_handle = gralloc_drm_handle(hnd);
+    if(gd_handle != NULL){
+        *buffer_id = gd_handle->backing_store_id;
+        return 0;
+    }
+#endif
 		ALOGE("%s: cann't get buffer_id", __FUNCTION__);
 	}
   return -1;

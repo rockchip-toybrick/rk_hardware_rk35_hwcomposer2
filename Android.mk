@@ -53,6 +53,14 @@ ifneq (1,$(strip $(shell expr $(PLATFORM_SDK_VERSION) \< 34)))
 endif
 endif
 
+# API 28 -> Android 9.0
+ifneq (1,$(strip $(shell expr $(PLATFORM_SDK_VERSION) \< 28)))
+# Android 9.0 RK356x use DrmHwc2
+ifneq ($(filter rk356x rk3576, $(strip $(TARGET_BOARD_PLATFORM))), )
+        BOARD_USES_DRM_HWCOMPOSER2=true
+endif
+endif
+
 ifeq ($(strip $(BOARD_USES_DRM_HWCOMPOSER2)),true)
 
 include $(CLEAR_VARS)
@@ -235,11 +243,30 @@ endif
 # RK356x
 ifneq ($(filter rk356x, $(strip $(TARGET_BOARD_PLATFORM))), )
 TARGET_SOC_PLATFORM := rk356x
+LOCAL_CPPFLAGS += -DRK356x=1
+
+ifeq (0,$(strip $(shell expr $(PLATFORM_SDK_VERSION) \> 29)))
+LOCAL_CPPFLAGS += -DANDROID_P=1
+LOCAL_C_INCLUDES += \
+  hardware/rockchip/libgralloc/ \
+  system/core/liblog/include/
+endif
+
 endif
 
 # RK356x
 ifneq ($(filter rk3576, $(strip $(TARGET_BOARD_PLATFORM))), )
 TARGET_SOC_PLATFORM := rk3576
+LOCAL_CPPFLAGS += -DRK3576=1
+
+ifeq (0,$(strip $(shell expr $(PLATFORM_SDK_VERSION) \> 29)))
+LOCAL_CPPFLAGS += -DANDROID_P=1
+LOCAL_C_INCLUDES += \
+  hardware/rockchip/libgralloc/ \
+  system/core/liblog/include/\
+  hardware/libhardware/modules/gralloc
+endif
+
 endif
 
 ifneq ($(filter rk3399, $(strip $(TARGET_BOARD_PLATFORM))),)

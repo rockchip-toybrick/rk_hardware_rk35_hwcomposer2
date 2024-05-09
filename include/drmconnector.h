@@ -94,7 +94,6 @@ class DrmConnector {
   int GetSuitableMode(int display_id, uint64_t max_width, uint64_t dlck);
   int UpdateBCSH(int display_id, int update_base_timeline);
   int UpdateOutputFormat(int display_id, int update_base_timeline);
-  int UpdateOutputFormat(drmModeAtomicReqPtr pset);
   int UpdateOverscan(int display_id, char *overscan_value);
   int SetDisplayModeInfo(int display_id);
   bool ParseHdmiOutputFormat(char* strprop, int *format, int *depth);
@@ -298,6 +297,7 @@ class DrmConnector {
   std::shared_ptr<dummyEdid> mDummyEDID_ = NULL;
 
   mutable std::recursive_mutex mRecursiveMutex;
+  int UpdateOutputFormat(drmModeAtomicReqPtr pset);
 };
 }  // namespace android
 
