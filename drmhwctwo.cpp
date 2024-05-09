@@ -2990,7 +2990,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateDisplay(uint32_t *num_types,
     }
     return HWC2::Error::None;
   }
-  // Enable/disable debug log
+          // Enable/disable debug log
   UpdateLogLevel();
   UpdateBCSH();
   UpdateHdmiOutputFormat();
@@ -2998,13 +2998,31 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateDisplay(uint32_t *num_types,
   if(!ctx_.bStandardSwitchResolution){
     UpdateDisplayMode();
     drm_->UpdateDisplayMode(handle_);
+    UpdateDisplayInfo();
+
+    // RK3566 MirrorConn 分辨率切换流程需要从MirrorPrimary触发
     if(isRK3566(resource_manager_->getSocId())){
       int display_id = drm_->GetCommitMirrorDisplayId();
       drm_->UpdateDisplayMode(display_id);
     }
-    UpdateDisplayInfo();
-  }
 
+    // ConnectorMirror分辨率切换需要从MirrorPrimary流程中触发
+    if(connector_->is_connector_mirror_primary()){
+      for(int mirror_display_id : connector_->get_connector_mirror_display_id()){
+        DrmConnector *conn_mirror = drm_->GetConnectorForDisplay(mirror_display_id);
+        drm_->UpdateDisplayMode(mirror_display_id);
+        // 如果经过分辨率切换后，当前的 MirrorPrimary 退出了Mirror模式，则需要注册副屏幕才行
+        if(conn_mirror->is_connector_mirror_mode() == false){
+          // 发送热插拔注册事件
+          DrmEvent event;
+          event.type = HOTPLUG_EVENT;
+          event.display_id = mirror_display_id;
+          event.connection = DRM_MODE_CONNECTED;
+          g_ctx->eventWorker_.SendDrmEvent(event);
+        }
+      }
+    }
+  }
   // 虚拟屏幕
   if(connector_->type() == DRM_MODE_CONNECTOR_VIRTUAL){
       for (std::pair<const hwc2_layer_t, DrmHwcTwo::HwcLayer> &l : layers_){
@@ -3491,6 +3509,7 @@ int DrmHwcTwo::HwcDisplay::UpdateDisplayMode(){
       }
     }
 
+    // RK3566 使用的DisplayMirror模式，需要从Primary更新副屏幕的分辨率信息
     if(isRK3566(resource_manager_->getSocId())){
       bool mirror_mode = true;
       display_id = drm_->GetCommitMirrorDisplayId();
@@ -3505,6 +3524,20 @@ int DrmHwcTwo::HwcDisplay::UpdateDisplayMode(){
         if(!ret){
           const DrmMode best_mode = conn_mirror->best_mode();
           conn_mirror->set_current_mode(best_mode);
+        }
+      }
+    }
+
+    // MirrorExternal分辨率切换需要从MirrorPrimary流程中触发
+    if(connector_->is_connector_mirror_primary()){
+      for(int mirror_display_id : connector_->get_connector_mirror_display_id()){
+        DrmConnector *conn_mirror = drm_->GetConnectorForDisplay(mirror_display_id);
+        if(conn_mirror != NULL){
+          ret = conn_mirror->UpdateDisplayMode(mirror_display_id, timeline);
+          if(!ret){
+            const DrmMode best_mode = conn_mirror->best_mode();
+            conn_mirror->set_current_mode(best_mode);
+          }
         }
       }
     }

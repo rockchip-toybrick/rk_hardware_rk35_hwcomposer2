@@ -230,7 +230,7 @@ class DrmConnector {
   bool is_connector_mirror_mode(){ return mirror_mode; }
   bool is_connector_mirror_primary(){ return mirror_mode && mirror_primary; }
   int get_connector_mirror_primary_id() { return mirror_mode ? mirror_primary_id : -1; }
-  std::set<int> &get_connector_mirror_display_id(){ return connected_mirror_display_id_set; }
+  std::set<int> get_connector_mirror_display_id(){ return connected_mirror_display_id_set; }
 
   bool is_last_mirror_display_id(int display_id){
     if(connected_mirror_display_id_set.size() != 1){
