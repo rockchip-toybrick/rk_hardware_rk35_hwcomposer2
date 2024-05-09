@@ -1564,6 +1564,12 @@ int DrmDevice::FindAvailableCrtcByFirst(int display_id, DrmConnector *conn, DrmC
               display_id, conn->id(), crtc->id());
           continue;
         }
+        // 如果驱动有配置CRTC，并且与当前HWC内部请求的不一致，则需要先释放驱动的配置
+        if(CheckKernelCrtcNeedRelease(display_id, conn, crtc)){
+          HWC2_ALOGE("display-id=%d with conn[%d] crtc=%d CheckKernelCrtcNeedRelease fail.",
+              display_id, conn->id(), crtc->id());
+          continue;
+        }
         crtc->set_display(conn->display());
         enc->set_crtc(crtc);
         conn->set_encoder(enc);
@@ -1590,6 +1596,13 @@ int DrmDevice::FindAvailableCrtcByFirst(int display_id, DrmConnector *conn, DrmC
               display_id, conn->id(), crtc->id());
           continue;
         }
+        // 如果驱动有配置CRTC，并且与当前HWC内部请求的不一致，则需要先释放驱动的配置
+        if(CheckKernelCrtcNeedRelease(display_id, conn, crtc)){
+          HWC2_ALOGE("display-id=%d with conn[%d] crtc=%d CheckKernelCrtcNeedRelease fail.",
+            display_id, conn->id(), crtc->id());
+          continue;
+        }
+
         // 解绑 temp_conn 与 crtc.
         ReleaseConnectorAndCrtc(temp_display_id,
                                 temp_conn,
@@ -1625,6 +1638,12 @@ int DrmDevice::FindAvailableCrtcByMirror(int display_id, DrmConnector *conn, Drm
         DrmMode current_mode = conn->current_mode();
         if(mirror_mode.id() > 0 && current_mode.id() > 0 &&
            current_mode.equal_no_flag_and_type(mirror_mode)){
+          // 如果驱动有配置CRTC，并且与当前HWC内部请求的不一致，则需要先释放驱动的配置
+          if(CheckKernelCrtcNeedRelease(display_id, conn, crtc)){
+            HWC2_ALOGE("display-id=%d with conn[%d] crtc=%d CheckKernelCrtcNeedRelease fail.",
+              display_id, conn->id(), crtc->id());
+            continue;
+          }
           // mirror 不会修改crtc diplsy id
           // crtc->set_display(conn->display());
           // 设置mirror_primary信息
@@ -1658,6 +1677,12 @@ int DrmDevice::FindAvailableCrtcByCompete(int display_id, DrmConnector *conn, Dr
         //      -> 若状态正常，则进行优先级抢占
         int ret = CheckConnectorState(temp_display_id, temp_conn);
         if(ret){ // 状态不正常
+          // 如果驱动有配置CRTC，并且与当前HWC内部请求的不一致，则需要先释放驱动的配置
+          if(CheckKernelCrtcNeedRelease(display_id, conn, crtc)){
+            HWC2_ALOGE("display-id=%d with conn[%d] crtc=%d CheckKernelCrtcNeedRelease fail.",
+              display_id, conn->id(), crtc->id());
+            continue;
+          }
           // 解绑 temp_conn 与 crtc.
           ReleaseConnectorAndCrtc(temp_display_id,
                                   temp_conn,
@@ -1671,6 +1696,12 @@ int DrmDevice::FindAvailableCrtcByCompete(int display_id, DrmConnector *conn, Dr
           return 0;
         }else{ // 若状态正常，则进行优先级抢占
           if(conn->priority() < temp_conn->priority()){
+            // 检查当前请求的crtc是否与驱动一致，若不一致则需要先释放驱动的crtc资源
+            if(CheckKernelCrtcNeedRelease(display_id, conn, crtc)){
+              HWC2_ALOGE("display-id=%d with conn[%d] crtc=%d CheckKernelCrtcNeedRelease fail.",
+                display_id, conn->id(), crtc->id());
+              continue;
+            }
             // 解绑 temp_conn 与 crtc.
             ReleaseConnectorAndCrtc(temp_display_id,
                                     temp_conn,
@@ -1691,6 +1722,12 @@ int DrmDevice::FindAvailableCrtcByCompete(int display_id, DrmConnector *conn, Dr
       for (DrmCrtc *crtc : enc->possible_crtcs()) {
         int temp_display_id = crtc->display();
         DrmConnector * temp_conn = GetConnectorForDisplay(temp_display_id);
+        // 检查当前请求的crtc是否与驱动一致，若不一致则需要先释放驱动的crtc资源
+        if(CheckKernelCrtcNeedRelease(display_id, conn, crtc)){
+          HWC2_ALOGE("display-id=%d with conn[%d] crtc=%d CheckKernelCrtcNeedRelease fail.",
+            display_id, conn->id(), crtc->id());
+          continue;
+        }
           // 解绑 temp_conn 与 crtc.
           ReleaseConnectorAndCrtc(temp_display_id,
                                   temp_conn,
@@ -1708,20 +1745,41 @@ int DrmDevice::FindAvailableCrtcByCompete(int display_id, DrmConnector *conn, Dr
   // 没有找到可用的Crtc资源
   return -1;
 }
+// 如果请求的crtc绑定与Kernel不同，需要先断开Kernel绑定的Crtc
+int DrmDevice::CheckKernelCrtcNeedRelease(int display_id, DrmConnector* conn, DrmCrtc* crtc){
+  if(conn->get_kernel_crtc_id() <= 0 || conn == NULL || crtc== NULL)
+    return 0;
+
+  int ret = 0;
+  if(conn->get_kernel_crtc_id() != crtc->id()){
+    for(auto &c : crtcs_){
+      if(c->id() == conn->get_kernel_crtc_id()){
+        HWC2_ALOGI("display-id=%d kernel-crtc id=%d into new crtc-id=%d mirror_mode=%d to disable kernel-crtc.",
+                    display_id, conn->get_kernel_crtc_id(), crtc->id(), conn->is_connector_mirror_mode());
+        if(conn->is_connector_mirror_mode()){
+          ret = ReleaseDpyResByMirror(display_id, conn, c.get());
+          if(ret){
+            HWC2_ALOGE("display-id=%d conn-id=%d disable kernel-mirror-crtc id=%d fail",
+                        display_id, conn->id(), conn->get_kernel_crtc_id());
+            return -1;
+          }
+  }else{
+          ret = ReleaseDpyResByNormal(display_id, conn, c.get());
+          if(ret){
+            HWC2_ALOGE("display-id=%d conn-id=%d disable kernel-crtc id=%d fail",
+                        display_id, conn->id(), conn->get_kernel_crtc_id());
+            return -1;
+          }
+        }
+        return ret;
+      }
+    }
+  }
+  return ret;
+}
 
 // 绑定 Connector 与 Crtc 资源
 int DrmDevice::BindConnectorAndCrtc(int display_id, DrmConnector* conn, DrmCrtc* crtc){
-  // 更新状态查询接口信息
-  char conn_name[50];
-  char property_conn_name[50];
-  if(conn->is_connector_mirror_mode() && conn->is_connector_mirror_primary() == false){
-    snprintf(conn_name,50,"%s-%d:%d:connected:mirror",connector_type_str(conn->type()),conn->type_id(),crtc->id());
-    snprintf(property_conn_name,50,"vendor.hwc.device.display-%d", display_id);
-  }else{
-    snprintf(conn_name,50,"%s-%d:%d:connected",connector_type_str(conn->type()),conn->type_id(),crtc->id());
-    snprintf(property_conn_name,50,"vendor.hwc.device.display-%d", display_id);
-  }
-  property_set(property_conn_name, conn_name);
 
   // Check display mode.
   DrmMode current_mode = conn->current_mode();
@@ -1731,24 +1789,8 @@ int DrmDevice::BindConnectorAndCrtc(int display_id, DrmConnector* conn, DrmCrtc*
     return -EINVAL;
   }
 
-  if(conn->get_kernel_crtc_id() > 0){
-    if(conn->get_kernel_crtc_id() != crtc->id()){
-      for(auto &c : crtcs_){
-        if(c->id() == conn->get_kernel_crtc_id()){
-          HWC2_ALOGI("Display-id=%d kernel-crtc id=%d into new crtc-id=%d to disable kernel-crtc.",
-            display_id, conn->get_kernel_crtc_id(), crtc->id());
-          int ret = ReleaseDpyResByNormal(display_id, conn, c.get());
-          if(ret){
-            HWC2_ALOGE("Display-id=%d disable kernel-crtc id=%d fail",
-              display_id, conn->get_kernel_crtc_id());
-            return -1;
-          }
-          break;
-        }
-      }
-    }
   // 如果开机阶段当前设置的分辨率与 kernel uboot 初始化不一致，则需要关闭所有图层
-  }else if(crtc->need_sync_kernel_mode() &&
+  if(crtc->need_sync_kernel_mode() &&
            !current_mode.equal_no_flag_and_type(crtc->kernel_mode())){
     HWC2_ALOGI("Display-id=%d kernel-mode not equal to current-mode,"
                "must to disable all plane.", display_id);
@@ -1827,6 +1869,18 @@ int DrmDevice::BindConnectorAndCrtc(int display_id, DrmConnector* conn, DrmCrtc*
                               (int)conn->current_mode().v_refresh());
   property_set("vendor.hwc.resolution_mode", mode_name);
 #endif
+
+  // 更新状态查询接口信息
+  char conn_name[50];
+  char property_conn_name[50];
+  if(conn->is_connector_mirror_mode() && conn->is_connector_mirror_primary() == false){
+    snprintf(conn_name,50,"%s-%d:%d:connected:mirror",connector_type_str(conn->type()),conn->type_id(),crtc->id());
+    snprintf(property_conn_name,50,"vendor.hwc.device.display-%d", display_id);
+  }else{
+    snprintf(conn_name,50,"%s-%d:%d:connected",connector_type_str(conn->type()),conn->type_id(),crtc->id());
+    snprintf(property_conn_name,50,"vendor.hwc.device.display-%d", display_id);
+  }
+  property_set(property_conn_name, conn_name);
 
   return 0;
 }

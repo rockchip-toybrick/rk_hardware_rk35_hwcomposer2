@@ -203,6 +203,7 @@ class DrmDevice {
   // 检查Crtc硬件是否支持输出当前分辨率
   // VP 可能存在最大输出尺寸限制，比如RK3576 VP1 MaxOutput: 2560x1600
   int CheckCrtcOutputCapability(int display_id, DrmCrtc *crtc, DrmMode &mode);
+  int CheckKernelCrtcNeedRelease(int display_id, DrmConnector* conn, DrmCrtc* crtc);
 
   UniqueFd fd_;
   int soc_id_;
