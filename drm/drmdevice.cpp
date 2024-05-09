@@ -1411,6 +1411,8 @@ int DrmDevice::UpdateDisplayMode(int display_id){
     DestroyPropertyBlob(blob_id[0]);
 
   conn->set_active_mode(conn->current_mode());
+  // 成功更新crtc状态，则需要重置Kernel配置的Crtc信息
+  conn->reset_kernel_crtc_id();
 
 #ifdef RK3528
   // RK3528 解码支持prescale,故希望获取屏幕分辨率作为是否开启prescale的依据
@@ -1906,6 +1908,8 @@ int DrmDevice::BindConnectorAndCrtc(int display_id, DrmConnector* conn, DrmCrtc*
   DestroyPropertyBlob(blob_id[0]);
 
   conn->set_active_mode(conn->current_mode());
+  // 成功更新crtc状态，则需要重置Kernel配置的Crtc信息
+  conn->reset_kernel_crtc_id();
 
 #ifdef RK3528
   // RK3528 解码支持prescale,故希望获取屏幕分辨率作为是否开启prescale的依据
@@ -2031,6 +2035,8 @@ int DrmDevice::ReleaseConnectorAndCrtc(int display_id, DrmConnector* conn, DrmCr
 
   crtc->set_display(-1);
   conn->set_encoder(NULL);
+  // 成功更新crtc状态，则需要重置Kernel配置的Crtc信息
+  conn->reset_kernel_crtc_id();
   // 更新属性状态
   char conn_name[50];
   char property_conn_name[50];
@@ -2708,9 +2714,8 @@ int DrmDevice::ReleaseDpyResByMirror(int display_id,
               connector_type_str(conn->type()), conn->type_id(),
               crtc->id());
 
-  HWC2_ALOGI("display-id=%d %s-%d Crtc-id=%d Release Mirror Mode Success! .",
-              display_id, connector_type_str(conn->type()),
-              conn->type_id(), crtc->id());
+  // 成功更新crtc状态，则需要重置Kernel配置的Crtc信息
+  conn->reset_kernel_crtc_id();
 
   char conn_name[50];
   char property_conn_name[50];
@@ -2780,6 +2785,8 @@ int DrmDevice::ReleaseDpyResByNormal(int display_id,
 
   crtc->set_display(-1);
   conn->set_encoder(NULL);
+  // 成功更新crtc状态，则需要重置Kernel配置的Crtc信息
+  conn->reset_kernel_crtc_id();
   char conn_name[50];
   char property_conn_name[50];
   snprintf(conn_name,50,"%s-%d:%d:disconnected",connector_type_str(conn->type()),conn->type_id(),crtc->id());
