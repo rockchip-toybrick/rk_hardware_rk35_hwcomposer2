@@ -1260,55 +1260,22 @@ int DrmDevice::UpdateDisplayMode(int display_id){
       !conn->current_mode().id() || !conn->encoder() ||
       !conn->encoder()->crtc() ||
        conn->current_mode() == conn->active_mode()){
+    // HWC2_ALOGI("rk-debug display_id=%d conn-id = %d cur_mode_id=%d active_mode_id=%d encoder=%p",display_id, conn->id(), conn->current_mode().id(), conn->active_mode().id(), conn->encoder());
     return 0;
   }
 
-  // 判断是否存在Mirror模式
-  if(conn->encoder() && conn->encoder()->crtc()) {
-    DrmCrtc* crtc = conn->encoder()->crtc();
-    DrmConnector *conn_mirror = NULL;
-    // 检查是否存在 ConnectorMirror方式
-    // 若存在，解除 ConnectorMirrot方式，断开所有与 crtc 绑定的 Connector
-    // 若不存在，正常解绑 Connector 与 Crtc
-    bool is_mirror = false;
-    for(auto &temp_conn : connectors_){
-      if(temp_conn.get() == conn)
-        continue;
-      if(temp_conn->encoder() &&
-          temp_conn->encoder()->crtc() &&
-          temp_conn->encoder()->crtc() == crtc){
-        conn_mirror = temp_conn.get();
-        is_mirror = true;
-      }
-    }
-    if(is_mirror && conn_mirror != NULL){
-      bool mirror_exist_mode = conn_mirror->isExistMode(conn->current_mode());
-      HWC2_ALOGI("%s-%d will update display-mode=%dx%dp%f, %s-%d mirror display %s",
-                connector_type_str(conn->type()),
-                conn->type_id(),
-                conn->current_mode().h_display(),
-                conn->current_mode().v_display(),
-                conn->current_mode().v_refresh(),
-                connector_type_str(conn_mirror->type()),
-                conn_mirror->type_id(),
-                mirror_exist_mode ? "support" : "not support");
-      // 若当前 Connector 不存在 Mirror模式
-      if(!mirror_exist_mode){
-        // 若存在Mirror模式
-        int ret = ReleaseDpyResByMirror(conn_mirror->display(), conn_mirror, crtc);
-        if(ret){
-          HWC2_ALOGE("display-id=%d ReleaseDpyResByMirror fail!.\n", display_id);
-          return ret;
-        }
-        ret = BindDpyRes(display_id);
-        if(ret){
-          HWC2_ALOGE("display-id=%d BindDpyRes fail!.\n", display_id);
-          return ret;
-        }
-      }
-    }
+  // 如果Connector使能了Mirror模式
+  if(conn->is_connector_mirror_mode()){
+    return UpdateDisplayModeMirror(display_id);
+  }else{ // 正常分辨率切换流程
+    return UpdateDisplayModeNormal(display_id);
   }
+  return 0;
+}
 
+int DrmDevice::UpdateDisplayModeNormal(int display_id){
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
+  DrmConnector *conn = GetConnectorForDisplay(display_id);
   //  Disable all plane resource with this connetor.
   {
     int ret;
@@ -1427,7 +1394,86 @@ int DrmDevice::UpdateDisplayMode(int display_id){
   pset=NULL;
 
   hotplug_timeline++;
+  return 0;
+}
 
+/* Mirror模式分辨率切换流程处理：
+    1. 若分辨率切换的为MirrorPrimary屏幕，则需要遍历所有MirrorExternal处理；
+    2. 若分辨率切换的为MirrorExternal屏幕，则仅处理当前请求即可
+    3.   判断切换后的分辨率是否满足 ConnectorMirror条件（多数情况下是不满足）
+    4.    若不满足，则需要重新匹配CRTC资源
+    5.    若满足，则执行ConnectorMirror逻辑
+  */
+int DrmDevice::UpdateDisplayModeMirror(int display_id){
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
+  DrmConnector *conn = GetConnectorForDisplay(display_id);
+
+  // 1. 如果是MirrorPrimary，则先断开所有MirrorDisplay
+  std::vector<int> change_mirror_display_id;
+  if(conn->is_connector_mirror_primary()){
+    // 所有MirrorExternal退出Mirror模式
+    for(int mirror_display_id : conn->get_connector_mirror_display_id()){
+      DrmConnector *conn_mirror = GetConnectorForDisplay(mirror_display_id);
+      if(conn_mirror != NULL &&
+         conn_mirror->encoder() != NULL &&
+         conn_mirror->encoder()->crtc() != NULL){
+        DrmCrtc *crtc = conn_mirror->encoder()->crtc();
+        int ret = ReleaseDpyResByMirror(mirror_display_id, conn_mirror, crtc);
+        if(ret){
+          HWC2_ALOGE("DisplayMode: display-id%d mirror-display-id=%d conn-id=%d ReleaseDpyResByMirror fail!.\n",
+                      display_id, mirror_display_id, conn_mirror->id());
+          return -1;
+        }
+        change_mirror_display_id.push_back(mirror_display_id);
+      }else{
+        HWC2_ALOGW("DisplayMode: display-id=%d mirror-display-id=%d encoder or crtc is null. skip! update display mode.\n",
+                    display_id, mirror_display_id);
+      }
+    }
+    // 2. 当前屏幕退出MirrorPrimary模式后，更新本次请求的分辨率切换
+    int ret = UpdateDisplayModeNormal(display_id);
+    if(ret){
+      HWC2_ALOGE("DisplayMode: display-id=%d UpdateDisplayModeNormal fail!.\n", display_id);
+      return -1;
+    }
+
+    // 3. 退出Mirror模式的MirrorExternal重新绑定Crtc资源
+    if(change_mirror_display_id.size() > 0){
+      for(int mirror_display_id : change_mirror_display_id){
+        DrmConnector *conn_mirror = GetConnectorForDisplay(mirror_display_id);
+        if(conn_mirror != NULL){
+          HWC2_ALOGI("DisplayMode: MirrorDisplay display-id=%d conn-id=%d want to bind new crtc resource.",
+                      mirror_display_id, conn_mirror->id());
+          // 尝试重新绑定退出Mirror模式的Connector的CRTC资源
+          ret = BindDpyRes(mirror_display_id);
+          if(ret){
+            HWC2_ALOGE("DisplayMode: display-id=%d conn-id=%d BindDpyRes fail!.\n", mirror_display_id, conn_mirror->id());
+            return -1;
+          }
+        }
+      }
+    }
+  }else{// 如果是MirrorExternal，先退出Mirror模式
+    if(conn != NULL &&
+       conn->encoder() != NULL &&
+       conn->encoder()->crtc() != NULL){
+      DrmCrtc *crtc = conn->encoder()->crtc();
+      int ret = ReleaseDpyResByMirror(display_id, conn, crtc);
+      if(ret){
+        HWC2_ALOGE("DisplayMode: display-id=%d conn-id=%d ReleaseDpyResByMirror fail!.\n", display_id, conn->id());
+        return -1;
+      }
+      // 尝试重新绑定退出Mirror模式的Connector的CRTC资源
+      ret = BindDpyRes(display_id);
+      if(ret){
+        HWC2_ALOGE("DisplayMode: display-id=%d conn-id=%d BindDpyRes fail!.\n", display_id, conn->id());
+        return -1;
+      }
+    }else{
+      HWC2_ALOGE("DisplayMode: display-id=%d conn-id=%d encoder or crtc is null. skip! update display mode.\n", display_id, conn->id());
+      return -1;
+    }
+  }
   return 0;
 }
 
@@ -1583,7 +1629,7 @@ int DrmDevice::FindAvailableCrtcByFirst(int display_id, DrmConnector *conn, DrmC
         // 如果驱动有配置CRTC，并且与当前HWC内部请求的不一致，则需要先释放驱动的配置
         if(CheckKernelCrtcNeedRelease(display_id, conn, crtc)){
           HWC2_ALOGE("display-id=%d with conn[%d] crtc=%d CheckKernelCrtcNeedRelease fail.",
-              display_id, conn->id(), crtc->id());
+            display_id, conn->id(), crtc->id());
           continue;
         }
         crtc->set_display(conn->display());
@@ -1759,17 +1805,17 @@ int DrmDevice::FindAvailableCrtcByCompete(int display_id, DrmConnector *conn, Dr
             display_id, conn->id(), crtc->id());
           continue;
         }
-          // 解绑 temp_conn 与 crtc.
-          ReleaseConnectorAndCrtc(temp_display_id,
-                                  temp_conn,
-                                  crtc);
-          crtc->set_display(conn->display());
-          enc->set_crtc(crtc);
-          conn->set_encoder(enc);
-          *out_crtc = crtc;
-          HWC2_ALOGI("Find display-id=%d with conn[%d] crtc=%d success!",
-              display_id, conn->id(), crtc->id());
-          return 0;
+        // 解绑 temp_conn 与 crtc.
+        ReleaseConnectorAndCrtc(temp_display_id,
+                                temp_conn,
+                                crtc);
+        crtc->set_display(conn->display());
+        enc->set_crtc(crtc);
+        conn->set_encoder(enc);
+        *out_crtc = crtc;
+        HWC2_ALOGI("Find display-id=%d with conn[%d] crtc=%d success!",
+            display_id, conn->id(), crtc->id());
+        return 0;
       }
     }
   }
@@ -1794,7 +1840,7 @@ int DrmDevice::CheckKernelCrtcNeedRelease(int display_id, DrmConnector* conn, Dr
                         display_id, conn->id(), conn->get_kernel_crtc_id());
             return -1;
           }
-  }else{
+        }else{
           ret = ReleaseDpyResByNormal(display_id, conn, c.get());
           if(ret){
             HWC2_ALOGE("display-id=%d conn-id=%d disable kernel-crtc id=%d fail",
@@ -1822,7 +1868,7 @@ int DrmDevice::BindConnectorAndCrtc(int display_id, DrmConnector* conn, DrmCrtc*
 
   // 如果开机阶段当前设置的分辨率与 kernel uboot 初始化不一致，则需要关闭所有图层
   if(crtc->need_sync_kernel_mode() &&
-           !current_mode.equal_no_flag_and_type(crtc->kernel_mode())){
+     !current_mode.equal_no_flag_and_type(crtc->kernel_mode())){
     HWC2_ALOGI("Display-id=%d kernel-mode not equal to current-mode,"
                "must to disable all plane.", display_id);
     current_mode.dump();
