@@ -1358,7 +1358,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayRequests(int32_t *display_requests,
     }
   }
 
-#if (PLATFORM_SDK_VERSION <= 28)
+#if (PLATFORM_SDK_VERSION > 28)
   if(client_layer_id > 0 && validate_success_ && !client_layer_.isAfbc()){
     num_request++;
     if(display_requests){
