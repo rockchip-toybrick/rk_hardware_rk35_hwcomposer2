@@ -676,6 +676,7 @@ std::tuple<int, int> DrmDevice::Init(int num_displays) {
       displays_[spilt_display_id] = spilt_display_id;
     }
   }
+
   // 更新Uboot/Kernel阶段配置的DRM信息
   UpdateDrmInfoFromKernel();
 
@@ -1336,7 +1337,7 @@ int DrmDevice::UpdateDisplayMode(int display_id){
           pset=NULL;
           return ret;
         }
-        HWC2_ALOGI("Crtc-id = %d disable plane-id = %d", crtc->id(), plane->id());
+        HWC2_ALOGI("DisplayMode: display-id=%d crtc-id = %d disable plane-id = %d", display_id, crtc->id(), plane->id());
       }
     }
 
@@ -1364,8 +1365,6 @@ int DrmDevice::UpdateDisplayMode(int display_id){
   struct drm_mode_modeinfo drm_mode;
   memset(&drm_mode, 0, sizeof(drm_mode));
   conn->current_mode().ToDrmModeModeInfo(&drm_mode);
-  ALOGD_IF(LogLevel(DBG_VERBOSE),"%s,line=%d, current_mode id=%d , w=%d,h=%d",__FUNCTION__,__LINE__,
-            conn->current_mode().id(),conn->current_mode().h_display(),conn->current_mode().v_display());
   ret = CreatePropertyBlob(&drm_mode, sizeof(drm_mode), &blob_id[0]);
   if(ret){
     ALOGE("%s:line=%d Failed to CreatePropertyBlob ret=%d\n", __FUNCTION__, __LINE__, ret);
@@ -1385,11 +1384,28 @@ int DrmDevice::UpdateDisplayMode(int display_id){
   uint32_t flags = DRM_MODE_ATOMIC_ALLOW_MODESET;
   ret = drmModeAtomicCommit(fd_.get(), pset, flags, this);
   if (ret < 0) {
-    ALOGE("%s:line=%d Failed to commit pset ret=%d\n", __FUNCTION__, __LINE__, ret);
+    HWC2_ALOGE("DisplayMode: display-id=%d crtc-id=%d update mode-id=%d mode=%dx%d%s%f fail! ret=%d.",
+                display_id,
+                crtc->id(),
+                conn->current_mode().id(),
+                conn->current_mode().h_display(),
+                conn->current_mode().v_display(),
+                conn->current_mode().interlaced() > 0 ? "i" : "p",
+                conn->current_mode().v_refresh(),
+                ret);
     drmModeAtomicFree(pset);
     pset=NULL;
     return ret;
   }
+
+    HWC2_ALOGI("DisplayMode: display-id=%d crtc-id = %d update mode-id=%d mode=%dx%d%s%f success.",
+                display_id,
+                crtc->id(),
+                conn->current_mode().id(),
+                conn->current_mode().h_display(),
+                conn->current_mode().v_display(),
+                conn->current_mode().interlaced() > 0 ? "i" : "p",
+                conn->current_mode().v_refresh());
 
   if (blob_id[0])
     DestroyPropertyBlob(blob_id[0]);
@@ -1855,11 +1871,20 @@ int DrmDevice::BindConnectorAndCrtc(int display_id, DrmConnector* conn, DrmCrtc*
   DRM_ATOMIC_ADD_PROP(crtc->id(), crtc->mode_property().id(), blob_id[0]);
   DRM_ATOMIC_ADD_PROP(crtc->id(), crtc->active_property().id(), 1);
 
-
   uint32_t flags = DRM_MODE_ATOMIC_ALLOW_MODESET;
   ret = drmModeAtomicCommit(fd_.get(), pset, flags, this);
   if (ret < 0) {
-    ALOGE("%s:line=%d Failed to commit pset ret=%d\n", __FUNCTION__, __LINE__, ret);
+    HWC2_ALOGE("DrmModeSet: display-id=%d conn-id=%d %s-%d bind crtc-id=%d mode-id=%d mode=%dx%d%s%f fail. ret=%d",
+                display_id,
+                conn->id(),
+                connector_type_str(conn->type()), conn->type_id(),
+                crtc->id(),
+                conn->current_mode().id(),
+                conn->current_mode().h_display(),
+                conn->current_mode().v_display(),
+                conn->current_mode().interlaced() > 0 ? "i" : "p",
+                conn->current_mode().v_refresh(),
+                ret);
     drmModeAtomicFree(pset);
     pset=NULL;
     return ret;
@@ -1867,8 +1892,16 @@ int DrmDevice::BindConnectorAndCrtc(int display_id, DrmConnector* conn, DrmCrtc*
   drmModeAtomicFree(pset);
   pset=NULL;
 
-  HWC2_ALOGI("display-id=%d Bind Connector-id=%d Crtc-id=%d success!.",
-              display_id, conn->id(), crtc->id());
+  HWC2_ALOGI("DrmModeSet: display-id=%d conn-id=%d %s-%d bind crtc-id=%d mode-id=%d mode=%dx%d%s%f success.",
+              display_id,
+              conn->id(),
+              connector_type_str(conn->type()), conn->type_id(),
+              crtc->id(),
+              conn->current_mode().id(),
+              conn->current_mode().h_display(),
+              conn->current_mode().v_display(),
+              conn->current_mode().interlaced() > 0 ? "i" : "p",
+              conn->current_mode().v_refresh());
 
   DestroyPropertyBlob(blob_id[0]);
 
@@ -1929,7 +1962,7 @@ int DrmDevice::ReleaseConnectorAndCrtcNoCommit(int display_id,
   DRM_ATOMIC_ADD_PROP(crtc->id(), crtc->mode_property().id(), 0);
   DRM_ATOMIC_ADD_PROP(crtc->id(), crtc->active_property().id(), 0);
 
-  HWC2_ALOGI("Add display-id=%d %s-%d Crtc-id=%d Release req success!.", display_id,
+  HWC2_ALOGI("Add display-id=%d %s-%d crtc-id=%d Release req success!.", display_id,
                                                                  connector_type_str(conn->type()),
                                                                  conn->type_id(),
                                                                  crtc->id());
@@ -1978,7 +2011,7 @@ int DrmDevice::ReleaseConnectorAndCrtc(int display_id, DrmConnector* conn, DrmCr
   uint32_t flags = DRM_MODE_ATOMIC_ALLOW_MODESET;
   ret = drmModeAtomicCommit(fd_.get(), pset, flags, this);
   if (ret < 0) {
-    HWC2_ALOGW("display-id=%d %s-%d Crtc-id=%d Release fail! ret=%d",
+    HWC2_ALOGW("display-id=%d %s-%d crtc-id=%d Release fail! ret=%d",
                 display_id,
                 connector_type_str(conn->type()),
                 conn->type_id(),
@@ -1989,7 +2022,7 @@ int DrmDevice::ReleaseConnectorAndCrtc(int display_id, DrmConnector* conn, DrmCr
     return ret;
   }
 
-  HWC2_ALOGI("display-id=%d %s-%d Crtc-id=%d Release success!.", display_id,
+  HWC2_ALOGI("display-id=%d %s-%d crtc-id=%d Release success!.", display_id,
                                                                  connector_type_str(conn->type()),
                                                                  conn->type_id(),
                                                                  crtc->id());
@@ -2185,10 +2218,15 @@ int DrmDevice::DoPowerOnNormal(int display_id){
   uint32_t flags = DRM_MODE_ATOMIC_ALLOW_MODESET;
   ret = drmModeAtomicCommit(fd_.get(), pset, flags, this);
   if (ret < 0) {
-    HWC2_ALOGE("display-id=%d Connector-id=%d Crtc-id=%d mode=%dx%d@%f PowerOn fail! ret=%d.",
-              display_id, conn->id(), crtc->id(),
+    HWC2_ALOGE("DrmModeSet: display-id=%d conn-id=%d %s-%d bind crtc-id=%d mode-id=%d mode=%dx%d%s%f PowerOn fail! ret=%d",
+              display_id,
+              conn->id(),
+              connector_type_str(conn->type()), conn->type_id(),
+              crtc->id(),
+              conn->current_mode().id(),
               conn->current_mode().h_display(),
               conn->current_mode().v_display(),
+              conn->current_mode().interlaced() > 0 ? "i" : "p",
               conn->current_mode().v_refresh(),
               ret);
     drmModeAtomicFree(pset);
@@ -2198,10 +2236,15 @@ int DrmDevice::DoPowerOnNormal(int display_id){
   drmModeAtomicFree(pset);
   pset=NULL;
 
-  HWC2_ALOGI("display-id=%d Connector-id=%d Crtc-id=%d mode=%dx%d@%f PowerOn success!.",
-              display_id, conn->id(), crtc->id(),
+  HWC2_ALOGI("DrmModeSet: display-id=%d conn-id=%d %s-%d bind crtc-id=%d mode-id=%d mode=%dx%d%s%f PowerOn success!",
+              display_id,
+              conn->id(),
+              connector_type_str(conn->type()), conn->type_id(),
+              crtc->id(),
+              conn->current_mode().id(),
               conn->current_mode().h_display(),
               conn->current_mode().v_display(),
+              conn->current_mode().interlaced() > 0 ? "i" : "p",
               conn->current_mode().v_refresh());
 
   DestroyPropertyBlob(blob_id[0]);
@@ -2270,7 +2313,7 @@ int DrmDevice::DoPowerOnMirror(int display_id){
        mirror_conn->encoder()->crtc() != NULL &&
        mirror_conn->encoder()->crtc() == crtc){
       DRM_ATOMIC_ADD_PROP(mirror_conn->id(), mirror_conn->crtc_id_property().id(), crtc->id());
-      HWC2_ALOGI("MirrorDisplay: display-id=%d Connector-id=%d Crtc-id=%d request PowerOn!.",
+      HWC2_ALOGI("DrmModeSet:MirrorDisplay: display-id=%d Connector-id=%d crtc-id=%d request PowerOn!.",
                   mirror_conn->id(), mirror_conn->id(), crtc->id());
     }
   }
@@ -2278,10 +2321,15 @@ int DrmDevice::DoPowerOnMirror(int display_id){
   uint32_t flags = DRM_MODE_ATOMIC_ALLOW_MODESET;
   ret = drmModeAtomicCommit(fd_.get(), pset, flags, this);
   if (ret < 0) {
-    HWC2_ALOGE("MirrorDisplay: display-id=%d Connector-id=%d Crtc-id=%d mode=%dx%d@%f PowerOn fail! ret=%d",
-              display_id, conn->id(), crtc->id(),
+    HWC2_ALOGE("DrmModeSet:MirrorDisplay: display-id=%d conn-id=%d %s-%d bind crtc-id=%d mode-id=%d mode=%dx%d%s%f PowerOn fail! ret=%d",
+              display_id,
+              conn->id(),
+              connector_type_str(conn->type()), conn->type_id(),
+              crtc->id(),
+              conn->current_mode().id(),
               conn->current_mode().h_display(),
               conn->current_mode().v_display(),
+              conn->current_mode().interlaced() > 0 ? "i" : "p",
               conn->current_mode().v_refresh(),
               ret);
     drmModeAtomicFree(pset);
@@ -2291,10 +2339,15 @@ int DrmDevice::DoPowerOnMirror(int display_id){
   drmModeAtomicFree(pset);
   pset=NULL;
 
-  HWC2_ALOGI("MirrorDisplay: display-id=%d Connector-id=%d Crtc-id=%d mode=%dx%d@%f PowerOn success!.",
-              display_id, conn->id(), crtc->id(),
+  HWC2_ALOGI("DrmModeSet:MirrorDisplay: display-id=%d conn-id=%d %s-%d bind crtc-id=%d mode-id=%d mode=%dx%d%s%f PowerOn success!",
+              display_id,
+              conn->id(),
+              connector_type_str(conn->type()), conn->type_id(),
+              crtc->id(),
+              conn->current_mode().id(),
               conn->current_mode().h_display(),
               conn->current_mode().v_display(),
+              conn->current_mode().interlaced() > 0 ? "i" : "p",
               conn->current_mode().v_refresh());
 
   DestroyPropertyBlob(blob_id[0]);
@@ -2440,8 +2493,16 @@ int DrmDevice::DoPowerOffMirror(int display_id){
       drmModeAtomicFree(pset);
       pset=NULL;
 
-      HWC2_ALOGI("MirrorDisplay: display-id=%d Connector-id=%d Crtc-id=%d PowerOff Success!.",
-                  mirror_conn->display(), mirror_conn->id(), crtc->id());
+    HWC2_ALOGI("DrmModeSet:MirrorDisplay: display-id=%d conn-id=%d %s-%d crtc-id=%d mode-id=%d mode=%dx%d%s%f PowerOff success!",
+                display_id,
+                conn->id(),
+                connector_type_str(conn->type()), conn->type_id(),
+                crtc->id(),
+                conn->active_mode().id(),
+                conn->active_mode().h_display(),
+                conn->active_mode().v_display(),
+                conn->active_mode().interlaced() > 0 ? "i" : "p",
+                conn->active_mode().v_refresh());
 
       char conn_name[50];
       char property_conn_name[50];
@@ -2484,8 +2545,16 @@ int DrmDevice::DoPowerOffMirror(int display_id){
 
   drmModeAtomicFree(pset);
   pset=NULL;
-
-  HWC2_ALOGI("MirrorDisplay: display-id=%d PowerOff success!.", display_id);
+  HWC2_ALOGI("DrmModeSet:MirrorDisplay: display-id=%d conn-id=%d %s-%d crtc-id=%d mode-id=%d mode=%dx%d%s%f PowerOff success!",
+              display_id,
+              conn->id(),
+              connector_type_str(conn->type()), conn->type_id(),
+              crtc->id(),
+              conn->active_mode().id(),
+              conn->active_mode().h_display(),
+              conn->active_mode().v_display(),
+              conn->active_mode().interlaced() > 0 ? "i" : "p",
+              conn->active_mode().v_refresh());
 
   char conn_name[50];
   char property_conn_name[50];
@@ -2532,13 +2601,14 @@ int DrmDevice::BindDpyRes(int display_id){
 // Release DrmConnector and DrmCrtc resource.
 int DrmDevice::ReleaseDpyRes(int display_id){
   std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
-  int ret;
+  int ret = 0;
   DrmConnector *conn = GetConnectorForDisplay(display_id);
   if (!conn) {
     HWC2_ALOGE("Failed to find display-id=%d connector\n", display_id);
     return -EINVAL;
   }
 
+  // 解除绑定的需要检查crtc状态
   if(conn->encoder() && conn->encoder()->crtc()) {
     DrmCrtc* crtc = conn->encoder()->crtc();
     // 若当前 Connector 不存在 Mirror模式
@@ -2590,7 +2660,7 @@ int DrmDevice::ReleaseDpyResByMirror(int display_id,
   DRM_ATOMIC_ADD_PROP(conn->id(), conn->crtc_id_property().id(), 0);
 
   bool release_crtc = false;
-  // 执行MirrorDisplay后处理, 如果是MirrorDisplayExternal执行断开，则需要更新Connector Mirror的信息
+  // 如果不是MirrorPrimary执行断开，则需要更新MirrorPrimary中的Connector Mirror的信息
   if(conn->is_connector_mirror_primary() == false){
     mirror_display_primary_id = conn->get_connector_mirror_primary_id();
     if(mirror_display_primary_id > 0){
@@ -2606,7 +2676,7 @@ int DrmDevice::ReleaseDpyResByMirror(int display_id,
           DRM_ATOMIC_ADD_PROP(crtc->id(), crtc->mode_property().id(), 0);
           DRM_ATOMIC_ADD_PROP(crtc->id(), crtc->active_property().id(), 0);
           release_crtc = true;
-          HWC2_ALOGI("display-id=%d %s-%d Crtc-id=%d, MirrorPrimary display-id=%d %s-%d need to release crtc.",
+          HWC2_ALOGI("DrmModeSet:MirrorDisplay: display-id=%d %s-%d crtc-id=%d, MirrorPrimary display-id=%d %s-%d need to release crtc.",
               display_id, connector_type_str(conn->type()),
               conn->type_id(), crtc->id(),
               mirror_display_primary_id, connector_type_str(mirror_primary->type()),
@@ -2620,8 +2690,11 @@ int DrmDevice::ReleaseDpyResByMirror(int display_id,
   uint32_t flags = DRM_MODE_ATOMIC_ALLOW_MODESET;
   ret = drmModeAtomicCommit(fd_.get(), pset, flags, this);
   if (ret < 0) {
-    HWC2_ALOGE("display-id=%d %s-%d Failed to commit pset ret=%d\n",
-                display_id, connector_type_str(conn->type()), conn->type_id(), ret);
+    HWC2_ALOGE("DrmModeSet:MirrorDisplay: display-id=%d conn-id=%d %s-%d crtc-id=%d Release Mirror Mode fail! ret=%d",
+                display_id, conn->id(),
+                connector_type_str(conn->type()),
+                conn->type_id(), crtc->id(),
+                ret);
     drmModeAtomicFree(pset);
     pset=NULL;
     return ret;
@@ -2630,6 +2703,10 @@ int DrmDevice::ReleaseDpyResByMirror(int display_id,
   drmModeAtomicFree(pset);
   pset=NULL;
 
+  HWC2_ALOGI("DrmModeSet:MirrorDisplay: display-id=%d conn-id=%d %s-%d crtc-id=%d Release Mirror Mode Success! .",
+              display_id, conn->id(),
+              connector_type_str(conn->type()), conn->type_id(),
+              crtc->id());
 
   HWC2_ALOGI("display-id=%d %s-%d Crtc-id=%d Release Mirror Mode Success! .",
               display_id, connector_type_str(conn->type()),
@@ -2682,7 +2759,11 @@ int DrmDevice::ReleaseDpyResByNormal(int display_id,
   uint32_t flags = DRM_MODE_ATOMIC_ALLOW_MODESET;
   ret = drmModeAtomicCommit(fd_.get(), pset, flags, this);
   if (ret < 0) {
-    ALOGE("%s:line=%d Failed to commit pset ret=%d\n", __FUNCTION__, __LINE__, ret);
+    HWC2_ALOGE("DrmModeSet: display-id=%d conn-id=%d %s-%d unbind crtc-id=%d fail! ret=%d",
+              display_id, conn->id(),
+              connector_type_str(conn->type()),
+              conn->type_id(), crtc->id(),
+              ret);
     drmModeAtomicFree(pset);
     pset=NULL;
     return ret;
@@ -2691,7 +2772,11 @@ int DrmDevice::ReleaseDpyResByNormal(int display_id,
   drmModeAtomicFree(pset);
   pset=NULL;
 
-  HWC2_ALOGI("display-id=%d conn-id==%d unbind crtc-id=%d success!.", display_id, conn->id(), crtc->id());
+
+  HWC2_ALOGI("DrmModeSet: display-id=%d conn-id=%d %s-%d unbind crtc-id=%d Success! .",
+              display_id, conn->id(),
+              connector_type_str(conn->type()),
+              conn->type_id(), crtc->id());
 
   crtc->set_display(-1);
   conn->set_encoder(NULL);
