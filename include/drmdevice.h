@@ -163,6 +163,7 @@ class DrmDevice {
   void init_white_modes(void);
   int InitEnvFromXml();
   int UpdateInfoFromXml();
+  void UpdateDrmInfoFromKernel();
   void ConfigurePossibleDisplays();
   int TryEncoderForDisplay(int display, DrmEncoder *enc);
   int GetProperty(uint32_t obj_id, uint32_t obj_type, const char *prop_name,

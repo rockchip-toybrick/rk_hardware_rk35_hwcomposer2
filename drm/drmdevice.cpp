@@ -676,6 +676,8 @@ std::tuple<int, int> DrmDevice::Init(int num_displays) {
       displays_[spilt_display_id] = spilt_display_id;
     }
   }
+  // 更新Uboot/Kernel阶段配置的DRM信息
+  UpdateDrmInfoFromKernel();
 
   if (res)
     drmModeFreeResources(res);
@@ -1112,6 +1114,46 @@ void DrmDevice::ConfigurePossibleDisplays(){
       }
     }
   }
+  return;
+}
+
+void DrmDevice::UpdateDrmInfoFromKernel(){
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
+  // 收集Kernel配置的ConnectorMirror信息
+  typedef struct connector_mirror_info{
+    int mirror_primary_id = -1;
+    std::vector<int> mirror_external_id;
+  }connector_mirror_info_t;
+
+  // 1. 通过 connector 接口获取 crtc 配置信息
+  std::map<int, connector_mirror_info_t> kernel_mirror_crtc_id;
+  for(auto &conn : connectors_){
+    if(conn->get_kernel_crtc_id() > 0){
+      if(kernel_mirror_crtc_id.count(conn->get_kernel_crtc_id()) == 0){
+        kernel_mirror_crtc_id[conn->get_kernel_crtc_id()].mirror_primary_id = conn->display();
+      }else{
+        kernel_mirror_crtc_id[conn->get_kernel_crtc_id()].mirror_external_id.push_back(conn->display());
+      }
+    }
+  }
+
+  // 2. 将统计的crtc配置信息同步到每一个 connector 对应结构中
+  if(kernel_mirror_crtc_id.size() > 0){
+    for(auto &pair_crtc_id : kernel_mirror_crtc_id){
+      if(pair_crtc_id.second.mirror_primary_id == 0 ||
+         pair_crtc_id.second.mirror_external_id.size() == 0){
+        continue;
+      }
+      DrmConnector* mirror_primary = GetConnectorForDisplay(pair_crtc_id.second.mirror_primary_id);
+      for(int mirror_external_id : pair_crtc_id.second.mirror_external_id){
+        DrmConnector* mirror_external = GetConnectorForDisplay(mirror_external_id);
+        mirror_primary->enable_connector_mirror_mode(mirror_primary->display(), mirror_external_id);
+        mirror_external->enable_connector_mirror_mode(mirror_primary->display(), mirror_external_id);
+        HWC2_ALOGI("EnableMirrorMode: PrimaryId=%d ExternelId=%d", mirror_primary->display(), mirror_external_id);
+      }
+    }
+  }
+
   return;
 }
 
