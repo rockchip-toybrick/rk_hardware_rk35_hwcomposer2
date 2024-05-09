@@ -1519,8 +1519,6 @@ int DrmDevice::FindAvailableCrtc(int display_id, DrmConnector *conn, DrmCrtc **o
   ret = FindAvailableCrtcByMirror(display_id, conn, out_crtc);
   if(!ret)
     return ret;
-  HWC2_ALOGI("Can't find available crtc for display-id=%d with conn[%d] by mirror.",
-      display_id, conn->id());
 
 
   // 3. 第一次遍历所有可获取的空闲Crtc资源，忽略最大支持输出能力检查
@@ -1623,9 +1621,21 @@ int DrmDevice::FindAvailableCrtcByFirst(int display_id, DrmConnector *conn, DrmC
 // 获取可用的 Crtc 资源
 int DrmDevice::FindAvailableCrtcByMirror(int display_id, DrmConnector *conn, DrmCrtc **out_crtc){
   // 2. 尝试使用 ConnectorMirror方式
+  // Crtc 匹配需要校验分辨率
+  DrmMode current_mode = conn->current_mode();
   for (DrmEncoder *enc : conn->possible_encoders()) {
     for (DrmCrtc *crtc : enc->possible_crtcs()) {
       int mirror_primary_display_id = crtc->display();
+      if(mirror_primary_display_id < 0 ||
+         mirror_primary_display_id == display_id){
+        continue;
+      }
+      // 检查硬件的输出能力
+      if(CheckCrtcOutputCapability(display_id, crtc, current_mode)){
+        HWC2_ALOGI("check_crtc_cap : display-id=%d conn[%d] Skip crtc=%d to try more.\n",
+            display_id, conn->id(), crtc->id());
+        continue;
+      }
       DrmConnector* mirror_primary_conn = GetConnectorForDisplay(mirror_primary_display_id);
       // 2.1. 检查待竞争的Connector状态
       //      -> 若状态不正常，则直接退出Mirror方式
@@ -1659,6 +1669,9 @@ int DrmDevice::FindAvailableCrtcByMirror(int display_id, DrmConnector *conn, Drm
       }
     }
   }
+
+  HWC2_ALOGW("Can't find available crtc for display-id=%d with conn[%d] by mirror.",
+      display_id, conn->id());
   return -1;
 }
 
