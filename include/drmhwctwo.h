@@ -945,6 +945,7 @@ class DrmHwcTwo : public hwc2_device_t {
 
   enum DrmEventType{
     UNKNOW_EVENT = 0,
+    DISPLAY_MODE_UPDATE_EVENT,
     HOTPLUG_EVENT,
   };
 
@@ -964,7 +965,10 @@ class DrmHwcTwo : public hwc2_device_t {
 
   protected:
     void Routine() override;
-    int SendHotplugEvent(DrmEvent event);
+    // 异步上报热插拔事件
+    int SendLocalHotplugEvent(DrmEvent event);
+    // 异步上报分辨率更新事件
+    int SendDisplayModeUpdateEvent(DrmEvent event);
 
   private:
     DrmHwcTwo *hwc2_;

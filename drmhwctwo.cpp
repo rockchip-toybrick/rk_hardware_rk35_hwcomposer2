@@ -2400,7 +2400,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::PresentDisplay(int32_t *retire_fence) {
   */
   if(IsActiveModeChange()){
     DrmEvent event;
-    event.type = HOTPLUG_EVENT;
+    event.type = DISPLAY_MODE_UPDATE_EVENT;
     event.display_id = (int)handle_;
     event.connection = DRM_MODE_CONNECTED;
     g_ctx->eventWorker_.SendDrmEvent(event);
@@ -6017,7 +6017,7 @@ int DrmHwcTwo::EventWorker::SendDrmEvent(DrmEvent event){
   return 0;
 }
 
-int DrmHwcTwo::EventWorker::SendHotplugEvent(DrmEvent event){
+int DrmHwcTwo::EventWorker::SendDisplayModeUpdateEvent(DrmEvent event){
   // 若系统没有设置为动态更新模式的话，则不进行分辨率更新
   ResourceManager* rm = ResourceManager::getInstance();
   if(!rm->IsDynamicDisplayMode()){
@@ -6041,20 +6041,80 @@ int DrmHwcTwo::EventWorker::SendHotplugEvent(DrmEvent event){
     auto &display = hwc2_->displays_.at(event.display_id);
     HWC2::Error error = display.ChosePreferredConfig();
     if(error != HWC2::Error::None){
-      HWC2_ALOGE("hwc_resolution_switch: connector %u type=%s, type_id=%d ChosePreferredConfig fail.\n",
+      HWC2_ALOGE("hwc_fb_switch: connector %u type=%s, type_id=%d ChosePreferredConfig fail.\n",
                     connector->id(),
                     drm->connector_type_str(connector->type()),
                     connector->type_id());
       return -1;
     }
 
-    HWC2_ALOGI("hwc_resolution_switch: display_id=%d connector %u type=%s, type_id=%d\n",
+    HWC2_ALOGI("hwc_fb_switch: display_id=%d connector %u type=%s, type_id=%d\n",
                   event.display_id,
                   connector->id(),
                   drm->connector_type_str(connector->type()),
                   connector->type_id());
     if(!connector->isCropSpilt() || (connector->isCropSpilt() && connector->IsSpiltPrimary()))
       hwc2_->HandleDisplayHotplug(event.display_id, DRM_MODE_CONNECTED);
+  }
+
+  if(hwc2_->displays_.count(primary_id)){
+    auto &primary = hwc2_->displays_.at(primary_id);
+    primary.InvalidateControl(5,20);
+  }
+
+  return 0;
+}
+
+int DrmHwcTwo::EventWorker::SendLocalHotplugEvent(DrmEvent event){
+  // 若系统没有设置为动态更新模式的话，则不进行分辨率更新
+  ResourceManager* rm = ResourceManager::getInstance();
+
+  int primary_id = 0;
+  DrmDevice* drm = rm->GetDrmDevice(primary_id);
+  if(drm == NULL){
+    HWC2_ALOGE("Failed to get DrmDevice for display %d", event.display_id);
+    return -1;
+  }
+
+  DrmConnector *connector = drm->GetConnectorForDisplay(event.display_id);
+  if (!connector) {
+    HWC2_ALOGE("Failed to get connector for display %d", event.display_id);
+    return -1;
+  }
+
+  if(hwc2_->displays_.count(event.display_id)){
+    auto &display = hwc2_->displays_.at(event.display_id);
+    if(event.connection == DRM_MODE_CONNECTED){
+      int ret = (int32_t)display.HoplugEventTmeline();
+      ret |= (int32_t)display.UpdateDisplayMode();
+      ret |= (int32_t)display.CheckStateAndReinit(!hwc2_->IsHasRegisterDisplayId(event.display_id));
+      ret |= (int32_t)display.ChosePreferredConfig();
+      if(ret != 0){
+        HWC2_ALOGE("hwc_hotplug: connector %u type=%s, type_id=%d CheckStateAndReinit fail.\n",
+                      connector->id(),
+                      drm->connector_type_str(connector->type()),
+                      connector->type_id());
+        return -1;
+      }
+    }else{
+      int ret = (int32_t)display.ClearDisplay();
+      ret |= (int32_t)drm->ReleaseDpyRes(event.display_id);
+      if(ret != 0){
+        HWC2_ALOGE("hwc_hotplug: connector %u type=%s, type_id=%d ReleaseDpyRes fail.\n",
+                      connector->id(),
+                      drm->connector_type_str(connector->type()),
+                      connector->type_id());
+        return -1;
+      }
+    }
+
+    HWC2_ALOGI("hwc_hotplug: %s for display_id=%d connector %u type=%s, type_id=%d \n",
+                  event.connection == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
+                  event.display_id,
+                  connector->id(),
+                  drm->connector_type_str(connector->type()),
+                  connector->type_id());
+    hwc2_->HandleDisplayHotplug(event.display_id, event.connection);
   }
 
   if(hwc2_->displays_.count(primary_id)){
@@ -6082,12 +6142,23 @@ void DrmHwcTwo::EventWorker::Routine() {
   mPendingEvent_.pop();
   Unlock();
 
-  if(event.type == HOTPLUG_EVENT){
-    if(SendHotplugEvent(event)){
-      HWC2_ALOGE("SendHotplugEvent fail event.display=%d connection=%d, ret = %d",
-                  event.display_id, event.connection, ret);
-      return;
-    }
+  switch(event.type){
+    case DISPLAY_MODE_UPDATE_EVENT:
+      ret = SendDisplayModeUpdateEvent(event);
+      break;
+    case HOTPLUG_EVENT:
+      ret = SendLocalHotplugEvent(event);
+      break;
+    default:
+      ret = -1;
+      HWC2_ALOGE("unknow hotplug event, display-id=%d type=%d connection=%d",
+        event.display_id, event.type, event.connection);
+      break;
+  }
+
+  if(ret){
+      HWC2_ALOGE("send hotplug event fail ret=%d , display-id=%d type=%d connection=%d",
+        ret, event.display_id, event.type, event.connection);
   }
 
   return;
