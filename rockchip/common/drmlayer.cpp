@@ -1039,8 +1039,6 @@ void DrmHwcLayer::UpdateAndStoreInfoFromDrmBuffer(buffer_handle_t handle,
   uGemHandle_    = gemhandle;
   uByteStridePlanes_ = byte_stride_planes;
 
-  iBestPlaneType = PLANE_RK3588_ALL_ESMART_MASK;
-
   source_crop.left   = intput_crop.left;
   source_crop.top    = intput_crop.top;
   source_crop.right  = intput_crop.right;
