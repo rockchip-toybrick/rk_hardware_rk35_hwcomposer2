@@ -6142,7 +6142,8 @@ int DrmHwcTwo::EventWorker::SendLocalHotplugEvent(DrmEvent event){
       ret |= (int32_t)display.CheckStateAndReinit(!hwc2_->IsHasRegisterDisplayId(event.display_id));
       ret |= (int32_t)display.ChosePreferredConfig();
       if(ret != 0){
-        HWC2_ALOGE("hwc_hotplug: connector %u type=%s, type_id=%d CheckStateAndReinit fail.\n",
+        HWC2_ALOGE("hwc_hotplug: %s for connector %u type=%s, type_id=%d CheckStateAndReinit fail.\n",
+                      event.connection == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
                       connector->id(),
                       drm->connector_type_str(connector->type()),
                       connector->type_id());
@@ -6152,7 +6153,8 @@ int DrmHwcTwo::EventWorker::SendLocalHotplugEvent(DrmEvent event){
       int ret = (int32_t)display.ClearDisplay();
       ret |= (int32_t)drm->ReleaseDpyRes(event.display_id);
       if(ret != 0){
-        HWC2_ALOGE("hwc_hotplug: connector %u type=%s, type_id=%d ReleaseDpyRes fail.\n",
+        HWC2_ALOGE("hwc_hotplug: %s for connector %u type=%s, type_id=%d ReleaseDpyRes fail.\n",
+                      event.connection == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
                       connector->id(),
                       drm->connector_type_str(connector->type()),
                       connector->type_id());
