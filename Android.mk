@@ -57,7 +57,11 @@ endif
 ifneq (1,$(strip $(shell expr $(PLATFORM_SDK_VERSION) \< 28)))
 # Android 9.0 RK356x use DrmHwc2
 ifneq ($(filter rk356x rk3576, $(strip $(TARGET_BOARD_PLATFORM))), )
+ifeq ($(strip $(BUILD_WITH_RK_EBOOK)),true)
+        BOARD_USES_DRM_HWCOMPOSER2=false
+else  # BUILD_WITH_RK_EBOOK
         BOARD_USES_DRM_HWCOMPOSER2=true
+endif # BUILD_WITH_RK_EBOOK
 endif
 endif
 
