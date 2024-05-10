@@ -6182,14 +6182,15 @@ int DrmHwcTwo::EventWorker::SendLocalHotplugEvent(DrmEvent event){
 void DrmHwcTwo::EventWorker::Routine() {
   ATRACE_CALL();
   Lock();
-  int ret = WaitForSignalOrExitLocked();
+
+  int ret = 0;
+  if(mPendingEvent_.empty()){
+    ret = WaitForSignalOrExitLocked();
   if (ret == -EINTR) {
+      HWC2_ALOGI("EventWorker: WaitForSignalOrExitLocked fail! ret=%d", ret);
     Unlock();
     return;
   }
-
-  if(mPendingEvent_.empty()){
-    return;
   }
 
   DrmEvent event = mPendingEvent_.front();
