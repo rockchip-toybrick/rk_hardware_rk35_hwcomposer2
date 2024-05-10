@@ -1327,11 +1327,22 @@ int DrmDevice::UpdateDisplayModeNormal(int display_id){
     return -ENOMEM;
   }
 
+  DrmCrtc *crtc = conn->encoder()->crtc();
+  DrmMode current_mode = conn->current_mode();
+  // 检查 crtc 的输出能力是否可以支持输出当前设置的分辨率，若不支持，则需要切换到支持的分辨率
+  if(crtc->output_width_property().id() > 0){
+    if(CheckCrtcOutputCapability(display_id, crtc, current_mode)){
+      // 轮询分辨率支持列表，获取支持的分辨率
+      conn->GetSuitableMode(display_id, crtc->get_output_width(), crtc->get_output_dlck());
+      current_mode = conn->current_mode();
+    }
+  }
+
   uint32_t blob_id[1] = {0};
 
   struct drm_mode_modeinfo drm_mode;
   memset(&drm_mode, 0, sizeof(drm_mode));
-  conn->current_mode().ToDrmModeModeInfo(&drm_mode);
+  current_mode.ToDrmModeModeInfo(&drm_mode);
   ret = CreatePropertyBlob(&drm_mode, sizeof(drm_mode), &blob_id[0]);
   if(ret){
     ALOGE("%s:line=%d Failed to CreatePropertyBlob ret=%d\n", __FUNCTION__, __LINE__, ret);
@@ -1339,8 +1350,6 @@ int DrmDevice::UpdateDisplayModeNormal(int display_id){
     pset=NULL;
     return ret;
   }
-
-  DrmCrtc *crtc = conn->encoder()->crtc();
 
 //  connector->SetDpmsMode(DRM_MODE_DPMS_ON);
 //  DRM_ATOMIC_ADD_PROP(conn->id(), conn->dpms_property().id(), DRM_MODE_DPMS_ON);
@@ -1901,11 +1910,6 @@ int DrmDevice::BindConnectorAndCrtc(int display_id, DrmConnector* conn, DrmCrtc*
   struct drm_mode_modeinfo drm_mode;
   memset(&drm_mode, 0, sizeof(drm_mode));
   conn->current_mode().ToDrmModeModeInfo(&drm_mode);
-  HWC2_ALOGI("current_mode id=%d , w=%d,h=%d,fps=%f ",
-              conn->current_mode().id(),
-              conn->current_mode().h_display(),
-              conn->current_mode().v_display(),
-              conn->current_mode().v_refresh());
   CreatePropertyBlob(&drm_mode, sizeof(drm_mode), &blob_id[0]);
 
   // Enable DrmConnector DPMS on.
