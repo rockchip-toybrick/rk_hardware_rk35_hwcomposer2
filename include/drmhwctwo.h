@@ -811,6 +811,7 @@ class DrmHwcTwo : public hwc2_device_t {
    int DumpAllLayerData();
    bool PresentFinish(void) { return present_finish_; };
    int HoplugEventTmeline();
+   int GetCurrentDisplayMode();
    int UpdateDisplayMode();
    int UpdateDisplayInfo();
    int UpdateHdmiOutputFormat();

@@ -459,7 +459,7 @@ int DrmConnector::UpdateVrrModes(){
 
 }
 
-int DrmConnector::UpdateDisplayMode(int display_id, int update_base_timeline){
+int DrmConnector::GetBestDisplayMode(int display_id, int update_base_timeline){
   std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
   char resolution_value[PROPERTY_VALUE_MAX]={0};
   char resolution_property[PROPERTY_VALUE_MAX]={0};

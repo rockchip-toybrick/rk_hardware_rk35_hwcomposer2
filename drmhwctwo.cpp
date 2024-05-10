@@ -503,7 +503,12 @@ HWC2::Error DrmHwcTwo::HwcDisplay::Init() {
     }
   }
 
-  UpdateDisplayMode();
+  ret = GetCurrentDisplayMode();
+  if (ret) {
+    HWC2_ALOGE("Failed to GetCurrentDisplayMode for display=%d %d\n", display, ret);
+    return HWC2::Error::NoResources;
+  }
+
   ret = drm_->BindDpyRes(handle_);
   if (ret) {
     HWC2_ALOGE("Failed to BindDpyRes for display=%d %d\n", display, ret);
@@ -676,8 +681,14 @@ HWC2::Error DrmHwcTwo::HwcDisplay::CheckStateAndReinit(bool clear_layer) {
     return HWC2::Error::NoResources;
   }
 
-  UpdateDisplayMode();
-  int ret = drm_->BindDpyRes(handle_);
+  int ret = GetCurrentDisplayMode();
+  if (ret) {
+    HWC2_ALOGE("Failed to GetCurrentDisplayMode for display=%d %d\n", display, ret);
+    return HWC2::Error::NoResources;
+  }
+
+
+  ret = drm_->BindDpyRes(handle_);
   if (ret) {
     HWC2_ALOGE("Failed to BindDpyRes for display=%d %d\n", display, ret);
     return HWC2::Error::NoResources;
@@ -2704,6 +2715,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetPowerMode(int32_t mode_in) {
     ret = drm_->SetPowerMode(handle_, DRM_MODE_DPMS_OFF);
     if (ret) {
       HWC2_ALOGE("Failed to ReleaseDpyRes for display=%" PRIu64 " %d\n", handle_, ret);
+      return HWC2::Error::BadParameter;
     }
     if(isRK3566(resource_manager_->getSocId())){
       int display_id = drm_->GetCommitMirrorDisplayId();
@@ -2715,6 +2727,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetPowerMode(int32_t mode_in) {
         ret = drm_->SetPowerMode(extend_display_id, DRM_MODE_DPMS_OFF);
         if (ret) {
           HWC2_ALOGE("Failed to ReleaseDpyRes for display=%d %d\n", extend_display_id, ret);
+          return HWC2::Error::BadParameter;
         }
       }
     }
@@ -2723,16 +2736,19 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetPowerMode(int32_t mode_in) {
       ret = connector_->UpdateModes();
       if (ret) {
         HWC2_ALOGE("Failed to UpdateModes for display=%" PRIu64 " ret=%d\n", handle_, ret);
+        return HWC2::Error::BadParameter;
       }
     }
     HoplugEventTmeline();
-    ret = UpdateDisplayMode();
+    ret = GetCurrentDisplayMode();
     if (ret) {
-      HWC2_ALOGE("Failed to UpdateDisplayMode for display=%" PRIu64 " ret=%d\n", handle_, ret);
+      HWC2_ALOGE("Failed to GetCurrentDisplayMode for display=%" PRIu64 " ret=%d\n", handle_, ret);
+      return HWC2::Error::BadParameter;
     }
     ret = drm_->SetPowerMode(handle_, DRM_MODE_DPMS_ON);
     if (ret) {
       HWC2_ALOGE("Failed to BindDpyRes for display=%" PRIu64 " ret=%d\n", handle_, ret);
+      return HWC2::Error::BadParameter;
     }
     UpdateDisplayInfo();
     if(isRK3566(resource_manager_->getSocId())){
@@ -2990,39 +3006,13 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateDisplay(uint32_t *num_types,
     }
     return HWC2::Error::None;
   }
-          // Enable/disable debug log
+  // Enable/disable debug log
   UpdateLogLevel();
   UpdateBCSH();
   UpdateHdmiOutputFormat();
   UpdateOverscan();
-  if(!ctx_.bStandardSwitchResolution){
-    UpdateDisplayMode();
-    drm_->UpdateDisplayMode(handle_);
-    UpdateDisplayInfo();
+  UpdateDisplayMode();
 
-    // RK3566 MirrorConn 分辨率切换流程需要从MirrorPrimary触发
-    if(isRK3566(resource_manager_->getSocId())){
-      int display_id = drm_->GetCommitMirrorDisplayId();
-      drm_->UpdateDisplayMode(display_id);
-    }
-
-    // ConnectorMirror分辨率切换需要从MirrorPrimary流程中触发
-    if(connector_->is_connector_mirror_primary()){
-      for(int mirror_display_id : connector_->get_connector_mirror_display_id()){
-        DrmConnector *conn_mirror = drm_->GetConnectorForDisplay(mirror_display_id);
-        drm_->UpdateDisplayMode(mirror_display_id);
-        // 如果经过分辨率切换后，当前的 MirrorPrimary 退出了Mirror模式，则需要注册副屏幕才行
-        if(conn_mirror->is_connector_mirror_mode() == false){
-          // 发送热插拔注册事件
-          DrmEvent event;
-          event.type = HOTPLUG_EVENT;
-          event.display_id = mirror_display_id;
-          event.connection = DRM_MODE_CONNECTED;
-          g_ctx->eventWorker_.SendDrmEvent(event);
-        }
-      }
-    }
-  }
   // 虚拟屏幕
   if(connector_->type() == DRM_MODE_CONNECTOR_VIRTUAL){
       for (std::pair<const hwc2_layer_t, DrmHwcTwo::HwcLayer> &l : layers_){
@@ -3487,8 +3477,9 @@ int DrmHwcTwo::HwcDisplay::HoplugEventTmeline(){
   return 0;
 }
 
-int DrmHwcTwo::HwcDisplay::UpdateDisplayMode(){
 
+
+int DrmHwcTwo::HwcDisplay::GetCurrentDisplayMode(){
   if(!ctx_.bStandardSwitchResolution){
     int timeline;
     int display_id = static_cast<int>(handle_);
@@ -3497,7 +3488,7 @@ int DrmHwcTwo::HwcDisplay::UpdateDisplayMode(){
       return 0;
     ctx_.display_timeline = timeline;
     ctx_.hotplug_timeline = drm_->timeline();
-    int ret = connector_->UpdateDisplayMode(display_id, timeline);
+    int ret = connector_->GetBestDisplayMode(display_id, timeline);
     if(!ret){
       const DrmMode best_mode = connector_->best_mode();
       connector_->set_current_mode(best_mode);
@@ -3520,7 +3511,7 @@ int DrmHwcTwo::HwcDisplay::UpdateDisplayMode(){
       }
 
       if(mirror_mode){
-        ret = conn_mirror->UpdateDisplayMode(display_id, timeline);
+        ret = conn_mirror->GetBestDisplayMode(display_id, timeline);
         if(!ret){
           const DrmMode best_mode = conn_mirror->best_mode();
           conn_mirror->set_current_mode(best_mode);
@@ -3533,11 +3524,43 @@ int DrmHwcTwo::HwcDisplay::UpdateDisplayMode(){
       for(int mirror_display_id : connector_->get_connector_mirror_display_id()){
         DrmConnector *conn_mirror = drm_->GetConnectorForDisplay(mirror_display_id);
         if(conn_mirror != NULL){
-          ret = conn_mirror->UpdateDisplayMode(mirror_display_id, timeline);
+          ret = conn_mirror->GetBestDisplayMode(mirror_display_id, timeline);
           if(!ret){
             const DrmMode best_mode = conn_mirror->best_mode();
             conn_mirror->set_current_mode(best_mode);
           }
+        }
+      }
+    }
+  }
+  return 0;
+}
+int DrmHwcTwo::HwcDisplay::UpdateDisplayMode(){
+  GetCurrentDisplayMode();
+
+  if(!ctx_.bStandardSwitchResolution){
+    drm_->UpdateDisplayMode(handle_);
+    UpdateDisplayInfo();
+
+    // RK3566 MirrorConn 分辨率切换流程需要从MirrorPrimary触发
+    if(isRK3566(resource_manager_->getSocId())){
+      int display_id = drm_->GetCommitMirrorDisplayId();
+      drm_->UpdateDisplayMode(display_id);
+    }
+
+    // ConnectorMirror分辨率切换需要从MirrorPrimary流程中触发
+    if(connector_->is_connector_mirror_primary()){
+      for(int mirror_display_id : connector_->get_connector_mirror_display_id()){
+        DrmConnector *conn_mirror = drm_->GetConnectorForDisplay(mirror_display_id);
+        drm_->UpdateDisplayMode(mirror_display_id);
+        // 如果经过分辨率切换后，当前的 MirrorPrimary 退出了Mirror模式，则需要注册副屏幕才行
+        if(conn_mirror->is_connector_mirror_mode() == false){
+          // 发送热插拔注册事件
+          DrmEvent event;
+          event.type = HOTPLUG_EVENT;
+          event.display_id = mirror_display_id;
+          event.connection = DRM_MODE_CONNECTED;
+          g_ctx->eventWorker_.SendDrmEvent(event);
         }
       }
     }
@@ -5723,7 +5746,6 @@ void DrmHwcTwo::DrmHotplugHandler::HdmiTvOnlyOne(PLUG_EVENT_TYPE hdmi_hotplug_st
           int display_id = conn->display();
           auto &display = hwc2_->displays_.at(display_id);
           int ret = (int32_t)display.HoplugEventTmeline();
-          ret |= (int32_t)display.UpdateDisplayMode();
           ret |= (int32_t)display.CheckStateAndReinit(!hwc2_->IsHasRegisterDisplayId(display_id));
           ret |= (int32_t)display.ChosePreferredConfig();
           if(ret != 0){
@@ -5811,7 +5833,6 @@ void DrmHwcTwo::DrmHotplugHandler::HandleEvent(uint64_t timestamp_us) {
     auto &display = hwc2_->displays_.at(display_id);
     if (cur_state == DRM_MODE_CONNECTED) {
       ret |= (int32_t)display.HoplugEventTmeline();
-      ret |= (int32_t)display.UpdateDisplayMode();
       ret |= (int32_t)display.CheckStateAndReinit(!hwc2_->IsHasRegisterDisplayId(display_id));
       ret |= (int32_t)display.ChosePreferredConfig();
       if(ret != 0){
@@ -5920,7 +5941,6 @@ void DrmHwcTwo::DrmHotplugHandler::HandleEvent(uint64_t timestamp_us) {
       auto &spilt_display = hwc2_->displays_.at(display_id);
       if (cur_state == DRM_MODE_CONNECTED) {
         ret |= (int32_t)spilt_display.HoplugEventTmeline();
-        ret |= (int32_t)spilt_display.UpdateDisplayMode();
         ret |= (int32_t)spilt_display.CheckStateAndReinit(!hwc2_->IsHasRegisterDisplayId(display_id));
         ret |= (int32_t)spilt_display.ChosePreferredConfig();
         if(ret != 0){
@@ -5965,7 +5985,6 @@ void DrmHwcTwo::DrmHotplugHandler::HandleEvent(uint64_t timestamp_us) {
           int display_id = conn->display();
           auto &display = hwc2_->displays_.at(display_id);
           ret |= (int32_t)display.HoplugEventTmeline();
-          ret |= (int32_t)display.UpdateDisplayMode();
           ret |= (int32_t)display.CheckStateAndReinit(!hwc2_->IsHasRegisterDisplayId(display_id));
           ret |= (int32_t)display.ChosePreferredConfig();
           if(ret != 0){
