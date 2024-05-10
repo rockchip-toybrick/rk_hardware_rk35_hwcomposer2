@@ -1320,22 +1320,49 @@ int DrmDevice::UpdateDisplayModeNormal(int display_id){
     pset = NULL;
   }
 
-  int ret;
-  drmModeAtomicReqPtr pset = drmModeAtomicAlloc();
-  if (!pset) {
-    ALOGE("%s:line=%d Failed to allocate property set",__FUNCTION__, __LINE__);
-    return -ENOMEM;
-  }
 
   DrmCrtc *crtc = conn->encoder()->crtc();
   DrmMode current_mode = conn->current_mode();
   // 检查 crtc 的输出能力是否可以支持输出当前设置的分辨率，若不支持，则需要切换到支持的分辨率
   if(crtc->output_width_property().id() > 0){
     if(CheckCrtcOutputCapability(display_id, crtc, current_mode)){
+      // 如果不支持，可以尝试使用Mirror方式支持当前请求的分辨率
+      int ret = ReleaseDpyRes(display_id);
+      if(ret){
+        HWC2_ALOGE("display-id=%d ReleaseDpyRes ret=%d", display_id, ret);
+        return -1;
+      }
+
+      ret = BindDpyRes(display_id);
+      if(ret){
+        HWC2_ALOGE("display-id=%d BindDpyRes ret=%d", display_id, ret);
+        return -1;
+      }else{
+        conn->set_active_mode(conn->current_mode());
+        // 成功更新crtc状态，则需要重置Kernel配置的Crtc信息
+        conn->reset_kernel_crtc_id();
+        HWC2_ALOGI("DisplayMode: display-id=%d crtc-id = %d update mode-id=%d mode=%dx%d%s%f success.",
+                display_id,
+                crtc->id(),
+                conn->current_mode().id(),
+                conn->current_mode().h_display(),
+                conn->current_mode().v_display(),
+                conn->current_mode().interlaced() > 0 ? "i" : "p",
+                conn->current_mode().v_refresh());
+        return  0;
+      }
+
       // 轮询分辨率支持列表，获取支持的分辨率
       conn->GetSuitableMode(display_id, crtc->get_output_width(), crtc->get_output_dlck());
       current_mode = conn->current_mode();
     }
+  }
+
+  int ret;
+  drmModeAtomicReqPtr pset = drmModeAtomicAlloc();
+  if (!pset) {
+    ALOGE("%s:line=%d Failed to allocate property set",__FUNCTION__, __LINE__);
+    return -ENOMEM;
   }
 
   uint32_t blob_id[1] = {0};
@@ -1654,12 +1681,16 @@ int DrmDevice::FindAvailableCrtcByFirst(int display_id, DrmConnector *conn, DrmC
   // 2. 尝试获取状态未连接的Connector crtc
   for (DrmEncoder *enc : conn->possible_encoders()) {
     for (DrmCrtc *crtc : enc->possible_crtcs()) {
+      int ret = -1;
       int temp_display_id = crtc->display();
-      DrmConnector* temp_conn = GetConnectorForDisplay(temp_display_id);
-      // 2.1. 检查待竞争的Connector状态
-      //      -> 若状态不正常，则直接抢占
-      //      -> 若状态正常，则进行优先级抢占
-      int ret = CheckConnectorState(temp_display_id, temp_conn);
+      DrmConnector* temp_conn = NULL;
+      if(temp_display_id >= 0){
+        temp_conn = GetConnectorForDisplay(temp_display_id);
+        // 2.1. 检查待竞争的Connector状态
+        //      -> 若状态不正常，则直接抢占
+        //      -> 若状态正常，则进行优先级抢占
+        ret = CheckConnectorState(temp_display_id, temp_conn);
+      }
       if(ret){ // 状态不正常
         // 检查是否满足
         if(check_crtc_cap && CheckCrtcOutputCapability(display_id, crtc, current_mode)){
@@ -1674,10 +1705,13 @@ int DrmDevice::FindAvailableCrtcByFirst(int display_id, DrmConnector *conn, DrmC
           continue;
         }
 
-        // 解绑 temp_conn 与 crtc.
-        ReleaseConnectorAndCrtc(temp_display_id,
-                                temp_conn,
-                                crtc);
+        if(temp_conn != NULL){
+          // 解绑 temp_conn 与 crtc.
+          ReleaseConnectorAndCrtc(temp_display_id,
+                                  temp_conn,
+                                  crtc);
+        }
+
         crtc->set_display(conn->display());
         enc->set_crtc(crtc);
         conn->set_encoder(enc);

@@ -3536,9 +3536,18 @@ int DrmHwcTwo::HwcDisplay::GetCurrentDisplayMode(){
   return 0;
 }
 int DrmHwcTwo::HwcDisplay::UpdateDisplayMode(){
+  // 获取当前最新设置的分辨率
   GetCurrentDisplayMode();
 
   if(!ctx_.bStandardSwitchResolution){
+    // 记录当前的Mirror状态
+    bool old_is_mirror_state = connector_->is_connector_mirror_mode();
+    bool old_is_mirror_primary = connector_->is_connector_mirror_primary();
+    int old_mirror_primary_id = connector_->get_connector_mirror_primary_id();
+    std::set<int> old_mirror_set;
+    if(old_is_mirror_primary){
+      old_mirror_set = connector_->get_connector_mirror_display_id();
+    }
     drm_->UpdateDisplayMode(handle_);
     UpdateDisplayInfo();
 
@@ -3548,21 +3557,43 @@ int DrmHwcTwo::HwcDisplay::UpdateDisplayMode(){
       drm_->UpdateDisplayMode(display_id);
     }
 
+    // 再次确认更新分辨率后的Mirror状态
+    // MirrorPrimary 需要确认挂载在底下的所有MirrorExternal是否更新了Mirror状态，如果更新，并且正常获取DRM资源的需要注册到SurfaceFlinger;
     // ConnectorMirror分辨率切换需要从MirrorPrimary流程中触发
-    if(connector_->is_connector_mirror_primary()){
-      for(int mirror_display_id : connector_->get_connector_mirror_display_id()){
-        DrmConnector *conn_mirror = drm_->GetConnectorForDisplay(mirror_display_id);
-        drm_->UpdateDisplayMode(mirror_display_id);
-        // 如果经过分辨率切换后，当前的 MirrorPrimary 退出了Mirror模式，则需要注册副屏幕才行
-        if(conn_mirror->is_connector_mirror_mode() == false){
-          // 发送热插拔注册事件
-          DrmEvent event;
-          event.type = HOTPLUG_EVENT;
-          event.display_id = mirror_display_id;
-          event.connection = DRM_MODE_CONNECTED;
-          g_ctx->eventWorker_.SendDrmEvent(event);
+    if(old_is_mirror_primary){
+      if(old_mirror_set.size() > 0){
+        for(int old_mirror_display_id : old_mirror_set){
+          DrmConnector *conn_mirror = drm_->GetConnectorForDisplay(old_mirror_display_id);
+          drm_->UpdateDisplayMode(old_mirror_display_id);
+          // 如果经过分辨率切换后，当前的 MirrorPrimary 退出了Mirror模式，则需要注册副屏幕才行
+
+          if(conn_mirror->is_connector_mirror_mode() == false){
+            if(conn_mirror->state() == DRM_MODE_CONNECTED &&
+               drm_->GetCrtcForDisplay(old_mirror_display_id) != NULL){
+              // 发送热插拔注册事件
+              DrmEvent event;
+              event.type = HOTPLUG_EVENT;
+              event.display_id = old_mirror_display_id;
+              event.connection = DRM_MODE_CONNECTED;
+              g_ctx->eventWorker_.SendDrmEvent(event);
+            }else{
+              HWC2_ALOGW("MirrorDisplay: mirror_conn=%d, connection=%d crtc=%p state is error.",
+                          conn_mirror->display(), conn_mirror->state(), drm_->GetCrtcForDisplay(old_mirror_display_id));
+            }
+          }
         }
       }
+    }else{ // 之前不是Mirror，但是切换分辨率后进入了Mirror模式，则需要销毁当前注册的屏幕
+      if(old_is_mirror_state == false && connector_->is_connector_mirror_mode() == true){
+        // 发送热插拔注册事件
+        DrmEvent event;
+        event.type = HOTPLUG_EVENT;
+        event.display_id = connector_->display();
+        event.connection = DRM_MODE_DISCONNECTED;
+        g_ctx->eventWorker_.SendDrmEvent(event);
+
+      }
+
     }
   }
   return 0;
@@ -6149,17 +6180,6 @@ int DrmHwcTwo::EventWorker::SendLocalHotplugEvent(DrmEvent event){
                       connector->type_id());
         return -1;
       }
-    }else{
-      int ret = (int32_t)display.ClearDisplay();
-      ret |= (int32_t)drm->ReleaseDpyRes(event.display_id);
-      if(ret != 0){
-        HWC2_ALOGE("hwc_hotplug: %s for connector %u type=%s, type_id=%d ReleaseDpyRes fail.\n",
-                      event.connection == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
-                      connector->id(),
-                      drm->connector_type_str(connector->type()),
-                      connector->type_id());
-        return -1;
-      }
     }
 
     HWC2_ALOGI("hwc_hotplug: %s for display_id=%d connector %u type=%s, type_id=%d \n",
@@ -6186,11 +6206,11 @@ void DrmHwcTwo::EventWorker::Routine() {
   int ret = 0;
   if(mPendingEvent_.empty()){
     ret = WaitForSignalOrExitLocked();
-  if (ret == -EINTR) {
+    if (ret == -EINTR) {
       HWC2_ALOGI("EventWorker: WaitForSignalOrExitLocked fail! ret=%d", ret);
-    Unlock();
-    return;
-  }
+      Unlock();
+      return;
+    }
   }
 
   DrmEvent event = mPendingEvent_.front();
