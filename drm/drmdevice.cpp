@@ -1429,7 +1429,7 @@ int DrmDevice::UpdateDisplayModeNormal(int display_id){
   drmModeAtomicFree(pset);
   pset=NULL;
 
-  hotplug_timeline++;
+  // hotplug_timeline++;
   return 0;
 }
 
@@ -2290,7 +2290,15 @@ int DrmDevice::DoPowerOnNormal(int display_id){
   uint32_t blob_id[1] = {0};
   struct drm_mode_modeinfo drm_mode;
   memset(&drm_mode, 0, sizeof(drm_mode));
-  conn->current_mode().ToDrmModeModeInfo(&drm_mode);
+
+  DrmMode request_mode;
+  if(conn->active_mode().id() > 0){
+    request_mode = conn->active_mode();
+  }else{
+    request_mode = conn->current_mode();
+  }
+
+  request_mode.ToDrmModeModeInfo(&drm_mode);
   CreatePropertyBlob(&drm_mode, sizeof(drm_mode), &blob_id[0]);
 
   // Enable DrmConnector DPMS on.
@@ -2313,11 +2321,11 @@ int DrmDevice::DoPowerOnNormal(int display_id){
               conn->id(),
               connector_type_str(conn->type()), conn->type_id(),
               crtc->id(),
-              conn->current_mode().id(),
-              conn->current_mode().h_display(),
-              conn->current_mode().v_display(),
-              conn->current_mode().interlaced() > 0 ? "i" : "p",
-              conn->current_mode().v_refresh(),
+              request_mode.id(),
+              request_mode.h_display(),
+              request_mode.v_display(),
+              request_mode.interlaced() > 0 ? "i" : "p",
+              request_mode.v_refresh(),
               ret);
     drmModeAtomicFree(pset);
     pset=NULL;
@@ -2331,15 +2339,13 @@ int DrmDevice::DoPowerOnNormal(int display_id){
               conn->id(),
               connector_type_str(conn->type()), conn->type_id(),
               crtc->id(),
-              conn->current_mode().id(),
-              conn->current_mode().h_display(),
-              conn->current_mode().v_display(),
-              conn->current_mode().interlaced() > 0 ? "i" : "p",
-              conn->current_mode().v_refresh());
+              request_mode.id(),
+              request_mode.h_display(),
+              request_mode.v_display(),
+              request_mode.interlaced() > 0 ? "i" : "p",
+              request_mode.v_refresh());
 
   DestroyPropertyBlob(blob_id[0]);
-
-  conn->set_active_mode(conn->current_mode());
 
   // 更新状态查询接口信息
   char conn_name[50];
@@ -2520,7 +2526,17 @@ int DrmDevice::DoPowerOffNormal(int display_id){
   uint32_t flags = DRM_MODE_ATOMIC_ALLOW_MODESET;
   ret = drmModeAtomicCommit(fd_.get(), pset, flags, this);
   if (ret < 0) {
-    HWC2_ALOGE("display-id=%d PowerOff fail! ret=%d", display_id, ret);
+    HWC2_ALOGE("DrmModeSet: display-id=%d conn-id=%d %s-%d crtc-id=%d mode-id=%d mode=%dx%d%s%f PowerOff fail! ret=%d",
+                display_id,
+                conn->id(),
+                connector_type_str(conn->type()), conn->type_id(),
+                crtc->id(),
+                conn->active_mode().id(),
+                conn->active_mode().h_display(),
+                conn->active_mode().v_display(),
+                conn->active_mode().interlaced() > 0 ? "i" : "p",
+                conn->active_mode().v_refresh(),
+                ret);
     drmModeAtomicFree(pset);
     pset=NULL;
     return ret;
@@ -2529,7 +2545,16 @@ int DrmDevice::DoPowerOffNormal(int display_id){
   drmModeAtomicFree(pset);
   pset=NULL;
 
-  HWC2_ALOGI("display-id=%d PowerOff success!.", display_id);
+  HWC2_ALOGI("DrmModeSet: display-id=%d conn-id=%d %s-%d crtc-id=%d mode-id=%d mode=%dx%d%s%f PowerOff success!",
+              display_id,
+              conn->id(),
+              connector_type_str(conn->type()), conn->type_id(),
+              crtc->id(),
+              conn->active_mode().id(),
+              conn->active_mode().h_display(),
+              conn->active_mode().v_display(),
+              conn->active_mode().interlaced() > 0 ? "i" : "p",
+              conn->active_mode().v_refresh());
 
   char conn_name[50];
   char property_conn_name[50];
@@ -2575,7 +2600,17 @@ int DrmDevice::DoPowerOffMirror(int display_id){
       uint32_t flags = DRM_MODE_ATOMIC_ALLOW_MODESET;
       ret = drmModeAtomicCommit(fd_.get(), pset, flags, this);
       if (ret < 0) {
-        ALOGE("%s:line=%d Failed to commit pset ret=%d\n", __FUNCTION__, __LINE__, ret);
+        HWC2_ALOGE("DrmModeSet:MirrorDisplay: display-id=%d conn-id=%d %s-%d crtc-id=%d mode-id=%d mode=%dx%d%s%f PowerOff Fail! ret=%d",
+                    display_id,
+                    conn->id(),
+                    connector_type_str(conn->type()), conn->type_id(),
+                    crtc->id(),
+                    conn->active_mode().id(),
+                    conn->active_mode().h_display(),
+                    conn->active_mode().v_display(),
+                    conn->active_mode().interlaced() > 0 ? "i" : "p",
+                    conn->active_mode().v_refresh(),
+                    ret);
         drmModeAtomicFree(pset);
         pset=NULL;
         return ret;
@@ -2583,16 +2618,16 @@ int DrmDevice::DoPowerOffMirror(int display_id){
       drmModeAtomicFree(pset);
       pset=NULL;
 
-    HWC2_ALOGI("DrmModeSet:MirrorDisplay: display-id=%d conn-id=%d %s-%d crtc-id=%d mode-id=%d mode=%dx%d%s%f PowerOff success!",
-                display_id,
-                conn->id(),
-                connector_type_str(conn->type()), conn->type_id(),
-                crtc->id(),
-                conn->active_mode().id(),
-                conn->active_mode().h_display(),
-                conn->active_mode().v_display(),
-                conn->active_mode().interlaced() > 0 ? "i" : "p",
-                conn->active_mode().v_refresh());
+      HWC2_ALOGI("DrmModeSet:MirrorDisplay: display-id=%d conn-id=%d %s-%d crtc-id=%d mode-id=%d mode=%dx%d%s%f PowerOff success!",
+                  display_id,
+                  conn->id(),
+                  connector_type_str(conn->type()), conn->type_id(),
+                  crtc->id(),
+                  conn->active_mode().id(),
+                  conn->active_mode().h_display(),
+                  conn->active_mode().v_display(),
+                  conn->active_mode().interlaced() > 0 ? "i" : "p",
+                  conn->active_mode().v_refresh());
 
       char conn_name[50];
       char property_conn_name[50];
