@@ -3566,7 +3566,6 @@ int DrmHwcTwo::HwcDisplay::UpdateDisplayMode(){
           DrmConnector *conn_mirror = drm_->GetConnectorForDisplay(old_mirror_display_id);
           drm_->UpdateDisplayMode(old_mirror_display_id);
           // 如果经过分辨率切换后，当前的 MirrorPrimary 退出了Mirror模式，则需要注册副屏幕才行
-
           if(conn_mirror->is_connector_mirror_mode() == false){
             if(conn_mirror->state() == DRM_MODE_CONNECTED &&
                drm_->GetCrtcForDisplay(old_mirror_display_id) != NULL){
@@ -6094,6 +6093,9 @@ int DrmHwcTwo::EventWorker::Init(DrmHwcTwo *hwc2) {
 
 int DrmHwcTwo::EventWorker::SendDrmEvent(DrmEvent event){
   Lock();
+  HWC2_ALOGD_IF_INFO("add event display-id=%d type=%d connection=%s",
+                      event.display_id, event.type,
+                      event.connection == DRM_MODE_CONNECTED ? "connected" : "disconnected");
   mPendingEvent_.push(event);
   Unlock();
   Signal();

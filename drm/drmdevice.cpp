@@ -1141,7 +1141,7 @@ void DrmDevice::UpdateDrmInfoFromKernel(){
   // 2. 将统计的crtc配置信息同步到每一个 connector 对应结构中
   if(kernel_mirror_crtc_id.size() > 0){
     for(auto &pair_crtc_id : kernel_mirror_crtc_id){
-      if(pair_crtc_id.second.mirror_primary_id == 0 ||
+      if(pair_crtc_id.second.mirror_primary_id == -1 ||
          pair_crtc_id.second.mirror_external_id.size() == 0){
         continue;
       }
@@ -1150,7 +1150,9 @@ void DrmDevice::UpdateDrmInfoFromKernel(){
         DrmConnector* mirror_external = GetConnectorForDisplay(mirror_external_id);
         mirror_primary->enable_connector_mirror_mode(mirror_primary->display(), mirror_external_id);
         mirror_external->enable_connector_mirror_mode(mirror_primary->display(), mirror_external_id);
-        HWC2_ALOGI("EnableMirrorMode: PrimaryId=%d ExternelId=%d", mirror_primary->display(), mirror_external_id);
+        HWC2_ALOGI("MirrorDisplay: EnableFromKernel: PrimaryId=%d conn=%s-%d ExternelId=%d conn=%s-%d",
+                    mirror_primary->display(), connector_type_str(mirror_primary->type()), mirror_primary->type_id(),
+                    mirror_external->display(), connector_type_str(mirror_external->type()), mirror_external->type_id());
       }
     }
   }
@@ -2788,7 +2790,7 @@ int DrmDevice::ReleaseDpyResByMirror(int display_id,
   // 如果不是MirrorPrimary执行断开，则需要更新MirrorPrimary中的Connector Mirror的信息
   if(conn->is_connector_mirror_primary() == false){
     mirror_display_primary_id = conn->get_connector_mirror_primary_id();
-    if(mirror_display_primary_id > 0){
+    if(mirror_display_primary_id >= 0){
       mirror_primary = GetConnectorForDisplay(mirror_display_primary_id);
       if(mirror_primary != NULL){
         // 如果 MirrorPrimary 是未连接状态，且当前断开的Display是最后一个MirrorDisplay
