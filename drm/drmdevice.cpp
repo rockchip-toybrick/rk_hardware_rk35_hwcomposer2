@@ -1729,6 +1729,14 @@ int DrmDevice::FindAvailableCrtcByFirst(int display_id, DrmConnector *conn, DrmC
 
 // 获取可用的 Crtc 资源
 int DrmDevice::FindAvailableCrtcByMirror(int display_id, DrmConnector *conn, DrmCrtc **out_crtc){
+
+  // TMP：由于RK3576会议大屏 output-format 通常为 RGB,故先限制此格式才使能Mirror
+  if(conn->FilterColorFormatWithCaps(output_rgb) != output_rgb){
+    HWC2_ALOGW("display-id=%d conn-id =%d %s-%d not support RGB-8bit ,must disable 4k mirror mode.",
+        display_id, conn->id(), connector_type_str(conn->type()), conn->type_id());
+    return -1;
+  }
+
   // 2. 尝试使用 ConnectorMirror方式
   // Crtc 匹配需要校验分辨率
   DrmMode current_mode = conn->current_mode();
@@ -1958,6 +1966,38 @@ int DrmDevice::BindConnectorAndCrtc(int display_id, DrmConnector* conn, DrmCrtc*
   DRM_ATOMIC_ADD_PROP(conn->id(), conn->crtc_id_property().id(), crtc->id());
   DRM_ATOMIC_ADD_PROP(crtc->id(), crtc->mode_property().id(), blob_id[0]);
   DRM_ATOMIC_ADD_PROP(crtc->id(), crtc->active_property().id(), 1);
+
+  if(conn->is_connector_mirror_mode()){
+    if(conn->is_connector_mirror_primary() == false){
+      ret = drmModeAtomicAddProperty(pset, conn->id(), conn->color_format_property().id(), output_rgb);
+      if (ret < 0) {
+        HWC2_ALOGE("Failed to add prop[%d] to [%d]", conn->color_format_property().id(), conn->id());
+      }
+      ret = drmModeAtomicAddProperty(pset, conn->id(), conn->color_depth_property().id(), depth_24bit);
+      if (ret < 0) {
+        HWC2_ALOGE("Failed to add prop[%d] to [%d]", conn->color_depth_property().id(), conn->id());
+      }
+
+      // MirrorPrimary 也需要设置为 RGB-8bit
+      int mirror_primary_id = conn->get_connector_mirror_primary_id();
+      if(mirror_primary_id >= 0){
+        DrmConnector *mirror_primary = GetConnectorForDisplay(mirror_primary_id);
+        if(mirror_primary->FilterColorFormatWithCaps(output_rgb) == output_rgb){
+          ret = drmModeAtomicAddProperty(pset, mirror_primary->id(), mirror_primary->color_format_property().id(), output_rgb);
+          if (ret < 0) {
+            HWC2_ALOGE("Failed to add prop[%d] to [%d]", mirror_primary->color_format_property().id(), mirror_primary->id());
+          }
+          ret = drmModeAtomicAddProperty(pset, mirror_primary->id(), mirror_primary->color_depth_property().id(), depth_24bit);
+          if (ret < 0) {
+            HWC2_ALOGE("Failed to add prop[%d] to [%d]", mirror_primary->color_depth_property().id(), mirror_primary->id());
+          }
+
+        }
+      }
+    }
+
+    HWC2_ALOGI("MirrorDisplay: mirror mode force request output format RGB-8bit!");
+  }
 
   uint32_t flags = DRM_MODE_ATOMIC_ALLOW_MODESET;
   ret = drmModeAtomicCommit(fd_.get(), pset, flags, this);
