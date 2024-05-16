@@ -343,8 +343,11 @@ int DrmConnector::UpdateModes() {
   // VRR
   UpdateVrrModes();
 
-  // 更新 DrmConnector property
-  UpdatePropertys();
+  // 更新connector Property信息
+  int ret = UpdatePropertys();
+  if(ret){
+    HWC2_ALOGW("conn=%d state=%d UpdateProperty fail.", id_, state_);
+  }
 
   return 0;
 }
@@ -459,6 +462,62 @@ int DrmConnector::UpdateVrrModes(){
 
 }
 
+int DrmConnector::UpdateProperty(){
+  int ret = drm_->GetConnectorProperty(*this, "HDR_OUTPUT_METADATA", &hdr_metadata_property_);
+  if (ret)
+    ALOGW("Could not get hdr output metadata property\n");
+
+  ret = drm_->GetConnectorProperty(*this, "HDR_PANEL_METADATA", &hdr_panel_property_);
+  if (ret)
+    ALOGW("Could not get hdr panel metadata property\n");
+
+  // Kernel version 5.10 starts using new attribute definitions Colorspace
+  ret = drm_->GetConnectorProperty(*this, "Colorspace", &colorspace_property_);
+  if (ret){
+    ALOGW("Could not get Colorspace property, try to get hdmi_output_colorimetry property.\n");
+    // Before Kernel version 5.10 starts using old attribute definitions hdmi_output_colorimetry
+    ret = drm_->GetConnectorProperty(*this, "hdmi_output_colorimetry", &colorspace_property_);
+    if(ret){
+      ALOGW("Could not get hdmi_output_colorimetry property.\n");
+    }
+  }
+
+  // Kernel version 5.10 starts using new attribute definitions color_format
+  ret = drm_->GetConnectorProperty(*this, "color_format", &color_format_property_);
+  if (ret) {
+    ALOGW("Could not get color_format property, try to get hdmi_output_format property.\n");
+    // Before Kernel version 5.10 using old attribute definitions hdmi_output_format
+    ret = drm_->GetConnectorProperty(*this, "hdmi_output_format", &color_format_property_);
+    if(ret){
+      ALOGW("Could not get hdmi_output_format property.\n");
+    }
+  }
+
+  // Kernel version 5.10 starts using new attribute definitions color_depth
+  ret = drm_->GetConnectorProperty(*this, "color_depth", &color_depth_property_);
+  if (ret) {
+    ALOGW("Could not get color_depth property, try to get hdmi_output_depth\n");
+    // Before Kernel version 5.10 using old attribute definitions hdmi_output_depth
+    ret = drm_->GetConnectorProperty(*this, "hdmi_output_depth", &color_depth_property_);
+    if(ret){
+      ALOGW("Could not get hdmi_output_depth property\n");
+    }
+  }
+
+  // Kernel version 5.10 to get color_format_caps
+  ret = drm_->GetConnectorProperty(*this, "color_format_caps", &color_format_caps_property_);
+  if (ret) {
+    ALOGW("Could not get color_format_caps property\n");
+  }
+
+  // Kernel version 5.10 to get color_depth_caps
+  ret = drm_->GetConnectorProperty(*this, "color_depth_caps", &color_depth_caps_property_);
+  if (ret) {
+    ALOGW("Could not get color_depth_caps property\n");
+  }
+
+  return ret;
+}
 int DrmConnector::GetBestDisplayMode(int display_id, int update_base_timeline){
   std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
   char resolution_value[PROPERTY_VALUE_MAX]={0};
