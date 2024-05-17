@@ -4465,6 +4465,7 @@ void DrmHwcTwo::HwcLayer::PopulateNormalLayer(DrmHwcLayer *drmHwcLayer,
       drmHwcLayer->uModifier_       = pBufferInfo_->uModifier_;
       drmHwcLayer->sLayerName_      = pBufferInfo_->sLayerName_;
       drmHwcLayer->uByteStridePlanes_ = pBufferInfo_->uByteStridePlanes_;
+      drmHwcLayer->pBufferInfo_ = pBufferInfo_;
     }else{
       drmHwcLayer->iFd_     = -1;
       drmHwcLayer->iWidth_  = -1;
@@ -4479,6 +4480,7 @@ void DrmHwcTwo::HwcLayer::PopulateNormalLayer(DrmHwcLayer *drmHwcLayer,
       drmHwcLayer->uGemHandle_ = 0;
       drmHwcLayer->sLayerName_.clear();
       drmHwcLayer->uByteStridePlanes_.clear();
+      drmHwcLayer->pBufferInfo_ = nullptr;
     }
     drmHwcLayer->Init();
     return;

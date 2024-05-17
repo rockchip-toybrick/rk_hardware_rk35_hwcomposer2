@@ -19,6 +19,8 @@
 
 #include "rockchip/drmgralloc.h"
 #include "utils/autofd.h"
+// Use im2d api
+#include <im2d.hpp>
 
 #include <ui/GraphicBuffer.h>
 
@@ -61,6 +63,7 @@ public:
   uint32_t GetGemHandle();
   uint32_t DrmFormatToPlaneNum(uint32_t drm_format);
   uint32_t GetFbId();
+  rga_buffer_handle_t GetRgaHandle();
   void* Lock();
   int Unlock();
   int GetFinishFence();
@@ -112,6 +115,7 @@ private:
   uint64_t uBufferId_;
   uint32_t uGemHandle_;
   uint32_t uFbId_;
+  rga_buffer_handle_t uRgaHandle_=0;
 
   // rect crop info
   int iLeft_;

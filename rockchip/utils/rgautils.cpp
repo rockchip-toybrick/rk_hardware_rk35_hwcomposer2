@@ -40,7 +40,6 @@
 #include <rockchip/utils/drmdebug.h>
 #include <rockchip/utils/rgautils.h>
 #include <rockchip/utils/rgaformats.h>
-#include <drmlayer.h>
 #include <3rd/hal/drmhwc2_hal_format.h>
 
 #include <system/graphics.h>

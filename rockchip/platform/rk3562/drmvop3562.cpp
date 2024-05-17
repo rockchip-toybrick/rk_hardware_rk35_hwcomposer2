@@ -1064,24 +1064,47 @@ int Vop3562::TryRgaOverlayPolicy(
             continue;
           }
 
-          // Set src buffer info
-          src.fd      = drmLayer->iFd_;
-          src.width   = drmLayer->iWidth_;
-          src.height  = drmLayer->iHeight_;
-          src.hstride = drmLayer->iHeightStride_;
-          src.format  = drmLayer->iFormat_;
+          // 获取 rga src hanlde
+          rga_buffer_handle_t src_handle = 0;
+          if(drmLayer->pBufferInfo_ != NULL){
+            src_handle = drmLayer->pBufferInfo_->rgaHandle_.GetRgaHandle(drmLayer->sLayerName_.c_str(),
+                                                                         drmLayer->iFd_,
+                                                                         drmLayer->iSize_,
+                                                                         drmLayer->uBufferId_);
+          }
+
+          if(src_handle == 0){
+            HWC2_ALOGE("%s import src fail, w=%d, h=%d format=0x%x",
+                        drmLayer->sLayerName_.c_str(),
+                        drmLayer->iWidth_,
+                        drmLayer->iHeight_,
+                        drmLayer->iFormat_);
+            continue;
+          }
+
+          // RGA 特殊修改，需要调整传入的format
+          int src_format = 0;
+          if(drmLayer->iFormat_ == HAL_PIXEL_FORMAT_YUV420_8BIT_I){
+            src_format = HAL_PIXEL_FORMAT_YCrCb_NV12;
+          }else if(drmLayer->iFormat_ == HAL_PIXEL_FORMAT_YUV420_10BIT_I){
+            src_format = HAL_PIXEL_FORMAT_YCrCb_NV12_10;
+          }else{
+            src_format = drmLayer->iFormat_;
+          }
 
           // RGA 的特殊修改，需要通过 wstride
+          int src_stride = 0;
           if(drmLayer->uFourccFormat_ == DRM_FORMAT_NV15)
-            src.wstride = drmLayer->iByteStride_;
+            src_stride = drmLayer->iByteStride_;
           else
-            src.wstride = drmLayer->iStride_;
+            src_stride = drmLayer->iStride_;
 
-          if(drmLayer->iFormat_ == HAL_PIXEL_FORMAT_YUV420_8BIT_I){
-            src.format = HAL_PIXEL_FORMAT_YCrCb_NV12;
-          }else if(drmLayer->iFormat_ == HAL_PIXEL_FORMAT_YUV420_10BIT_I){
-            src.format = HAL_PIXEL_FORMAT_YCrCb_NV12_10;
-          }
+          src = wrapbuffer_handle(src_handle,
+                                  drmLayer->iWidth_,
+                                  drmLayer->iHeight_,
+                                  src_format,
+                                  src_stride,
+                                  drmLayer->iHeightStride_);
 
           // AFBC format
           if(drmLayer->bAfbcd_)
@@ -1093,22 +1116,40 @@ int Vop3562::TryRgaOverlayPolicy(
           src_rect.width  = ALIGN_DOWN((int)(drmLayer->source_crop.right  - drmLayer->source_crop.left),2);
           src_rect.height = ALIGN_DOWN((int)(drmLayer->source_crop.bottom - drmLayer->source_crop.top),2);
 
-          // Set dst buffer info
-          dst.fd      = dst_buffer->GetFd();
-          dst.width   = dst_buffer->GetWidth();
-          dst.height  = dst_buffer->GetHeight();
+          // 获取 rga dst hanlde
+          rga_buffer_handle_t dst_handle = dst_buffer->GetRgaHandle();
+          if(dst_handle == 0){
+            HWC2_ALOGE("%s import dst fail, w=%d, h=%d format=0x%x",
+                        dst_buffer->GetName().c_str(),
+                        dst_buffer->GetWidth(),
+                        dst_buffer->GetHeight(),
+                        dst_buffer->GetFormat());
+            continue;
+          }
+
+          // RGA 特殊修改，需要调整传入的format
+          int dst_format = 0;
+          if(dst_buffer->GetFormat() == HAL_PIXEL_FORMAT_YUV420_8BIT_I){
+            dst_format = HAL_PIXEL_FORMAT_YCrCb_NV12;
+          }else if(dst_buffer->GetFormat() == HAL_PIXEL_FORMAT_YUV420_10BIT_I){
+            dst_format = HAL_PIXEL_FORMAT_YCrCb_NV12_10;
+          }else{
+            dst_format = dst_buffer->GetFormat();
+          }
+
           // RGA 的特殊修改，需要通过 wstride
+          int dst_stride = 0;
           if(dst_buffer->GetFourccFormat() == DRM_FORMAT_NV15)
-            dst.wstride = dst_buffer->GetByteStride();
+            dst_stride = dst_buffer->GetByteStride();
           else
-            dst.wstride = dst_buffer->GetStride();
+            dst_stride = dst_buffer->GetStride();
 
-          dst.hstride = dst_buffer->GetHeightStride();
-          dst.format  = dst_buffer->GetFormat();
-
-          // AFBC format
-          if(0)
-            dst.rd_mode = IM_FBC_MODE;
+          dst = wrapbuffer_handle(dst_handle,
+                                  dst_buffer->GetWidth(),
+                                  dst_buffer->GetHeight(),
+                                  dst_format,
+                                  dst_stride,
+                                  dst_buffer->GetHeightStride());
 
           // 若缩放倍数超出RGA最大缩小倍数，则进行二次缩放，倍率设置为6
           if(rga_scale_max){

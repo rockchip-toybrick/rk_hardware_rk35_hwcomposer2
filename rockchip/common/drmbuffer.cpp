@@ -151,6 +151,14 @@ DrmBuffer::~DrmBuffer(){
   }
 #endif
 
+  if (uRgaHandle_ > 0){
+    int ret = releasebuffer_handle(uRgaHandle_);
+    if(ret < 0){
+        HWC2_ALOGE("RgaHandle %s releasebuffer fail, buffer_id=0x%" PRIx64, sName_.c_str(), uBufferId_);
+    }
+    uRgaHandle_ = 0;
+  }
+
   int ret = ptrDrmGralloc_->hwc_free_gemhandle(uBufferId_);
   if(ret){
     HWC2_ALOGE("%s hwc_free_gemhandle fail, buffer_id =%" PRIx64, sName_.c_str(), uBufferId_);
@@ -744,5 +752,20 @@ int ret = ptrDrmGralloc_->hwc_fbid_get_and_cached(uBufferId_,
   return uPreScaleFbId_;
 }
 #endif
+
+rga_buffer_handle_t DrmBuffer::GetRgaHandle(){
+  std::lock_guard<std::mutex> lk(mtx_);
+  if(uRgaHandle_ > 0)
+    return uRgaHandle_;
+
+  uRgaHandle_ = importbuffer_fd(iFd_, iSize_);
+  if (uRgaHandle_ == 0)
+  {
+      HWC2_ALOGE("RgaHandle %s import fail, fd=%d, size=%d buffer_id=0x%" PRIx64, sName_.c_str(), iFd_, iSize_, uBufferId_);
+      return 0;
+  }
+  return uRgaHandle_;
+}
+
 } // namespace android
 

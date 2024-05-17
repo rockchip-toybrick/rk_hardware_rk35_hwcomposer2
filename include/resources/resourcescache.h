@@ -21,6 +21,12 @@
 
 #include "rockchip/drmgralloc.h"
 
+// Use im2d api
+#include <im2d.hpp>
+#include "rockchip/utils/rgautils.h"
+
+#include <mutex>
+
 namespace android {
 
 class GemHandle {
@@ -38,6 +44,24 @@ class GemHandle {
     uint64_t uBufferId_=0;
     uint32_t uGemHandle_=0;
     const char *name_;
+};
+
+class RgaHandle {
+  public:
+    RgaHandle();
+    ~RgaHandle();
+    RgaHandle(const RgaHandle&) = delete;
+    RgaHandle& operator=(const RgaHandle&) = delete;
+    uint32_t GetRgaHandle(const char* name, int fd, int size, uint64_t buffer_id);
+    bool isValid();
+
+  private:
+    rga_buffer_handle_t uRgaHandle_=0;
+    uint64_t uBufferId_ = 0;
+    int iSize_ = 0;
+    int iFd_ = -1;
+    const char* name_ = NULL;
+    mutable std::recursive_mutex mRecursiveMutex;
 };
 
 class LayerInfoCache{
@@ -64,6 +88,9 @@ class LayerInfoCache{
   GemHandle gemHandle_;
   std::string sLayerName_;
   bool bFbIdCached_ = false;
+
+  // RGA handle cache
+  RgaHandle rgaHandle_;
 };
 
 };

@@ -33,6 +33,7 @@
 #include "utils/drmfence.h"
 #include "drmbuffer.h"
 #include "rockchip/hdr/drmhdrparser.h"
+#include "resources/resourcescache.h"
 
 struct hwc_import_context;
 
@@ -297,6 +298,9 @@ struct DrmHwcLayer {
 #endif
 
   DrmLayerInfoStore storeLayerInfo_;
+
+  // Buffer info point
+  std::shared_ptr<LayerInfoCache> pBufferInfo_ = NULL;
 
   // next hdr
   bool IsMetadataHdr_;

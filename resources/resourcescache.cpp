@@ -46,9 +46,56 @@ int GemHandle::InitGemHandle(const char *name,
     }
     return ret;
 }
+
 uint32_t GemHandle::GetGemHandle(){ return uGemHandle_;}
 bool GemHandle::isValid(){ return uGemHandle_ != 0;}
 
+RgaHandle::RgaHandle() : uRgaHandle_(0), uBufferId_(0), iSize_(0), iFd_(-1), name_(NULL){};
+RgaHandle::~RgaHandle(){
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
+  if (uRgaHandle_ > 0){
+    int ret = releasebuffer_handle(uRgaHandle_);
+    if(ret < 0){
+        HWC2_ALOGE("RgaHandle %s releasebuffer fail, buffer_id=0x%" PRIx64, name_, uBufferId_);
+    }
+    uRgaHandle_ = 0;
+  }
+}
+
+uint32_t RgaHandle::GetRgaHandle(const char* name, int fd, int size, uint64_t buffer_id){
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
+  if(uRgaHandle_ > 0){
+    if(buffer_id == uBufferId_ && size == iSize_){
+      return uRgaHandle_;
+    }else{
+      HWC2_ALOGW("%s fd=%d buffer-id=0x%" PRIx64 " size=%d is change, old %s fd=%d buffer-id=0x%" PRIx64 " size=%d",
+                 name, fd, buffer_id,  size,
+                 name_, iFd_, uBufferId_, iSize_);
+      int ret = releasebuffer_handle(uRgaHandle_);
+      if(ret < 0){
+          HWC2_ALOGE("RgaHandle %s releasebuffer fail, buffer_id=0x%" PRIx64, name_, uBufferId_);
+      }
+      uRgaHandle_ = 0;
+    }
+  }
+
+  uBufferId_ = buffer_id;
+  iSize_ = size;
+  name_ = name;
+  iFd_ = fd;
+  uRgaHandle_ = importbuffer_fd(fd, size);
+  if (uRgaHandle_ == 0)
+  {
+      HWC2_ALOGE("RgaHandle %s import fail, fd=%d, size=%d buffer_id=0x%" PRIx64, name, fd, size, buffer_id);
+      return 0;
+  }
+  return uRgaHandle_;
+}
+
+bool RgaHandle::isValid(){
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
+  return uRgaHandle_ != 0;
+}
 
 LayerInfoCache::LayerInfoCache(){};
 LayerInfoCache::~LayerInfoCache(){
