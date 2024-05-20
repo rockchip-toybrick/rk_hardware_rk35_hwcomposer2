@@ -2102,6 +2102,13 @@ HWC2::Error DrmHwcTwo::HwcDisplay::PresentVirtualDisplay(int32_t *retire_fence) 
 HWC2::Error DrmHwcTwo::HwcDisplay::PresentEBookDisplay(int32_t *retire_fence) {
   ATRACE_CALL();
   *retire_fence = -1;
+  // 如果电源模式是PowerOff，则不送显
+  if(mPowerMode_ != HWC2::PowerMode::On){
+    ++frame_no_;
+    return HWC2::Error::None;
+  }
+
+
   const std::shared_ptr<LayerInfoCache> info = client_layer_.GetBufferInfo();
   if(info != NULL){
 
@@ -2140,6 +2147,13 @@ HWC2::Error DrmHwcTwo::HwcDisplay::PresentEBookDisplay(int32_t *retire_fence) {
       if(finish_fence > 0){
         *retire_fence = finish_fence;
       }
+    }
+
+    // 应用在休眠模式与PowerOff模式会传递名为“EBOOK_STANDBY”或者“EBOOK_POWEROFF”图层
+    // HWC 需要在检测到目标图层后，将当前帧作为最后一帧提交至EBook驱动，直到PowerOn请求
+    // 再恢复正常显示
+    if(ebook_commit_last_frame_and_stop_){
+      ebook_stop_commit_util_power_on_ = true;
     }
 
   }
@@ -2446,6 +2460,13 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetPowerMode(int32_t mode_in) {
   HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ", mode_in=%d",handle_,mode_in);
 #ifdef USE_LIBEBOOK
   if(isEBook()){
+    mPowerMode_ = static_cast<HWC2::PowerMode>(mode_in);
+    if(mPowerMode_ == HWC2::PowerMode::On){
+      HWC2_ALOGI("EBook PowerOn, enable force update frame.");
+      ebook_stop_commit_util_power_on_ = false;
+      // 如果电源模式切换为 PowerOn，则设置强制刷新帧率为10fps，刷新10帧
+      InvalidateControl(10,10);
+    }
     return HWC2::Error::None;
   }
 #endif
@@ -2720,6 +2741,33 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateEBookDisplay(uint32_t *num_types,
     if(current_mode_ != last_mode_){
       validate_success_ = true;
     }
+
+    // 应用在休眠模式与PowerOff模式会传递名为“EBOOK_STANDBY”或者“EBOOK_POWEROFF”图层
+    // HWC 需要在检测到目标图层后，将当前帧作为最后一帧提交至EBook驱动，直到PowerOn请求
+    // 再恢复正常显示
+    ebook_commit_last_frame_and_stop_ = false;
+    // EBook特殊的电源模式切换,找到特殊的命名图层
+    for (std::pair<const hwc2_layer_t, DrmHwcTwo::HwcLayer> &l : layers_) {
+      DrmHwcTwo::HwcLayer &layer = l.second;
+      const std::shared_ptr<LayerInfoCache>
+        bufferinfo = layer.GetBufferInfo();
+      if(bufferinfo != NULL && bufferinfo->sLayerName_.empty() == false){
+        if (strstr(bufferinfo->sLayerName_.c_str(), "EBOOK_STANDBY")) {
+          HWC2_ALOGI("EBOOK STANDBY\n");
+          current_mode_ = EBOOK_FORCE_FULL;
+          ebook_commit_last_frame_and_stop_ = true;
+        } else if (strstr(bufferinfo->sLayerName_.c_str(), "EBOOK_POWEROFF")) {
+          HWC2_ALOGI("EBOOK POWEROFF\n");
+          current_mode_ = EBOOK_FORCE_FULL;
+          ebook_commit_last_frame_and_stop_ = true;
+        }
+      }
+    }
+    // 如果 EBook 停止送显，则关闭SurfaceFlinger GPU合成，目的是为了降低功耗
+    if(ebook_stop_commit_util_power_on_){
+      validate_success_ = false;
+    }
+
 
     for (std::pair<const hwc2_layer_t, DrmHwcTwo::HwcLayer> &l : layers_) {
       DrmHwcTwo::HwcLayer &layer = l.second;

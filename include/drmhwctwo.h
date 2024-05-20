@@ -901,6 +901,12 @@ class DrmHwcTwo : public hwc2_device_t {
     std::shared_ptr<EBookApi> mEBookApi_;
     EBookMode current_mode_;
     EBookMode last_mode_;
+    // 应用在休眠模式与PowerOff模式会传递名为“EBOOK_STANDBY”或者“EBOOK_POWEROFF”图层
+    // HWC 需要在检测到目标图层后，将当前帧作为最后一帧提交至EBook驱动，直到PowerOn请求
+    // 再恢复正常显示
+    bool ebook_commit_last_frame_and_stop_ = false;
+    // 停止送显直到电源模式被切换为PowerOn
+    bool ebook_stop_commit_util_power_on_ = false;
     int ebook_framebuffer_width   = 0;
     int ebook_framebuffer_height  = 0;
     int ebook_framebuffer_mmwidth = 0;
