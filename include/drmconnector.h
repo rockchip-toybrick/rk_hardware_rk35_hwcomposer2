@@ -90,6 +90,7 @@ class DrmConnector {
   int GetFramebufferInfo(int display_id, uint32_t *w, uint32_t *h, uint32_t *fps);
   int UpdateModes();
   int UpdateVrrModes();
+  int UpdatePropertys();
   int UpdateDisplayMode(int display_id, int update_base_timeline);
   int GetSuitableMode(int display_id, uint64_t max_width, uint64_t dlck);
   int UpdateBCSH(int display_id, int update_base_timeline);

@@ -124,58 +124,8 @@ int DrmConnector::Init() {
   if (ret)
     ALOGW("Could not get hue property\n");
 
-  ret = drm_->GetConnectorProperty(*this, "HDR_OUTPUT_METADATA", &hdr_metadata_property_);
-  if (ret)
-    ALOGW("Could not get hdr output metadata property\n");
-
-  ret = drm_->GetConnectorProperty(*this, "HDR_PANEL_METADATA", &hdr_panel_property_);
-  if (ret)
-    ALOGW("Could not get hdr panel metadata property\n");
-
-  // Kernel version 5.10 starts using new attribute definitions Colorspace
-  ret = drm_->GetConnectorProperty(*this, "Colorspace", &colorspace_property_);
-  if (ret){
-    ALOGW("Could not get Colorspace property, try to get hdmi_output_colorimetry property.\n");
-    // Before Kernel version 5.10 starts using old attribute definitions hdmi_output_colorimetry
-    ret = drm_->GetConnectorProperty(*this, "hdmi_output_colorimetry", &colorspace_property_);
-    if(ret){
-      ALOGW("Could not get hdmi_output_colorimetry property.\n");
-    }
-  }
-
-  // Kernel version 5.10 starts using new attribute definitions color_format
-  ret = drm_->GetConnectorProperty(*this, "color_format", &color_format_property_);
-  if (ret) {
-    ALOGW("Could not get color_format property, try to get hdmi_output_format property.\n");
-    // Before Kernel version 5.10 using old attribute definitions hdmi_output_format
-    ret = drm_->GetConnectorProperty(*this, "hdmi_output_format", &color_format_property_);
-    if(ret){
-      ALOGW("Could not get hdmi_output_format property.\n");
-    }
-  }
-
-  // Kernel version 5.10 starts using new attribute definitions color_depth
-  ret = drm_->GetConnectorProperty(*this, "color_depth", &color_depth_property_);
-  if (ret) {
-    ALOGW("Could not get color_depth property, try to get hdmi_output_depth\n");
-    // Before Kernel version 5.10 using old attribute definitions hdmi_output_depth
-    ret = drm_->GetConnectorProperty(*this, "hdmi_output_depth", &color_depth_property_);
-    if(ret){
-      ALOGW("Could not get hdmi_output_depth property\n");
-    }
-  }
-
-  // Kernel version 5.10 to get color_format_caps
-  ret = drm_->GetConnectorProperty(*this, "color_format_caps", &color_format_caps_property_);
-  if (ret) {
-    ALOGW("Could not get color_format_caps property\n");
-  }
-
-  // Kernel version 5.10 to get color_depth_caps
-  ret = drm_->GetConnectorProperty(*this, "color_depth_caps", &color_depth_caps_property_);
-  if (ret) {
-    ALOGW("Could not get color_depth_caps property\n");
-  }
+  // 更新 DrmConnector property
+  UpdatePropertys();
 
   unique_id_=0;
   ret = drm_->GetConnectorProperty(*this, "CONNECTOR_ID", &connector_id_property_);
@@ -183,24 +133,6 @@ int DrmConnector::Init() {
     ALOGW("Could not get CONNECTOR_ID property\n");
   }else{
     std::tie(ret,unique_id_) = connector_id_property_.value();
-  }
-
-  drm_->GetHdrPanelMetadata(this,&hdr_metadata_);
-  bSupportSt2084_ = drm_->is_hdr_panel_support_st2084(this);
-  bSupportHLG_    = drm_->is_hdr_panel_support_HLG(this);
-  drmHdr_.clear();
-  if(bSupportSt2084_){
-      drmHdr_.push_back(DrmHdr(DRM_HWC_HDR10,
-                        hdr_metadata_.max_display_mastering_luminance,
-                        (hdr_metadata_.max_display_mastering_luminance + hdr_metadata_.min_display_mastering_luminance) / 2,
-                        hdr_metadata_.min_display_mastering_luminance));
-  }
-
-  if(bSupportHLG_){
-      drmHdr_.push_back(DrmHdr(DRM_HWC_HLG,
-                        hdr_metadata_.max_display_mastering_luminance,
-                        (hdr_metadata_.max_display_mastering_luminance + hdr_metadata_.min_display_mastering_luminance) / 2,
-                        hdr_metadata_.min_display_mastering_luminance));
   }
 
   // Update Baseparameter Info
@@ -408,9 +340,89 @@ int DrmConnector::UpdateModes() {
   // VRR
   UpdateVrrModes();
 
+  // 更新 DrmConnector property
+  UpdatePropertys();
+
   return 0;
 }
 
+int DrmConnector::UpdatePropertys(){
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
+
+  int ret = drm_->GetConnectorProperty(*this, "HDR_OUTPUT_METADATA", &hdr_metadata_property_);
+  if (ret)
+    ALOGW("Could not get hdr output metadata property\n");
+
+  ret = drm_->GetConnectorProperty(*this, "HDR_PANEL_METADATA", &hdr_panel_property_);
+  if (ret)
+    ALOGW("Could not get hdr panel metadata property\n");
+
+  // Kernel version 5.10 starts using new attribute definitions Colorspace
+  ret = drm_->GetConnectorProperty(*this, "Colorspace", &colorspace_property_);
+  if (ret){
+    ALOGW("Could not get Colorspace property, try to get hdmi_output_colorimetry property.\n");
+    // Before Kernel version 5.10 starts using old attribute definitions hdmi_output_colorimetry
+    ret = drm_->GetConnectorProperty(*this, "hdmi_output_colorimetry", &colorspace_property_);
+    if(ret){
+      ALOGW("Could not get hdmi_output_colorimetry property.\n");
+    }
+  }
+
+  // Kernel version 5.10 starts using new attribute definitions color_format
+  ret = drm_->GetConnectorProperty(*this, "color_format", &color_format_property_);
+  if (ret) {
+    ALOGW("Could not get color_format property, try to get hdmi_output_format property.\n");
+    // Before Kernel version 5.10 using old attribute definitions hdmi_output_format
+    ret = drm_->GetConnectorProperty(*this, "hdmi_output_format", &color_format_property_);
+    if(ret){
+      ALOGW("Could not get hdmi_output_format property.\n");
+    }
+  }
+
+  // Kernel version 5.10 starts using new attribute definitions color_depth
+  ret = drm_->GetConnectorProperty(*this, "color_depth", &color_depth_property_);
+  if (ret) {
+    ALOGW("Could not get color_depth property, try to get hdmi_output_depth\n");
+    // Before Kernel version 5.10 using old attribute definitions hdmi_output_depth
+    ret = drm_->GetConnectorProperty(*this, "hdmi_output_depth", &color_depth_property_);
+    if(ret){
+      ALOGW("Could not get hdmi_output_depth property\n");
+    }
+  }
+
+  // Kernel version 5.10 to get color_format_caps
+  ret = drm_->GetConnectorProperty(*this, "color_format_caps", &color_format_caps_property_);
+  if (ret) {
+    ALOGW("Could not get color_format_caps property\n");
+  }
+
+  // Kernel version 5.10 to get color_depth_caps
+  ret = drm_->GetConnectorProperty(*this, "color_depth_caps", &color_depth_caps_property_);
+  if (ret) {
+    ALOGW("Could not get color_depth_caps property\n");
+  }
+
+  drm_->GetHdrPanelMetadata(this,&hdr_metadata_);
+  bSupportSt2084_ = drm_->is_hdr_panel_support_st2084(this);
+  bSupportHLG_    = drm_->is_hdr_panel_support_HLG(this);
+  drmHdr_.clear();
+  if(bSupportSt2084_){
+      drmHdr_.push_back(DrmHdr(DRM_HWC_HDR10,
+                        hdr_metadata_.max_display_mastering_luminance,
+                        (hdr_metadata_.max_display_mastering_luminance + hdr_metadata_.min_display_mastering_luminance) / 2,
+                        hdr_metadata_.min_display_mastering_luminance));
+  }
+
+  if(bSupportHLG_){
+      drmHdr_.push_back(DrmHdr(DRM_HWC_HLG,
+                        hdr_metadata_.max_display_mastering_luminance,
+                        (hdr_metadata_.max_display_mastering_luminance + hdr_metadata_.min_display_mastering_luminance) / 2,
+                        hdr_metadata_.min_display_mastering_luminance));
+  }
+
+
+  return 0;
+}
 int DrmConnector::UpdateVrrModes(){
 
   if(!encoder() || !(encoder()->crtc()) || encoder()->crtc()->variable_refresh_rate().id() == 0){
@@ -1512,8 +1524,8 @@ int DrmConnector::FilterColorFormatWithCaps(int inFormat){
       }
     }
   }
-  
-  HWC2_ALOGW("get color format caps failed! ret=%d, use inFormat=%d", ret, inFormat);   
+
+  HWC2_ALOGW("get color format caps failed! ret=%d, use inFormat=%d", ret, inFormat);
   return inFormat;
 }
 
@@ -1662,7 +1674,7 @@ uint8_t* DrmConnector::MakeFakeEDID(){
       sum+=buffer[i];
   }
   buffer[127]=0x100-sum;
-  
+
   return buffer;
 }
 

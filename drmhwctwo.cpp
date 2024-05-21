@@ -1427,7 +1427,6 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetHdrCapabilities(
       HdrIndex++;
   }
   *num_types = hdr_support_list.size();
-
   return HWC2::Error::None;
 }
 
