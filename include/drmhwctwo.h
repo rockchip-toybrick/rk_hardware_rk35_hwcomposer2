@@ -106,13 +106,14 @@ class DrmHwcTwo : public hwc2_device_t {
       return mCurrentState.validated_type_;
     }
     void accept_type_change() {
-      mCurrentState.sf_type_ = mCurrentState.validated_type_;
+      mDrawingState = mCurrentState;
     }
     void set_validated_type(HWC2::Composition type) {
       mCurrentState.validated_type_ = type;
     }
     bool type_changed() const {
-      return mCurrentState.sf_type_ != mCurrentState.validated_type_;
+      return (mCurrentState.sf_type_        != mCurrentState.validated_type_) ||
+             (mDrawingState.validated_type_ != mCurrentState.validated_type_);
     }
 
     uint32_t z_order() const {
@@ -553,14 +554,6 @@ class DrmHwcTwo : public hwc2_device_t {
     void EnableAfbc() { is_afbc_ = true;};
     void DisableAfbc() { is_afbc_ = false;};
     bool isAfbc() { return is_afbc_;};
-    bool StateChange() {
-      if(mCurrentState == mDrawingState){
-        return false;
-      }else{
-        mDrawingState = mCurrentState;
-        return true;
-      }
-    };
 
     bool isSidebandLayer() { return bSideband2_; }
     int getTunnelId() { return mSidebandInfo_.tunnel_id; }

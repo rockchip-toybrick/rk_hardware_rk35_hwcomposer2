@@ -1700,7 +1700,7 @@ int DrmHwcTwo::HwcDisplay::ImportBuffers() {
   // 匹配 DrmPlane 图层，请求获取 GemHandle
   bool use_client_layer = false;
   for (std::pair<const hwc2_layer_t, DrmHwcTwo::HwcLayer> &l : layers_){
-    if(l.second.sf_type() == HWC2::Composition::Client){
+    if(l.second.validated_type() == HWC2::Composition::Client){
       use_client_layer = true;
     }
     for (auto &drm_hwc_layer : drm_hwc_layers_) {
@@ -1837,7 +1837,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::CreateComposition() {
   if(atoi(value) == 0){
     ret = composition->CreateAndAssignReleaseFences(sync_timeline_);
     for (std::pair<const hwc2_layer_t, DrmHwcTwo::HwcLayer> &l : layers_){
-      if(l.second.sf_type() == HWC2::Composition::Device){
+      if(l.second.validated_type() == HWC2::Composition::Device){
         sp<ReleaseFence> rf = composition->GetReleaseFence(l.first);
         l.second.set_release_fence(rf);
       }else{
@@ -2685,7 +2685,6 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateVirtualDisplay(uint32_t *num_types,
       if(layer.type_changed()){
         ++*num_types;
       }
-      layer.StateChange();
     }
     *num_requests = 0;
 
@@ -2716,7 +2715,6 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateEBookDisplay(uint32_t *num_types,
       if(layer.type_changed()){
         ++*num_types;
       }
-      layer.StateChange();
     }
     *num_requests = 0;
 
@@ -2848,12 +2846,12 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateDisplay(uint32_t *num_types,
     if(layer.type_changed()){
       ++*num_types;
     }
-    layer.StateChange();
   }
 
   if(!client_layer_.isAfbc()){
     ++(*num_requests);
   }
+  HWC2_ALOGD_IF_VERBOSE("num_requests=%" PRIu32",num_types=%" PRIu32, *num_requests, *num_types);
   validate_success_ = true;
   return *num_types ? HWC2::Error::HasChanges : HWC2::Error::None;
 }
