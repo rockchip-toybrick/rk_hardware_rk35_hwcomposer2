@@ -105,6 +105,12 @@ int Vop3528::TryHwcPolicy(
     }
   }
 
+  if(ctx.state.setHwcPolicy.count(HWC_RGA_OVERLAY_POLICY)){
+    ret = TryRgaOverlayPolicy(composition,layers,crtc,plane_groups);
+    if(!ret)
+      return 0;
+  }
+
   // Try to match mix policy
   if(ctx.state.setHwcPolicy.count(HWC_MIX_POLICY)){
     ret = TryMixPolicy(composition,layers,crtc,plane_groups);
@@ -1829,13 +1835,6 @@ int Vop3528::TryMixPolicy(
       return 0;
     else
       return ret;
-  }
-
-
-  if(ctx.state.setHwcPolicy.count(HWC_RGA_OVERLAY_POLICY)){
-    ret = TryRgaOverlayPolicy(composition,layers,crtc,plane_groups);
-    if(!ret)
-      return 0;
   }
 
   if(ctx.state.setHwcPolicy.count(HWC_MIX_UP_POLICY)){
