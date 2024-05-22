@@ -1083,30 +1083,72 @@ int Vop3576::MatchPlane(std::vector<DrmCompositionPlane> *composition_planes,
                               continue;
                             }
                           }
-
                           // Input info
                           int input_w = (int)((*iter_layer)->source_crop.right - (*iter_layer)->source_crop.left);
                           int input_h = (int)((*iter_layer)->source_crop.bottom - (*iter_layer)->source_crop.top);
-                          if((*iter_plane)->is_support_input(input_w,input_h)){
-                            bNeed = true;
-                          }else{
-                            ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support intput (%d,%d), max_input_range is (%d,%d)",
-                                    (*iter_plane)->name(),input_w,input_h,(*iter_plane)->get_input_w_max(),(*iter_plane)->get_input_h_max());
-                            continue;
-
-                          }
 
                           // Output info
                           int output_w = (*iter_layer)->display_frame.right - (*iter_layer)->display_frame.left;
                           int output_h = (*iter_layer)->display_frame.bottom - (*iter_layer)->display_frame.top;
 
-                          if((*iter_plane)->is_support_output(output_w,output_h)){
-                            bNeed = true;
-                          }else{
-                            ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support output (%d,%d), max_input_range is (%d,%d)",
-                                    (*iter_plane)->name(),output_w,output_h,(*iter_plane)->get_output_w_max(),(*iter_plane)->get_output_h_max());
-                            continue;
+                          // RK3576 Esmar2/Esmart3 由于共用一块4K的 linebuffer, 故仅支持2k输入4K输出或4K输入2K输出
+                          // get_output_w_max < 4096 则说明驱动目前符合上述描述逻辑
+                          if(((((*iter_plane)->win_type() & PLANE_RK3576_ALL_ESMART2_MASK) > 0) ||
+                              (((*iter_plane)->win_type() & PLANE_RK3576_ALL_ESMART3_MASK) > 0)) &&
+                              (*iter_plane)->get_output_w_max() < 4096){
+                            int support_max_w = (*iter_plane)->get_input_w_max();
+                            int support_min_w = (*iter_plane)->get_output_w_max();
+                            // 输入输出判断较大值，较大值匹配硬件大分辨率支持能力，较小值匹配小分辨率支持能力
+                            if(input_w > output_w){
+                              if(input_w > support_max_w){
+                                ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support int/out (%d,%d)->(%d,%d), vop support max_range is (%d,%d)->(%d,%d)",
+                                        (*iter_plane)->name(),input_w,input_h,output_w, output_h,
+                                        (*iter_plane)->get_input_w_max(),(*iter_plane)->get_input_h_max(),
+                                        (*iter_plane)->get_output_w_max(),(*iter_plane)->get_output_h_max());
+                                continue;
+                              }
 
+                              if(output_w > support_min_w){
+                                ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support int/out (%d,%d)->(%d,%d), vop support max_range is (%d,%d)->(%d,%d)",
+                                        (*iter_plane)->name(),input_w,input_h,output_w, output_h,
+                                        (*iter_plane)->get_input_w_max(),(*iter_plane)->get_input_h_max(),
+                                        (*iter_plane)->get_output_w_max(),(*iter_plane)->get_output_h_max());
+                                continue;
+                              }
+                            }else{
+                              if(output_w > support_max_w){
+                                ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support int/out (%d,%d)->(%d,%d), vop support max_range is (%d,%d)->(%d,%d)",
+                                        (*iter_plane)->name(),input_w,input_h,output_w, output_h,
+                                        (*iter_plane)->get_input_w_max(),(*iter_plane)->get_input_h_max(),
+                                        (*iter_plane)->get_output_w_max(),(*iter_plane)->get_output_h_max());
+                                continue;
+                              }
+                              if(input_w > support_min_w){
+                                ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support int/out (%d,%d)->(%d,%d), vop support max_range is (%d,%d)->(%d,%d)",
+                                        (*iter_plane)->name(),input_w,input_h,output_w, output_h,
+                                        (*iter_plane)->get_input_w_max(),(*iter_plane)->get_input_h_max(),
+                                        (*iter_plane)->get_output_w_max(),(*iter_plane)->get_output_h_max());
+                                continue;
+                              }
+                            }
+                          }else{
+                            if((*iter_plane)->is_support_input(input_w,input_h)){
+                              bNeed = true;
+                            }else{
+                              ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support intput (%d,%d), max_input_range is (%d,%d)",
+                                      (*iter_plane)->name(),input_w,input_h,(*iter_plane)->get_input_w_max(),(*iter_plane)->get_input_h_max());
+                              continue;
+
+                            }
+
+                            if((*iter_plane)->is_support_output(output_w,output_h)){
+                              bNeed = true;
+                            }else{
+                              ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support output (%d,%d), max_input_range is (%d,%d)",
+                                      (*iter_plane)->name(),output_w,output_h,(*iter_plane)->get_output_w_max(),(*iter_plane)->get_output_h_max());
+                              continue;
+
+                            }
                           }
 
                           // Scale
@@ -1846,7 +1888,7 @@ int Vop3576::RunHwPqVideoMode(
   ssize_t layer_index = -1;
   //查找是否有适合HWPQ的图层（vp0+Cluster0-Win0）
   for(auto &comp_plane:*composition){
-    if (comp_plane.crtc()->get_port_id()==0 && 
+    if (comp_plane.crtc()->get_port_id()==0 &&
         comp_plane.plane()->win_type()==PLANE_RK3576_CLUSTER0_WIN0){
       std::vector<size_t> &source_layers = comp_plane.source_layers();
       if(source_layers.size()==1)
@@ -1894,7 +1936,7 @@ int Vop3576::RunHwPqVideoMode(
           return -1;
         }
       }
-  
+
       // 3. Set buffer Info
       dst_buffer = NULL;
       hwPqDstInfo_.mBufferInfo_.iFd_ = -1;
@@ -1960,7 +2002,7 @@ int Vop3576::RunHwPqVideoMode(
           return ret;
         }
       }
-      
+
       int output_fence = -1;
       int ret = pq_->RunHwPqAsync(&output_fence);
       if(ret){
