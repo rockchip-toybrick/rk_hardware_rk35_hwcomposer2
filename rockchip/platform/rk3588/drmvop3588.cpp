@@ -565,13 +565,6 @@ int Vop3588::TryHwcPolicy(
     }
   }
 
-  // Try to match GLES Accelerate policy
-  if(ctx.state.setHwcPolicy.count(HWC_ACCELERATE_POLICY)){
-    ret = TryAcceleratePolicy(composition,layers,crtc,plane_groups);
-    if(!ret)
-      return 0;
-  }
-
   if(ctx.state.setHwcPolicy.count(HWC_RGA_OVERLAY_POLICY)){
     ret = TryRgaOverlayPolicy(composition,layers,crtc,plane_groups);
     if(!ret)
@@ -2170,12 +2163,28 @@ int Vop3588::TryMixSidebandPolicy(
 
   std::pair<int, int> layer_indices(-1, -1);
 
-  if((int)layers.size() < 4)
-    layer_indices.first = layers.size() - 2 <= 0 ? 1 : layers.size() - 2;
-  else
-    layer_indices.first = 3;
+  // 找到 sideband 图层zpos坐标，如果存在手写，还需要考虑手写的zpos坐标
+  int sideband_index = -1;
+  for(auto& layer : layers){
+    // 手写加速策略需要考虑Sideband业务场景
+    if(layer->bSidebandStreamLayer_){
+      sideband_index = layer->iDrmZpos_;
+      continue;
+    }
+  }
 
-  layer_indices.second = layers.size() - 1;
+  // 两层及以上的手写加速图层
+  if(layers.size() >= 2){
+    // 取手写图层下一层作为 mix 初始图层
+    layer_indices.first = sideband_index + 1;
+    if(layers.size() == 2){
+      // 若只有两个图层，则取第底层作为mix图层
+      layer_indices.second = layer_indices.first;
+    }else{
+      layer_indices.second = layer_indices.first + 1;
+    }
+  }
+
   ALOGD_IF(LogLevel(DBG_DEBUG), "%s:mix sideband (%d,%d)",__FUNCTION__,layer_indices.first, layer_indices.second);
   OutputMatchLayer(layer_indices.first, layer_indices.second, layers, tmp_layers);
   int ret = MatchPlanes(composition,layers,crtc,plane_groups);
@@ -2183,7 +2192,7 @@ int Vop3588::TryMixSidebandPolicy(
     return ret;
   else{
     ResetLayerFromTmpExceptFB(layers,tmp_layers);
-    for(--layer_indices.first; layer_indices.first > 0; --layer_indices.first){
+    for(layer_indices.second++; layer_indices.second < layers.size(); layer_indices.second++){
       ResetLayerFromTmpExceptFB(layers,tmp_layers);
       ALOGD_IF(LogLevel(DBG_DEBUG), "%s:mix sideband (%d,%d)",__FUNCTION__,layer_indices.first, layer_indices.second);
       OutputMatchLayer(layer_indices.first, layer_indices.second, layers, tmp_layers);
@@ -3327,6 +3336,13 @@ int Vop3588::TryMixPolicy(
       return 0;
     else
       return ret;
+  }
+
+  // Try to match Accelerate policy
+  if(ctx.state.setHwcPolicy.count(HWC_ACCELERATE_POLICY)){
+    ret = TryAcceleratePolicy(composition,layers,crtc,plane_groups);
+    if(!ret)
+      return 0;
   }
 
   if(ctx.state.setHwcPolicy.count(HWC_MIX_SKIP_POLICY)){
