@@ -2127,22 +2127,21 @@ HWC2::Error DrmHwcTwo::HwcDisplay::PresentEBookDisplay(int32_t *retire_fence) {
         src.mBufferInfo_.uMask_ = EBookBufferMask::EB_AFBC_FORMATE;
     }
 
-    char value[PROPERTY_VALUE_MAX];
-    property_get("sys.eink.mode", value, "9");
-    EBookMode mode = static_cast<EBookMode>(atoi(value));
-
-    // 6. Commit
-    int finish_fence = -1;
-    EBookError error = mEBookApi_->Commit(&src, mode, &finish_fence);
-    if (error != EBookError::None)
-    {
-        HWC2_ALOGE("EBook RunAsync fail\n");
-        return HWC2::Error::BadDisplay;
+    if(validate_success_){
+      // 6. Commit
+      int finish_fence = -1;
+      EBookError error = mEBookApi_->Commit(&src, current_mode_, &finish_fence);
+      if (error != EBookError::None)
+      {
+          HWC2_ALOGE("EBook RunAsync fail\n");
+          return HWC2::Error::BadDisplay;
+      }
+      last_mode_ = current_mode_;
+      if(finish_fence > 0){
+        *retire_fence = finish_fence;
+      }
     }
 
-    if(finish_fence > 0){
-      *retire_fence = finish_fence;
-    }
   }
   ++frame_no_;
 
@@ -2704,13 +2703,38 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateEBookDisplay(uint32_t *num_types,
       return HWC2::Error::None;
     }
 
+    // 若存在图像更新，则认为 validate 成功，否则不送显。主要目的为了降低EBook功耗
+    validate_success_ = false;
+    for (std::pair<const hwc2_layer_t, DrmHwcTwo::HwcLayer> &l : layers_) {
+      DrmHwcTwo::HwcLayer &layer = l.second;
+      if(layer.isUpdate()){
+        validate_success_ = true;
+        break;
+      }
+    }
+
+    char value[PROPERTY_VALUE_MAX];
+    property_get("sys.eink.mode", value, "9");
+    current_mode_ = static_cast<EBookMode>(atoi(value));
+    // 如果模式发生切换则需要更新当前帧
+    if(current_mode_ != last_mode_){
+      validate_success_ = true;
+    }
+
     for (std::pair<const hwc2_layer_t, DrmHwcTwo::HwcLayer> &l : layers_) {
       DrmHwcTwo::HwcLayer &layer = l.second;
       if(layer.sf_type() == HWC2::Composition::Sideband){
         layer.set_validated_type(HWC2::Composition::Sideband);
+      }else if(layer.sf_type() != HWC2::Composition::Device){
+        layer.set_validated_type(layer.sf_type());
       }else{
-        layer.set_validated_type(HWC2::Composition::Client);
+        if(validate_success_){
+          layer.set_validated_type(HWC2::Composition::Client);
+        }else{
+          layer.set_validated_type(HWC2::Composition::Device);
+        }
       }
+      layer.resetUpdate();
       //num_types 应该为发生改变的图层，不仅仅是Client图层
       if(layer.type_changed()){
         ++*num_types;

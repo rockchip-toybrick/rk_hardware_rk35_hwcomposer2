@@ -558,6 +558,8 @@ class DrmHwcTwo : public hwc2_device_t {
     bool isSidebandLayer() { return bSideband2_; }
     int getTunnelId() { return mSidebandInfo_.tunnel_id; }
     uint64_t GetSidebandLayerFps() { return mSidebandInfo_.fps; }
+    bool isUpdate() { return bUpdate_;};
+    void resetUpdate() { bUpdate_ = false;};
 
     int calculateFPS(uint64_t buffer_id){
       // 若BufferId一致，则认为图层没有更新
@@ -566,6 +568,7 @@ class DrmHwcTwo : public hwc2_device_t {
       }
 
       uFrameCnt_++;
+      bUpdate_ = true;
       last_buffer_id_ = buffer_id;
 
       if(uLastFrameCnt_ == 0){
@@ -655,6 +658,7 @@ class DrmHwcTwo : public hwc2_device_t {
     nsecs_t lastTimeRecod_;
     nsecs_t last_buffer_id_timestamp_;
     uint64_t last_buffer_id_;
+    bool bUpdate_;
     // 考虑世界时间的fps, 1s内不刷新则刷新率为0
     float mFps_ = 0;
     // SVEP 使用的帧率估计
@@ -895,6 +899,8 @@ class DrmHwcTwo : public hwc2_device_t {
 #ifdef USE_LIBEBOOK
     // EBook
     std::shared_ptr<EBookApi> mEBookApi_;
+    EBookMode current_mode_;
+    EBookMode last_mode_;
     int ebook_framebuffer_width   = 0;
     int ebook_framebuffer_height  = 0;
     int ebook_framebuffer_mmwidth = 0;
