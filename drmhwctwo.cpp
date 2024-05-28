@@ -4154,6 +4154,13 @@ int DrmHwcTwo::HwcDisplay::UpdateSidebandMode(){
 }
 
 int DrmHwcTwo::HwcDisplay::SwitchHdrMode(){
+  // 记录当前的Mirror状态
+  if(connector_->is_connector_mirror_mode()){
+    ctx_.hdr_mode = DRM_HWC_SDR;
+    ctx_.dataspace = HAL_DATASPACE_UNKNOWN;
+    return 0;
+  }
+
   // 需要HDR模式,找到 HDR layer,判断当前采用HDR模式
   for(auto &drmHwcLayer : drm_hwc_layers_){
     if(drmHwcLayer.bYuv_){
