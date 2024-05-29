@@ -17,6 +17,10 @@
 #ifndef DRMHWC2_HAL_FORMAT_H
 #define DRMHWC2_HAL_FORMAT_H
 
+#ifdef ANDROID_P
+#include "gralloc_drm.h"
+#endif
+
 #ifdef ANDROID_S
 #include <hardware/hardware_rockchip.h>
 #endif
