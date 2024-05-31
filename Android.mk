@@ -367,22 +367,24 @@ else
     $(info Directory $(CHECKED_DIRECTORY) exists)
 endif
 
-CHECKED_DIRECTORY := hardware/rockchip/libvisionpq
-ifeq ($(wildcard $(CHECKED_DIRECTORY)),)
-    $(error Directory $(CHECKED_DIRECTORY) does not exist, Please upgrade the libvisionpq version!)
-else
-    $(info Directory $(CHECKED_DIRECTORY) exists)
-endif
-
 LOCAL_C_INCLUDES += \
-  hardware/rockchip/libpq/include \
-  hardware/rockchip/libvisionpq/lib/Android/$(TARGET_SOC_PLATFORM)/include
+  hardware/rockchip/libpq/include
 
 LOCAL_SHARED_LIBRARIES += \
 	libpq
 
 LOCAL_CFLAGS += \
 	-DUSE_LIBPQ=1
+
+CHECKED_DIRECTORY := hardware/rockchip/libvisionpq
+ifeq ($(wildcard $(CHECKED_DIRECTORY)),)
+    $(warning Directory $(CHECKED_DIRECTORY) does not exist, Please upgrade the libvisionpq version!)
+else
+    $(info Directory $(CHECKED_DIRECTORY) exists)
+    LOCAL_C_INCLUDES += \
+      $(CHECKED_DIRECTORY)/lib/Android/$(TARGET_SOC_PLATFORM)/include
+endif
+
 endif
 
 # HwProxy aidl (hw_output)
