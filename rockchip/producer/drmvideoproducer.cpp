@@ -449,7 +449,7 @@ std::shared_ptr<DrmBuffer> DrmVideoProducer::AcquireBuffer(int display_id,
 
 #ifdef USE_LIBPQ_HWPQ
     if(acquired_buffer->HasHwPqRegs()){
-      HWC2_ALOGD_IF_VERBOSE("tunnel_id=%d, display=%d, Force wait fence for HWPQ buffer");
+      HWC2_ALOGD_IF_VERBOSE("display=%d, tunnel_id=%d, Force wait fence for HWPQ buffer",display_id,tunnel_id);
       wait_fence = true;
     }
 #endif
