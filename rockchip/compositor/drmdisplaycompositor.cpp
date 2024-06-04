@@ -345,7 +345,7 @@ int DrmDisplayCompositor::SetupWritebackCommit(drmModeAtomicReqPtr pset,
     return -1;
   }
   std::shared_ptr<DrmBuffer> wbBuffer = resource_manager_->GetNextWBBuffer();
-  if(!wbBuffer->initCheck()){
+  if(wbBuffer == NULL || !wbBuffer->initCheck()){
     HWC2_ALOGE("wbBuffer init fail.");
     return -1;
   }
@@ -1865,8 +1865,10 @@ void DrmDisplayCompositor::Commit() {
       int wbDisplay = resource_manager_->GetWBDisplay();
       if(wbDisplay == display_){
         std::shared_ptr<DrmBuffer> wbBuffer = resource_manager_->GetNextWBBuffer();
-        wbBuffer->SetFinishFence(writeback_fence_);
-        writeback_fence_ = -1;
+        if(wbBuffer != NULL){
+          wbBuffer->SetFinishFence(writeback_fence_);
+          writeback_fence_ = -1;
+        }
         resource_manager_->SwapWBBuffer(frame_no_);
       }
     }else{
@@ -3618,7 +3620,7 @@ int DrmDisplayCompositor::WriteBackByRGA() {
   }
   // 获取下一帧的 WB buffer
   std::shared_ptr<DrmBuffer> dst_buffer = resource_manager_->GetNextWBBuffer();
-  if(!dst_buffer->initCheck()){
+  if(dst_buffer == NULL || !dst_buffer->initCheck()){
     HWC2_ALOGE("wbBuffer init fail.");
     return -1;
   }
@@ -4023,7 +4025,12 @@ int DrmDisplayCompositor::WriteBackByRGA() {
     if(wbDisplay == display_){
       std::shared_ptr<DrmBuffer> wbBuffer = resource_manager_->GetNextWBBuffer();
       if(releaseFence > 0){
-        wbBuffer->SetFinishFence(releaseFence);
+        if(wbBuffer != NULL){
+          wbBuffer->SetFinishFence(releaseFence);
+        }else{
+          close(releaseFence);
+          releaseFence = -1;
+        }
       }
       resource_manager_->SwapWBBuffer(frame_no_);
     }
