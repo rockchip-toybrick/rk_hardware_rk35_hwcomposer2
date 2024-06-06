@@ -185,6 +185,8 @@ typedef struct StateContext{
   // rga policy
   bool bRgaPolicyEnable=false;
 
+  bool fbUseAfbc = false;
+
   int iVopMaxOverlay4KPlane=0;
 
   char accelerate_app_name[100];

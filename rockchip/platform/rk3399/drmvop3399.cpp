@@ -530,6 +530,9 @@ void Vop3399::ResetPlaneGroups(std::vector<PlaneGroup *> &plane_groups){
 void Vop3399::ResetLayer(std::vector<DrmHwcLayer*>& layers){
     for (auto &drmHwcLayer : layers){
       drmHwcLayer->bMatch_ = false;
+      if(drmHwcLayer->bFbTarget_){
+          drmHwcLayer->bAfbcd_ = ctx.state.fbUseAfbc;
+      }
     }
     return;
 }
@@ -1735,6 +1738,7 @@ void Vop3399::InitStateContext(
       if(ctx.state.bDisableFBAfbcd){
         layer->bAfbcd_ = 0;
       }
+      ctx.state.fbUseAfbc = layer->bAfbcd_;
       break;
     }
   }

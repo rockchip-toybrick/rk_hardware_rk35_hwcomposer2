@@ -144,6 +144,8 @@ typedef struct StateContext{
   int iSocId=0;
   std::set<ComposeMode> setHwcPolicy;
 
+  bool fbUseAfbc = false;
+
   // GLES accelerate
   char accelerate_app_name[100];
 

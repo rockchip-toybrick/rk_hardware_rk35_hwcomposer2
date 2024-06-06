@@ -115,6 +115,8 @@ typedef struct StateContext{
   bool bDisableFBAfbcd=false;
   bool bRgaPolicyEnable=false;
 
+  bool fbUseAfbc = false;
+
   int iDisplayWidth_=0;
   int iDisplayHeight_=0;
 

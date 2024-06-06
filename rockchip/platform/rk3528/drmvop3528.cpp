@@ -801,6 +801,9 @@ void Vop3528::ResetPlaneGroups(std::vector<PlaneGroup *> &plane_groups){
 void Vop3528::ResetLayer(std::vector<DrmHwcLayer*>& layers){
     for (auto &drmHwcLayer : layers){
       drmHwcLayer->bMatch_ = false;
+      if(drmHwcLayer->bFbTarget_){
+          drmHwcLayer->bAfbcd_ = ctx.state.fbUseAfbc;
+      }
     }
     return;
 }
@@ -2221,6 +2224,11 @@ void Vop3528::InitStateContext(
 
   // FB-target need disable AFBCD?
   ctx.state.bDisableFBAfbcd = true;
+  for(auto &layer : layers){
+    if(layer->bFbTarget_){
+        ctx.state.fbUseAfbc = layer->bAfbcd_;
+    }
+  }
   return;
 }
 
