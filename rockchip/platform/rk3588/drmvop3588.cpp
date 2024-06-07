@@ -1615,9 +1615,9 @@ void Vop3588::OutputMatchLayer(int iFirst, int iLast,
                                           std::vector<DrmHwcLayer *>& layers,
                                           std::vector<DrmHwcLayer *>& tmp_layers){
 
-  if(iFirst < 0 || iLast < 0 || iFirst > iLast)
+  if(iFirst < 0 || iLast < 0 || iFirst > iLast || (layers.size()-1-iLast) < 0)
   {
-      HWC2_ALOGD_IF_DEBUG("invalid value iFirst=%d, iLast=%d", iFirst, iLast);
+      HWC2_ALOGD_IF_DEBUG("invalid value iFirst=%d, iLast=%d layer.size=%zu ", iFirst, iLast, layers.size());
       return;
   }
 
@@ -2291,14 +2291,14 @@ int Vop3588::TryMixSidebandPolicy(
   else{
     ResetLayerFromTmpExceptFB(layers,tmp_layers);
     for(layer_indices.second++; layer_indices.second < layers.size(); layer_indices.second++){
-      ResetLayerFromTmpExceptFB(layers,tmp_layers);
       ALOGD_IF(LogLevel(DBG_DEBUG), "%s:mix sideband (%d,%d)",__FUNCTION__,layer_indices.first, layer_indices.second);
       OutputMatchLayer(layer_indices.first, layer_indices.second, layers, tmp_layers);
       ret = MatchPlanes(composition,layers,crtc,plane_groups);
       if(!ret)
         return ret;
       else{
-        ResetLayerFromTmp(layers,tmp_layers);
+        ResetLayerFromTmpExceptFB(layers,tmp_layers);
+        continue;
      }
    }
  }

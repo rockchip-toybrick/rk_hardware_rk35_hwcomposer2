@@ -1517,9 +1517,9 @@ void Vop356x::OutputMatchLayer(int iFirst, int iLast,
                                           std::vector<DrmHwcLayer *>& layers,
                                           std::vector<DrmHwcLayer *>& tmp_layers){
 
-  if(iFirst < 0 || iLast < 0 || iFirst > iLast)
+  if(iFirst < 0 || iLast < 0 || iFirst > iLast || (layers.size()-1-iLast) < 0)
   {
-      ALOGE("invalid value iFirst=%d, iLast=%d", iFirst, iLast);
+      HWC2_ALOGD_IF_DEBUG("invalid value iFirst=%d, iLast=%d layer.size=%zu ", iFirst, iLast, layers.size());
       return;
   }
 
