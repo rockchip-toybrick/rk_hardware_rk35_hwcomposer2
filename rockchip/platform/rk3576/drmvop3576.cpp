@@ -1091,6 +1091,11 @@ int Vop3576::MatchPlane(std::vector<DrmCompositionPlane> *composition_planes,
                               (*iter_plane)->get_output_w_max() < 4096){
                             int support_max_w = (*iter_plane)->get_input_w_max();
                             int support_min_w = (*iter_plane)->get_output_w_max();
+                            if(input_w < 4 || input_h < 4 || output_w < 4 || output_h < 4){
+                                ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support int/out (%d,%d)->(%d,%d), vop support min_range is (4x4) => (4x4)",
+                                        (*iter_plane)->name(),input_w,input_h,output_w, output_h);
+                                continue;
+                            }
                             // 输入输出判断较大值，较大值匹配硬件大分辨率支持能力，较小值匹配小分辨率支持能力
                             if(input_w > output_w){
                               if(input_w > support_max_w){

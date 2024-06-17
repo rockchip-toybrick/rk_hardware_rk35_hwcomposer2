@@ -1164,7 +1164,6 @@ int Vop3588::MatchPlane(std::vector<DrmCompositionPlane> *composition_planes,
                             ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support intput (%d,%d), max_input_range is (%d,%d)",
                                     (*iter_plane)->name(),input_w,input_h,(*iter_plane)->get_input_w_max(),(*iter_plane)->get_input_h_max());
                             continue;
-
                           }
 
                           // Output info
