@@ -118,6 +118,7 @@ void InvalidateWorker::Routine() {
       return;
     }
   }
+  Unlock();
 
   int64_t timestamp;
   ret = SyntheticWaitVBlank(&timestamp);
@@ -127,6 +128,7 @@ void InvalidateWorker::Routine() {
     return;
   }
 
+  Lock();
   last_timestamp_ = timestamp;
 
   bool enable = (refresh_cnt_ > 0 || refresh_cnt_ < 0);
