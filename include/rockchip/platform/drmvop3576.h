@@ -382,6 +382,7 @@ struct SvepXml{
     std::shared_ptr<Pq> pq_ = NULL;
     uint64_t lastHwPqBufferId = 0;
     sp<AcquireFence> lastHwPqAcquireFence = NULL;
+    bool lastHwPqUseNewBuffer = false;
 #endif
 #ifdef USE_LIBSR
   // SR

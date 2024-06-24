@@ -2063,7 +2063,13 @@ int Vop3576::RunHwPqVideoMode(
       // 6. Update Layer info
       drmLayer->acquire_fence = sp<AcquireFence>(new AcquireFence(output_fence));
 
+      lastHwPqBufferId = drmLayer->uBufferId_;
+      lastHwPqReg_ = drmLayer->hwPqReg_;
+      lastHwPqAcquireFence = drmLayer->acquire_fence;
+
       if(dst_buffer != NULL){
+        lastHwPqUseNewBuffer = true;
+
         dst_buffer->SetFinishFence(dup(output_fence));
         hwPqBufferQueue_->QueueBuffer(dst_buffer);
 
@@ -2099,17 +2105,19 @@ int Vop3576::RunHwPqVideoMode(
           dst_buffer->WaitFinishFence();
           dst_buffer->DumpData();
         }
+      }else{
+        lastHwPqUseNewBuffer = false;
       }
-
-      lastHwPqReg_ = drmLayer->hwPqReg_;
-      lastHwPqBufferId = drmLayer->uBufferId_;
-      lastHwPqAcquireFence = drmLayer->acquire_fence;
 
       return 0;
 
     }else{//Use last buffer
 
-      dst_buffer = hwPqBufferQueue_->BackDrmBuffer();
+      if(lastHwPqUseNewBuffer)
+        dst_buffer = hwPqBufferQueue_->BackDrmBuffer();
+      else{
+        dst_buffer = NULL;
+      }
 
       if(dst_buffer != NULL){
         hwc_frect_t source_crop;
