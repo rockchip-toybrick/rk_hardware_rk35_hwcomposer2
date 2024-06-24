@@ -51,8 +51,6 @@
  */
 
 #define LOG_TAG "drmgralloc4"
-#define ENABLE_DEBUG_LOG
-#include <custom_log.h>
 
 #include <inttypes.h>
 
