@@ -137,7 +137,7 @@ int DrmBaseparameter::UpdateConnectorBaseInfo(unsigned int connector_type,
   output.appendFormat("     GAMMA: Size=%d\n",info->gamma_lut_data.size);
   output.appendFormat("     3DLUT: Size=%d\n",info->cubic_lut_data.size);
 
-  ALOGI("%s",output.string());
+  ALOGI("%s",output.c_str());
   return 0;
 }
 
@@ -181,7 +181,7 @@ int DrmBaseparameter::DumpConnectorBaseInfo(unsigned int connector_type,
   output.appendFormat("     GAMMA: Size=%d\n",info->gamma_lut_data.size);
   output.appendFormat("     3DLUT: Size=%d\n",info->cubic_lut_data.size);
 
-  ALOGI("%s",output.string());
+  ALOGI("%s",output.c_str());
   return 0;
 }
 
@@ -215,7 +215,7 @@ int DrmBaseparameter::SetScreenInfo(unsigned int connector_type,
                       info[index].resolution.vsync_start,info[index].resolution.vsync_end,
                       info[index].resolution.vtotal,info[index].resolution.flags,
                       info[index].resolution.clock);
-  ALOGI("%s",output.string());
+  ALOGI("%s",output.c_str());
   return ret;
 }
 }

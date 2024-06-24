@@ -69,7 +69,7 @@ static inline long __currentTime(){
       String8 output; \
       for(auto &drmHwcLayer : drmHwcLayers) {\
         drmHwcLayer.DumpInfo(output); \
-        ALOGD_IF(LogLevel(log_level),"%s",output.string()); \
+        ALOGD_IF(LogLevel(log_level),"%s",output.c_str()); \
         output.clear(); \
       }\
     }
@@ -291,7 +291,7 @@ void DrmHwcTwo::Dump(uint32_t *size, char *buffer) {
     if((map_disp.second.DumpDisplayInfo(output)) < 0)
       continue;
   }
-  mDumpString = output.string();
+  mDumpString = output;
   *size = static_cast<uint32_t>(mDumpString.size());
   return;
 }
@@ -3258,21 +3258,21 @@ int DrmHwcTwo::HwcDisplay::DumpDisplayLayersInfo(){
               "------+-----+-----------+-----------+--------------------+-------------+------------+--------------------------------+------------------------+------------+--------+------------\n"
               "  id  |  z  |  sf-type  |  hwc-type |       handle       |  transform  |    blnd    |     source crop (l,t,r,b)      |          frame         | dataspace  |  mFps  | name       \n"
               "------+-----+-----------+-----------+--------------------+-------------+------------+--------------------------------+------------------------+------------+--------+------------\n");
-  ALOGD("%s",output.string());
+  ALOGD("%s",output.c_str());
   for (uint32_t z_order = 0; z_order <= layers_.size(); z_order++) {
     for (auto &map_layer : layers_) {
       HwcLayer &layer = map_layer.second;
       if(layer.z_order() == z_order){
         output.clear();
         layer.DumpLayerInfo(output);
-        ALOGD("%s",output.string());
+        ALOGD("%s",output.c_str());
         break;
       }
     }
   }
   output.clear();
   output.append("------+-----+-----------+-----------+--------------------+-------------+------------+--------------------------------+------------------------+------------+--------+------------\n");
-  ALOGD("%s",output.string());
+  ALOGD("%s",output.c_str());
   return 0;
 }
 int DrmHwcTwo::HwcDisplay::DumpAllLayerData(){
