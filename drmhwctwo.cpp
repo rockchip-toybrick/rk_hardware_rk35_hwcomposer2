@@ -3596,11 +3596,17 @@ int DrmHwcTwo::HwcDisplay::EnableMetadataHdrMode(DrmHwcLayer& hdrLayer){
   // 用于判断是否存在 metadata 信息
   bool codec_meta_exist = false;
   buffer_handle_t hdr_handle = NULL;
+  int hdr_width = 0;
+  int hdr_height = 0;
   // 如果使用了RGA预缩小，则需要从旧的 handle 中获取 metadata 信息
   if(hdrLayer.bUseRga_){
     hdr_handle = hdrLayer.storeLayerInfo_.sf_handle;
+    hdr_width = hdrLayer.storeLayerInfo_.iWidth_;
+    hdr_height = hdrLayer.storeLayerInfo_.iHeight_;
   }else{
     hdr_handle = hdrLayer.sf_handle;
+    hdr_width = hdrLayer.iWidth_;
+    hdr_height = hdrLayer.iHeight_;
   }
   // 获取存储 metadata 信息的offset
   int64_t offset = gralloc->hwc_get_offset_of_dynamic_hdr_metadata(hdr_handle);
@@ -3653,7 +3659,7 @@ int DrmHwcTwo::HwcDisplay::EnableMetadataHdrMode(DrmHwcLayer& hdrLayer){
   void *cpu_addr = NULL;
   if(codec_meta_exist){
     // 获取Medata地址
-    cpu_addr = gralloc->hwc_get_handle_lock(hdr_handle, hdrLayer.iWidth_, hdrLayer.iHeight_);
+    cpu_addr = gralloc->hwc_get_handle_lock(hdr_handle, hdr_width, hdr_height);
     if(cpu_addr == NULL){
       HWC2_ALOGD_IF_ERR("Fail to lock dma buffer, Id=%d Name=%s ", hdrLayer.uId_, hdrLayer.sLayerName_.c_str());
       hdrLayer.metadataHdrParam_.codec_meta_exist = false;
