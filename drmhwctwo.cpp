@@ -4931,6 +4931,9 @@ int DrmHwcTwo::HwcLayer::DoHwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_dr
         src.mCrop_.iRight_ = (int)drmHwcLayer->source_crop.right;
         src.mCrop_.iBottom_= (int)drmHwcLayer->source_crop.bottom;
 
+        src.iMetaDataFd_ = -1;
+        src.iMetaDataSize_ = 0;
+        src.iMetaDataOffset_ = 0;
 
         // 2. Alloc Dst HwPqReg
         HwPqImageInfo dst;

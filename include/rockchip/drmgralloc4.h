@@ -135,6 +135,8 @@ int get_buffer_id(buffer_handle_t handle, uint64_t* buffer_id);
 
 int64_t get_video_metadata_offset(buffer_handle_t handle);
 
+int64_t get_pq_metadata_offset(buffer_handle_t handle);
+
 using android::status_t;
 
 status_t importBuffer(buffer_handle_t rawHandle, buffer_handle_t* outHandle);

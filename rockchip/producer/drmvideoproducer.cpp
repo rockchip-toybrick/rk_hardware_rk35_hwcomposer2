@@ -320,7 +320,22 @@ std::shared_ptr<DrmBuffer> DrmVideoProducer::DoHwPq(std::shared_ptr<VpContext> c
   src.mCrop_.iTop_   = (int)top;
   src.mCrop_.iRight_ = (int)right;
   src.mCrop_.iBottom_= (int)bottom;
+
+  src.iMetaDataFd_ = -1;
+  src.iMetaDataSize_ = 0;
+  src.iMetaDataOffset_ = 0;
+
   // src.mVirtualAddress_ = buffer->Lock();
+  DrmGralloc* gralloc = DrmGralloc::getInstance();
+  if(gralloc == NULL){
+    HWC2_ALOGD_IF_INFO("DrmGralloc is null, Can not get PQ Metadata");
+  }else{
+    src.iMetaDataOffset_ = gralloc->hwc_get_offset_of_pq_metadata(buffer->GetHandle());
+    if(src.iMetaDataOffset_>0){
+      src.iMetaDataFd_ = buffer->GetFd();
+      src.iMetaDataSize_ = buffer->GetSize();
+    }
+  }
 
   HwPqImageInfo dst;
   dst.mBufferInfo_.iFd_ = -1;

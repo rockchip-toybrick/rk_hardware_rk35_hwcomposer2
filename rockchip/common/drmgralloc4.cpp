@@ -272,6 +272,8 @@ static android::status_t decodeRkOffsetOfVideoMetadata(const hidl_vec<uint8_t>& 
 #define GRALLOC_RK_METADATA_TYPE_NAME "rk.graphics.RkMetadataType"
 const static IMapper::MetadataType RkMetadataType_OFFSET_OF_DYNAMIC_HDR_METADATA{ GRALLOC_RK_METADATA_TYPE_NAME,
 										  OFFSET_OF_DYNAMIC_HDR_METADATA };
+/* 直接将 hdr_metadata_buffer 扩展为 pq_metadata_buffer. */
+#define RkMetadataType_OFFSET_OF_PQ_METADATA RkMetadataType_OFFSET_OF_DYNAMIC_HDR_METADATA
 #endif
 
 int64_t get_video_metadata_offset(buffer_handle_t handle)
@@ -281,6 +283,18 @@ int64_t get_video_metadata_offset(buffer_handle_t handle)
 
   /* 获取 format_modifier. */
   int err = get_metadata(mapper, handle, RkMetadataType_OFFSET_OF_DYNAMIC_HDR_METADATA, decodeRkOffsetOfVideoMetadata, &offset);
+  assert(err == android::NO_ERROR);
+
+  return offset;
+}
+
+int64_t get_pq_metadata_offset(buffer_handle_t handle)
+{
+  auto &mapper = get_service();
+  int64_t offset = 0;
+
+  /* 获取 format_modifier. */
+  int err = get_metadata(mapper, handle, RkMetadataType_OFFSET_OF_PQ_METADATA, decodeRkOffsetOfVideoMetadata, &offset);
   assert(err == android::NO_ERROR);
 
   return offset;

@@ -198,6 +198,7 @@ public:
   uint32_t hwc_get_fourcc_from_hal_format(int hal_format, uint64_t modifier = 0);
 
   int64_t hwc_get_offset_of_dynamic_hdr_metadata(buffer_handle_t hnd);
+  int64_t hwc_get_offset_of_pq_metadata(buffer_handle_t hnd);
 
   bool is_yuv_format(int hal_format, uint32_t fourcc_format);
 

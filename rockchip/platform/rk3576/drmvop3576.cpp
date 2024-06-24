@@ -1975,6 +1975,23 @@ int Vop3576::RunHwPqVideoMode(
       src.mBufferInfo_.uBufferId_ = drmLayer->uBufferId_;
       src.mBufferInfo_.uDataSpace_ = (uint64_t)drmLayer->eDataSpace_;
 
+      src.iMetaDataFd_ = -1;
+      src.iMetaDataSize_ = 0;
+      src.iMetaDataOffset_ = 0;
+
+      DrmGralloc* gralloc = DrmGralloc::getInstance();
+      if(gralloc == NULL){
+        HWC2_ALOGD_IF_INFO("DrmGralloc is null, Can not get PQ Metadata");
+      }else{
+        src.iMetaDataOffset_ = gralloc->hwc_get_offset_of_pq_metadata(drmLayer->sf_handle);
+        if(src.iMetaDataOffset_>0){
+          src.iMetaDataFd_ = drmLayer->iFd_;
+          src.iMetaDataSize_ = drmLayer->iSize_;
+          HWC2_ALOGD_IF_DEBUG("Pq metadata:fd=%d offset=%" PRIi64" size=%" PRIi64,src.iMetaDataFd_,
+                              src.iMetaDataOffset_, src.iMetaDataSize_);
+        }
+      }
+
       src.mCrop_.iLeft_  = (int)drmLayer->source_crop.left;
       src.mCrop_.iTop_   = (int)drmLayer->source_crop.top;
       src.mCrop_.iRight_ = (int)drmLayer->source_crop.right;

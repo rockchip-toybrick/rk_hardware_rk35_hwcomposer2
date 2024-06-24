@@ -912,6 +912,34 @@ int64_t DrmGralloc::hwc_get_offset_of_dynamic_hdr_metadata(buffer_handle_t hnd){
   return offset;
 }
 
+int64_t DrmGralloc::hwc_get_offset_of_pq_metadata(buffer_handle_t hnd){
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
+  int64_t offset = -1;
+#if USE_GRALLOC_4
+  offset = gralloc4::get_pq_metadata_offset(hnd);
+  return offset;
+#else // #if USE_GRALLOC_4
+  //Gralloc4中pq meta的Offset与HDR的是同一个，gralloc0.3暂时就直接用HDR的，后续支持上来如果不兼容再改
+	int ret = 0;
+	int op = GRALLOC_MODULE_PERFORM_GET_OFFSET_OF_DYNAMIC_HDR_METADATA;
+  HWC2_ALOGD_IF_DEBUG("TODO: Gralloc0.3 Fallback to use HDR MetaData");
+	if(gralloc_ && gralloc_->perform)
+	{
+		ret = gralloc_->perform(gralloc_, op, hnd, &offset);
+	}
+	else
+	{
+		ret = -EINVAL;
+	}
+
+	if(ret != 0)
+	{
+		ALOGE("%s: cann't get dynamic_hdr_metadata", __FUNCTION__);
+	}
+#endif
+  return offset;
+}
+
 #ifdef RK3528
 int DrmGralloc::lock_rkvdec_scaling_metadata(buffer_handle_t hnd, metadata_for_rkvdec_scaling_t** metadata)
 {
