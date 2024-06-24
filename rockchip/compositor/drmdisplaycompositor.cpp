@@ -2914,7 +2914,7 @@ int DrmDisplayCompositor::CollectVPInfo() {
       if(layer.bSidebandStreamLayer_){
         DrmVideoProducer* dvp = DrmVideoProducer::getInstance();
 
-        ret = dvp->CreateConnection(display_, layer.iTunnelId_);
+        ret = dvp->CreateConnection(display_, layer.iTunnelId_, layer.eDataSpace_);
         if(ret < 0){
           HWC2_ALOGI("SidebandStream: display-id=%d CreateConnection fail, iTunnelId = %d",
                      display_, layer.iTunnelId_);
