@@ -5018,18 +5018,12 @@ int DrmHwcTwo::HwcLayer::DoHwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_dr
                                                   dst_buffer->GetGemHandle(),
                                                   drmHwcLayer->transform);
         }
-        if(drmHwcLayer->acquire_fence->isValid()){
-          ret = drmHwcLayer->acquire_fence->wait(1500);
-          if(ret){
-            HWC2_ALOGE("wait Fb-Target 1500ms timeout, ret=%d",ret);
-            drmHwcLayer->bUsePq_ = false;
-            if(dst_buffer != NULL)
-              bufferQueue_->QueueBuffer(dst_buffer);
-            return ret;
-          }
-        }
         int output_fence = -1;
-        ret = hwpq_->RunHwPqAsync(&output_fence);
+        int acquire_fence = -1;
+        if(drmHwcLayer->acquire_fence->isValid()){
+          acquire_fence = dup(drmHwcLayer->acquire_fence->getFd());
+        }
+        ret = hwpq_->RunHwPqAsync(&output_fence, acquire_fence);
         if(ret){
           HWC2_ALOGE("RunHwPqAsync fail! ret = %d", ret);
           drmHwcLayer->bUsePq_ = false;
