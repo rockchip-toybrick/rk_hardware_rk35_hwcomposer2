@@ -296,6 +296,38 @@ int VpContext::CloseAcquireFence(uint64_t buffer_id){
   return -1;
 }
 
+int VpContext::DupAcquireFence(uint64_t buffer_id){
+  std::lock_guard<std::mutex> lock(mtx_);
+  if(mMapBuffer_.count(buffer_id)){
+    auto &buffer_info = mMapBuffer_[buffer_id];
+    return buffer_info->DupAcquireFence();
+  }
+  return -1;
+}
+
+int VpContext::SetPqAcquireFence(uint64_t buffer_id, int fence_fd){
+  std::lock_guard<std::mutex> lock(mtx_);
+  if(fence_fd<=0)
+    return 0;
+  if(mMapBuffer_.count(buffer_id)){
+    sp<AcquireFence> acquire_fence = sp<AcquireFence>(new AcquireFence(fence_fd));
+    auto &buffer_info = mMapBuffer_[buffer_id];
+    buffer_info->SetPqAcqurieFence(acquire_fence);
+    return 0;
+  }
+  return -1;
+}
+
+int VpContext::WaitPqAcquireFence(uint64_t buffer_id, int time){
+  std::lock_guard<std::mutex> lock(mtx_);
+  if(mMapBuffer_.count(buffer_id)){
+    auto &buffer_info = mMapBuffer_[buffer_id];
+    int ret = buffer_info->WaitPqAcquireFence(time);
+    return ret;
+  }
+  return -1;
+}
+
 void VpContext::PrintReleaseFailedBuffer(){
     if(mReleaseFailedBuffer_.size()==0)
       return;

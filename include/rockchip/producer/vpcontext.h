@@ -131,6 +131,29 @@ public:
     return 0;
   }
 
+  int DupAcquireFence(){
+    std::lock_guard<std::mutex> lock(mtx_);
+    if(mAcquireFence_ && mAcquireFence_->isValid()){
+      return dup(mAcquireFence_->getFd());
+    }
+    return -1;
+  }
+
+  void SetPqAcqurieFence(sp<AcquireFence> acquireFence){
+    std::lock_guard<std::mutex> lock(mtx_);
+    //HWC2_ALOGD_IF_DEBUG("set");
+    mPqReleaseFence_=acquireFence;
+  }
+
+  int WaitPqAcquireFence(int timeout){
+    std::lock_guard<std::mutex> lock(mtx_);
+    if(mPqReleaseFence_ && mPqReleaseFence_->isValid()){
+      //HWC2_ALOGD_IF_DEBUG("wait for %d ms",timeout);
+      return mPqReleaseFence_->wait(timeout);
+    }
+    return 0;
+  }
+
   int PrintTimestamp(int display_id){
     std::lock_guard<std::mutex> lock(mtx_);
     struct timespec ts;
@@ -152,6 +175,7 @@ private:
   std::shared_ptr<DrmBuffer> mDrmBuffer_;
   sp<ReleaseFence> mReleaseFence_;
   sp<AcquireFence> mAcquireFence_;
+  sp<AcquireFence> mPqReleaseFence_ = AcquireFence::NO_FENCE;
   std::set<int> mReleaseRefCnt_;
   mutable std::mutex mtx_;
 };
@@ -200,7 +224,10 @@ public:
   int SetAcquireFence(uint64_t buffer_id, int fence_fd);
   int WaitAcquireFence(uint64_t buffer_id, int time);
   int CloseAcquireFence(uint64_t buffer_id);
+  int DupAcquireFence(uint64_t buffer_id);
 
+  int SetPqAcquireFence(uint64_t buffer_id, int fence_fd);
+  int WaitPqAcquireFence(uint64_t buffer_id, int time);
   std::list<std::shared_ptr<DrmBuffer>> lBuffer_;
 
   void SetProducerFps(float fps){

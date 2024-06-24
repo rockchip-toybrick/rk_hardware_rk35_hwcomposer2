@@ -381,16 +381,10 @@ std::shared_ptr<DrmBuffer> DrmVideoProducer::DoHwPq(std::shared_ptr<VpContext> c
         ctx->GetTunnelId(), buffer->GetExternalId(), ret);
     return NULL;
   }
-  //pq前需要等待AcquireFence
-  ret = ctx->WaitAcquireFence(buffer->GetExternalId(),3000);
-  if(ret){
-    HWC2_ALOGE("tunnel_id=%d, buffer_id=0x%" PRIx64" buffer not signaled after 3000ms, ret = %d",
-        ctx->GetTunnelId(), buffer->GetExternalId(), ret);
-    return NULL;
-  }
+
   //执行PQ
   int output_fence = -1;
-  ret = hwpq_->RunHwPqAsync(&output_fence);
+  ret = hwpq_->RunHwPqAsync(&output_fence, ctx->DupAcquireFence(buffer->GetExternalId()));
   if(ret){
     HWC2_ALOGE("tunnel_id=%d, buffer_id=0x%" PRIx64" .hwPq Run fail ret = %d",
         ctx->GetTunnelId(), buffer->GetExternalId(), ret);
@@ -541,6 +535,11 @@ void DrmVideoProducer::Routine(){
     while(ctx->lBuffer_.size()>0){
       //Signal Release Fence 
       uint64_t buffer_id = ctx->lBuffer_.front()->GetExternalId();
+
+      if(ctx->WaitPqAcquireFence(buffer_id,1500)){
+        HWC2_ALOGE("tunnel_id=%d Wait Pq AcquireFence 1500ms Failed!", ctx->GetTunnelId());
+      }
+
       ctx->SignalReleaseFence(-1, buffer_id);
 
       ctx->lBuffer_.pop_front();
@@ -696,6 +695,9 @@ void DrmVideoProducer::Routine(){
       uint64_t buffer_id = ctx->lBuffer_.front()->GetExternalId();
 
       //Signal Release Fence 
+      if(ctx->WaitPqAcquireFence(buffer_id,1500)){
+        HWC2_ALOGE("tunnel_id=%d Wait Pq AcquireFence 1500ms Failed!", ctx->GetTunnelId());
+      }
       ctx->SignalReleaseFence(-1, buffer_id);
 
       ctx->lBuffer_.pop_front();

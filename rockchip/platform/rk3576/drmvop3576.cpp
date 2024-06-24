@@ -2044,19 +2044,15 @@ int Vop3576::RunHwPqVideoMode(
           hwPqBufferQueue_->QueueBuffer(dst_buffer);
         return ret;
       }
-      // 5. Wait AcquireFence and Do Pq
+      // 5. Run HWPQ
+      int output_fence = -1;
+      int acquire_fence = -1;
+
       if(drmLayer->acquire_fence->isValid()){
-        ret = drmLayer->acquire_fence->wait(1500);
-        if(ret){
-          HWC2_ALOGE("wait layer:%s 1500ms timeout, ret=%d",drmLayer->sLayerName_.c_str(),ret);
-          if(dst_buffer != NULL)
-            hwPqBufferQueue_->QueueBuffer(dst_buffer);
-          return ret;
-        }
+        acquire_fence = dup(drmLayer->acquire_fence->getFd());
       }
 
-      int output_fence = -1;
-      int ret = pq_->RunHwPqAsync(&output_fence);
+      int ret = pq_->RunHwPqAsync(&output_fence, acquire_fence);
       if(ret){
         HWC2_ALOGE("RunHwPqAsync fail! ret = %d", ret);
         if(dst_buffer != NULL)
