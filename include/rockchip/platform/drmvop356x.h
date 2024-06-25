@@ -142,12 +142,14 @@ typedef struct StateContext{
 
   // Soc id
   int iSocId=0;
+  int iDisplayId = 0;
   std::set<ComposeMode> setHwcPolicy;
 
   bool fbUseAfbc = false;
 
   // GLES accelerate
   char accelerate_app_name[100];
+  bool last_accelerate_status = false;
 
   // resolution mode
   int iDisplayWidth_;

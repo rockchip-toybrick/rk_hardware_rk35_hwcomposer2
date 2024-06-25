@@ -1406,6 +1406,19 @@ int Vop356x::MatchPlanes(
     }
     zpos++;
   }
+  if(ctx.state.iDisplayId == 0){
+    bool is_accelerate_matched = false;
+    if(ctx.request.accelerate_app_exist_){
+      for(auto &layer:layers){
+        if(layer->bAccelerateLayer_ && layer->bMatch_)
+          is_accelerate_matched = true;
+      }
+    }
+    if(ctx.state.last_accelerate_status != is_accelerate_matched){
+      ctx.state.last_accelerate_status = is_accelerate_matched;
+      property_set("vendor.hwc.accelerate_matched",is_accelerate_matched?"1":"0");
+    }
+  }
   return 0;
 }
 int  Vop356x::GetPlaneGroups(DrmCrtc *crtc, std::vector<PlaneGroup *>&out_plane_groups){
@@ -2843,6 +2856,7 @@ void Vop356x::InitStateContext(
   ALOGI_IF(LogLevel(DBG_DEBUG),"%s,line=%d bMultiAreaEnable=%d, bMultiAreaScaleEnable=%d",
             __FUNCTION__,__LINE__,ctx.state.bMultiAreaEnable,ctx.state.bMultiAreaScaleEnable);
 
+  ctx.state.iDisplayId = crtc->display();
   DrmDevice *drm = crtc->getDrmDevice();
   DrmConnector *conn = drm->GetConnectorForDisplay(crtc->display());
 

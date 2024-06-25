@@ -190,6 +190,7 @@ typedef struct StateContext{
   int iVopMaxOverlay4KPlane=0;
 
   char accelerate_app_name[100];
+  bool last_accelerate_status = false;
 
   // Video state
   bool bLargeVideo=false;
@@ -198,6 +199,7 @@ typedef struct StateContext{
 
   // Soc id
   int iSocId=0;
+  int iDisplayId = 0;
   std::set<ComposeMode> setHwcPolicy;
   int iMixRequest_;
 

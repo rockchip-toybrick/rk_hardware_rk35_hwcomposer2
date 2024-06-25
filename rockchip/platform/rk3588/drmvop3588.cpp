@@ -1511,6 +1511,19 @@ int Vop3588::MatchPlanes(
       }
     }
   }
+  if(ctx.state.iDisplayId == 0){
+    bool is_accelerate_matched = false;
+    if(ctx.request.accelerate_app_exist_){
+      for(auto &layer:layers){
+        if(layer->bAccelerateLayer_ && layer->bMatch_)
+          is_accelerate_matched = true;
+      }
+    }
+    if(ctx.state.last_accelerate_status != is_accelerate_matched){
+      ctx.state.last_accelerate_status = is_accelerate_matched;
+      property_set("vendor.hwc.accelerate_matched",is_accelerate_matched?"1":"0");
+    }
+  }
   return 0;
 }
 int  Vop3588::GetPlaneGroups(DrmCrtc *crtc, std::vector<PlaneGroup *>&out_plane_groups){
@@ -3807,6 +3820,7 @@ void Vop3588::InitStateContext(
             ctx.state.bMultiAreaScaleEnable,
             ctx.state.iVopMaxOverlay4KPlane, ctx.state.bRgaPolicyEnable);
 
+  ctx.state.iDisplayId = crtc->display();
   // Check dispaly Mode : 8K Mode or 4K 120 Mode
   DrmDevice *drm = crtc->getDrmDevice();
   DrmConnector *conn = drm->GetConnectorForDisplay(crtc->display());
