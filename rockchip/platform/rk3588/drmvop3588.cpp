@@ -1669,6 +1669,63 @@ int Vop3588::TryOverlayPolicy(
   return 0;
 }
 
+bool Vop3588::NeedUseRgaPolicy(DrmHwcLayer* layer, DrmCrtc *crtc){
+  // 仅支持视频执行RGA策略
+  if(!layer->bYuv_){
+    return false;
+  }
+
+  // RGA 最大宽度仅支持8176
+  if(layer->iWidth_ > 8176){
+    HWC2_ALOGD_IF_DEBUG("RGA can't handle iWidth_=%d yuv layer, rga max is 8176.",
+                layer->iWidth_);
+    return false;
+  }
+
+  // 如果SurfaceFlinger 请求Client合成，则不采用RGA策略
+  // 例如高斯模糊效果
+  if(layer->sf_composition == HWC2::Composition::Client){
+    return false;
+  }
+
+  // 以下场景不建议使用RGA策略，使用VOP效率会更高：
+  // 1. 不存在几何变换，视频缩小2倍以内，VOP硬件支持
+  // 2. 不存在几何变换，视频放大场景
+  if(layer->transform == DRM_MODE_ROTATE_0){
+    if(layer->fHScaleMul_ <= 2.0 && layer->fVScaleMul_ <= 2.0){
+      HWC2_ALOGD_IF_DEBUG("disable-rga-policy: scale-rate is fHScaleMul_=%f fVScaleMul_=%f no need rga policy, name=%s",
+                          layer->fHScaleMul_,
+                          layer->fVScaleMul_,
+                          layer->sLayerName_.c_str());
+      return false;
+    }
+  }
+
+  // RK3588 RGA策略目前无法达到8K60fps合成，测试只能到40-50fps
+  // 由于3588默认限制最大4K UI，如果屏幕分辨率不大于4K，则限制RGA最大分辨率为8K的一半，
+  // 超出此分辨率的走GPU合成以保证帧率
+  DrmDevice *drm = crtc->getDrmDevice();
+  DrmConnector *conn = drm->GetConnectorForDisplay(crtc->display());
+  if(conn && conn->current_mode().h_display() <= 3840 && layer->iWidth_*layer->iHeight_ > 7680*4320/2){
+    HWC2_ALOGD_IF_DEBUG("iWidth_=%d, iHeight_=%d Performance may be insufficient with RGA Policy, fallback to GPU.",
+                layer->iWidth_,layer->iHeight_);
+    return false;
+  }
+
+  // 目前由于RK3588 RGA2仅支持4G 地址，所以如果存在RGA3不支持的格式，则直接判定无法使用RGA合成策略
+  if(!hwc_rga_utils::isRK3588RGA3SupportFormat(layer->iFormat_)){
+    HWC2_ALOGD_IF_DEBUG("FourccFormat_=%c%c%c%c, rk3588 rga3 not supported, layerName:%s",
+                        layer->uFourccFormat_,
+                        layer->uFourccFormat_ >> 8,
+                        layer->uFourccFormat_ >> 16,
+                        layer->uFourccFormat_ >> 24,
+                        layer->sLayerName_.c_str());
+    return false;
+  }
+
+  return true;
+}
+
 int Vop3588::TryRgaOverlayPolicy(
     std::vector<DrmCompositionPlane> *composition,
     std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
@@ -1702,7 +1759,7 @@ int Vop3588::TryRgaOverlayPolicy(
   int usage = 0;
 
   for(auto &drmLayer : layers){
-    if(drmLayer->bYuv_){
+    if(NeedUseRgaPolicy(drmLayer, crtc)){
         if(last_buffer_id != drmLayer->uBufferId_){
           // TODO: afbc 暂时不支持 crop 裁剪，目前会出现RGA输出花屏问题
           // 2023/08/24 删除这部分限制, 最新版本可能已经支持
@@ -1714,24 +1771,8 @@ int Vop3588::TryRgaOverlayPolicy(
           //     continue;
           //   }
           // }
-          // RGA策略目前无法达到8K60fps合成，测试只能到40-50fps
-          // 由于3588默认限制最大4K UI，如果屏幕分辨率不大于4K，则限制RGA最大分辨率为8K的一半，
-          // 超出此分辨率的走GPU合成以保证帧率
-          DrmDevice *drm = crtc->getDrmDevice();
-          DrmConnector *conn = drm->GetConnectorForDisplay(crtc->display());
-          if(conn && conn->current_mode().h_display() <= 3840 && drmLayer->iWidth_*drmLayer->iHeight_ > 7680*4320/2){
-            HWC2_ALOGD_IF_DEBUG("iWidth_=%d, iHeight_=%d Performance may be insufficient with RGA Policy, fallback to GPU.",
-                        drmLayer->iWidth_,drmLayer->iHeight_);
-            continue;
-          }
 
-          // TODO: RGA 最大宽度仅支持8176
-          if(drmLayer->iWidth_ > 8176){
-            HWC2_ALOGD_IF_DEBUG("RGA can't handle iWidth_=%d yuv layer, rga max is 8176.",
-                        drmLayer->iWidth_);
-            continue;
-          }
-
+          // 超出 RGA 缩放8倍的场景，执行两级缩放，RGA缩放后再由VOP缩放
           bool rga_scale_max = false;
           // RGA 有缩放倍数限制
           if((drmLayer->fHScaleMul_ < 0.125 ||
@@ -1739,11 +1780,6 @@ int Vop3588::TryRgaOverlayPolicy(
               drmLayer->fVScaleMul_ < 0.125 ||
               drmLayer->fVScaleMul_ > 8.0)){
               rga_scale_max = true;
-          }
-
-          if(!hwc_rga_utils::isRK3588RGA3SupportFormat(drmLayer->iFormat_)){
-            HWC2_ALOGD_IF_DEBUG("iFormat_=0x%x, rk3588 rga3 not supported, layerName:%s", drmLayer->iFormat_, drmLayer->sLayerName_.c_str());
-            continue;
           }
 
           bool yuv_10bit = false;

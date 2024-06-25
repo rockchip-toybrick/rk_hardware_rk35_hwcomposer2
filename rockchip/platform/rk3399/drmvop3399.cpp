@@ -343,7 +343,7 @@ int Vop3399::MatchPlane(std::vector<DrmCompositionPlane> *composition_planes,
   }
 
   bool afbc_used=false;
-  
+
   //loop plane groups.
   for (iter = plane_groups.begin();
     iter != plane_groups.end(); ++iter) {
@@ -710,6 +710,45 @@ int Vop3399::TryOverlayPolicy(
   return 0;
 }
 
+
+bool Vop3399::NeedUseRgaPolicy(DrmHwcLayer* layer, DrmCrtc *crtc){
+  // 仅支持视频执行RGA策略
+  if(!layer->bYuv_){
+    return false;
+  }
+
+  if(layer->bAfbcd_)
+    return false;
+
+  // TODO: RGA too slow for high resolution 60 fps()
+  if((ctx.state.iDisplayWidth_*ctx.state.iDisplayHeight_)>(1536*2048)){
+    HWC2_ALOGD_IF_DEBUG("RGA too slow for iWidth_=%d iHeight_=%d yuv layer",
+                layer->iWidth_,layer->iHeight_);
+    return false;
+  }
+
+  // 如果SurfaceFlinger 请求Client合成，则不采用RGA策略
+  // 例如高斯模糊效果
+  if(layer->sf_composition == HWC2::Composition::Client){
+    return false;
+  }
+
+  // 以下场景不建议使用RGA策略，使用VOP效率会更高：
+  // 1. 不存在几何变换，视频缩小2倍以内，VOP硬件支持
+  // 2. 不存在几何变换，视频放大场景
+  if(layer->transform == DRM_MODE_ROTATE_0){
+    if(layer->fHScaleMul_ <= 2.0 && layer->fVScaleMul_ <= 2.0){
+      HWC2_ALOGD_IF_DEBUG("disable-rga-policy: scale-rate is fHScaleMul_=%f fVScaleMul_=%f no need rga policy, name=%s",
+                          layer->fHScaleMul_,
+                          layer->fVScaleMul_,
+                          layer->sLayerName_.c_str());
+      return false;
+    }
+  }
+
+  return true;
+}
+
 int Vop3399::TryRgaOverlayPolicy(
     std::vector<DrmCompositionPlane> *composition,
     std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
@@ -746,17 +785,9 @@ int Vop3399::TryRgaOverlayPolicy(
   int usage = 0;
 
   for(auto &drmLayer : layers){
-    if(drmLayer->bYuv_){
-        if(drmLayer->bAfbcd_)
-          continue;
+    if(NeedUseRgaPolicy(drmLayer, crtc)){
         if(last_buffer_id != drmLayer->uBufferId_){
 
-          // TODO: RGA too slow for high resolution 60 fps()
-          if((ctx.state.iDisplayWidth_*ctx.state.iDisplayHeight_)>(1536*2048)){
-            HWC2_ALOGD_IF_DEBUG("RGA too slow for iWidth_=%d iHeight_=%d yuv layer",
-                        drmLayer->iWidth_,drmLayer->iHeight_);
-            continue;
-          }
 
           bool rga_scale_max = false;
           // RGA 有缩放倍数限制
@@ -1517,27 +1548,27 @@ bool Vop3399::CheckGLESLayer(DrmHwcLayer *layer){
   if(layer->bAfbcd_){
     bool disable_afbc = false;
     if(layer->source_crop.left!=0 || layer->source_crop.top!=0){
-      HWC2_ALOGD_IF_DEBUG("[%s]source_crop =[%d,%d,%d,%d] not support offset.", 
-                          layer->sLayerName_.c_str(), 
+      HWC2_ALOGD_IF_DEBUG("[%s]source_crop =[%d,%d,%d,%d] not support offset.",
+                          layer->sLayerName_.c_str(),
                           (int)layer->source_crop.left, (int)layer->source_crop.top,
                           (int)layer->source_crop.right, (int)layer->source_crop.bottom);
       disable_afbc = true;
     }
     if(act_w>2560){
-      HWC2_ALOGD_IF_DEBUG("[%s]act_w =%d too big, maximum 2560", 
+      HWC2_ALOGD_IF_DEBUG("[%s]act_w =%d too big, maximum 2560",
                           layer->sLayerName_.c_str(), act_w);
       disable_afbc = true;
     }
     if(!layer->bFbTarget_){
       if((layer->iStride_&(16-1)) || (layer->iHeightStride_&(8-1))){
-        HWC2_ALOGD_IF_DEBUG("[%s]stride =[%d,%d] not aligned to [16x8].", 
+        HWC2_ALOGD_IF_DEBUG("[%s]stride =[%d,%d] not aligned to [16x8].",
                             layer->sLayerName_.c_str(), layer->iStride_, layer->iHeightStride_);
         disable_afbc = true;
       }
     }
     if(disable_afbc){
       if(layer->bFbTarget_){
-        HWC2_ALOGD_IF_DEBUG("[%s] FB target do not meet AFBC limit, disable AFBC.", 
+        HWC2_ALOGD_IF_DEBUG("[%s] FB target do not meet AFBC limit, disable AFBC.",
                             layer->sLayerName_.c_str());
         layer->bAfbcd_ = false;
       }

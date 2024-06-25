@@ -1539,6 +1539,7 @@ void Vop3576::OutputMatchLayer(int iFirst, int iLast,
   }
   return;
 }
+
 int Vop3576::TryOverlayPolicy(
     std::vector<DrmCompositionPlane> *composition,
     std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
@@ -1557,6 +1558,62 @@ int Vop3576::TryOverlayPolicy(
     return -1;
   }
   return 0;
+}
+
+bool Vop3576::NeedUseRgaPolicy(DrmHwcLayer* layer, DrmCrtc *crtc){
+  // 仅支持视频执行RGA策略
+  if(!layer->bYuv_){
+    return false;
+  }
+
+  // RK3576 RGA 不支持AFBC输入
+  if(layer->bAfbcd_){
+    return false;
+  }
+
+  // TODO: RGA 最大宽度仅支持8192
+  if(layer->iWidth_ > 8192){
+    HWC2_ALOGD_IF_DEBUG("RGA can't handle iWidth_=%d yuv layer, rga max is 8192.",
+                layer->iWidth_);
+    return false;
+  }
+
+  // 如果SurfaceFlinger 请求Client合成，则不采用RGA策略
+  // 例如高斯模糊效果
+  if(layer->sf_composition == HWC2::Composition::Client){
+    return false;
+  }
+
+  // 以下场景不建议使用RGA策略，使用VOP效率会更高：
+  // 1. 不存在几何变换，视频缩小2倍以内，VOP硬件支持
+  // 2. 不存在几何变换，视频放大场景
+  if(layer->transform == DRM_MODE_ROTATE_0){
+    if(layer->fHScaleMul_ <= 2.0 && layer->fVScaleMul_ <= 2.0){
+      HWC2_ALOGD_IF_DEBUG("disable-rga-policy: scale-rate is fHScaleMul_=%f fVScaleMul_=%f no need rga policy, name=%s",
+                          layer->fHScaleMul_,
+                          layer->fVScaleMul_,
+                          layer->sLayerName_.c_str());
+      return false;
+    }
+  }
+
+  // 检查RK3576格式
+  if(!hwc_rga_utils::isRK3576RGA2SupportFormat(layer->iFormat_)){
+    HWC2_ALOGD_IF_DEBUG("iFormat_=0x%x, rk3576 rga2.5 not supported, layerName:%s", layer->iFormat_, layer->sLayerName_.c_str());
+    return false;
+  }
+
+  if(ctx.state.bHDRVideoForceOverlay){
+    HWC2_ALOGD_IF_DEBUG("vendor.hwc.hdr_video_force_overlay > 0, force overlay.");
+  }else{
+    //NV15支持GPU合成，使用GPU合成色彩更准确
+    if(layer->uFourccFormat_ == DRM_FORMAT_NV15){
+      HWC2_ALOGD_IF_DEBUG("iFormat_=0x%x,NV15 fallback to GPU for better color accuracy. layerName:%s", layer->iFormat_, layer->sLayerName_.c_str());
+      return false;
+    }
+  }
+
+  return true;
 }
 
 int Vop3576::TryRgaOverlayPolicy(
@@ -1592,19 +1649,8 @@ int Vop3576::TryRgaOverlayPolicy(
   int usage = 0;
 
   for(auto &drmLayer : layers){
-    if(drmLayer->bYuv_){
+    if(NeedUseRgaPolicy(drmLayer, crtc)){
         if(last_buffer_id != drmLayer->uBufferId_){
-          if(drmLayer->bAfbcd_){
-            HWC2_ALOGD_IF_DEBUG("RGA Do not support Afbc YUV");
-            continue;
-          }
-
-          // TODO: RGA 最大宽度仅支持8192
-          if(drmLayer->iWidth_ > 8192){
-            HWC2_ALOGD_IF_DEBUG("RGA can't handle iWidth_=%d yuv layer, rga max is 8192.",
-                        drmLayer->iWidth_);
-            continue;
-          }
 
           bool rga_scale_max = false;
           // RGA 有缩放倍数限制
@@ -1615,20 +1661,6 @@ int Vop3576::TryRgaOverlayPolicy(
               rga_scale_max = true;
           }
 
-          if(!hwc_rga_utils::isRK3576RGA2SupportFormat(drmLayer->iFormat_)){
-            HWC2_ALOGD_IF_DEBUG("iFormat_=0x%x, rk3576 rga2.5 not supported, layerName:%s", drmLayer->iFormat_, drmLayer->sLayerName_.c_str());
-            continue;
-          }
-
-          if(ctx.state.bHDRVideoForceOverlay){
-            HWC2_ALOGD_IF_DEBUG("vendor.hwc.hdr_video_force_overlay > 0, force overlay.");
-          }else{
-            //NV15支持GPU合成，使用GPU合成色彩更准确
-            if(drmLayer->uFourccFormat_ == DRM_FORMAT_NV15){
-              HWC2_ALOGD_IF_DEBUG("iFormat_=0x%x,NV15 fallback to GPU for better color accuracy. layerName:%s", drmLayer->iFormat_, drmLayer->sLayerName_.c_str());
-              continue;
-            }
-          }
           dst_buffer = rgaBufferQueue_->DequeueDrmBuffer(ctx.state.iDisplayWidth_,
                                                           ctx.state.iDisplayHeight_,
                                                           HAL_PIXEL_FORMAT_YCrCb_NV12,

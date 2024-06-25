@@ -333,6 +333,7 @@ struct SvepXml{
 #endif
 
   void TryMix();
+  bool NeedUseRgaPolicy(DrmHwcLayer* layer, DrmCrtc *crtc);
   void UpdateResevedPlane(DrmCrtc *crtc);
   bool IsExcceedVopLimit(DrmHwcLayer *layer, uint64_t plane_mask);
   bool CheckGLESLayer(DrmHwcLayer* layers);

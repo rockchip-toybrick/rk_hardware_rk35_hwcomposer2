@@ -178,6 +178,7 @@ typedef struct DrmVop2Context{
 
   bool TryOverlay();
   void TryMix();
+  bool NeedUseRgaPolicy(DrmHwcLayer* layer, DrmCrtc *crtc);
   void UpdateResevedPlane(DrmCrtc *crtc);
   bool CheckGLESLayer(DrmHwcLayer* layers);
   void InitStateContext(

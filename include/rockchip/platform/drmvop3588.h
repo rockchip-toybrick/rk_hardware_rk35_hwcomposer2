@@ -340,6 +340,7 @@ struct SvepXml{
   void TryMix();
   void UpdateResevedPlane(DrmCrtc *crtc);
   bool CheckGLESLayer(DrmHwcLayer* layers);
+  bool NeedUseRgaPolicy(DrmHwcLayer* layer, DrmCrtc *crtc);
   void InitStateContext(
       std::vector<DrmHwcLayer*> &layers,
       std::vector<PlaneGroup *> &plane_groups,
