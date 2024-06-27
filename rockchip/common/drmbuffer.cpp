@@ -386,7 +386,7 @@ uint32_t DrmBuffer::GetFbId(){
   int ret = ptrDrmGralloc_->hwc_fbid_get_and_cached(uBufferId_,
                                        ptrDrmGralloc_->get_drm_device(),
                                        iWidth_,
-                                       iHeight_,
+                                       iHeightStride_,
                                        uFourccFormat_,
                                        gem_handles,
                                        pitches,
@@ -397,7 +397,7 @@ uint32_t DrmBuffer::GetFbId(){
 
   HWC2_ALOGD_IF_DEBUG("ImportBuffer fd=%d,w=%d,h=%d,format=%c%c%c%c,"
                       "gem_handle=%d,pitches[0]=%d,fb_id=%d,modifier = %" PRIx64 ,
-                       ptrDrmGralloc_->get_drm_device(),iWidth_, iHeight_,
+                       ptrDrmGralloc_->get_drm_device(),iWidth_, iHeightStride_,
                        uFourccFormat_, uFourccFormat_ >> 8, uFourccFormat_ >> 16, uFourccFormat_ >> 24,
                        gem_handles[0], pitches[0], uFbId_, modifier[0]);
 
@@ -405,7 +405,7 @@ uint32_t DrmBuffer::GetFbId(){
     ALOGE("could not create drm fb %d", ret);
     HWC2_ALOGE("ImportBuffer fd=%d,w=%d,h=%d,format=%c%c%c%c,"
                "gem_handle=%d,pitches[0]=%d,fb_id=%d,modifier = %" PRIx64 ,
-                ptrDrmGralloc_->get_drm_device(),iWidth_, iHeight_,
+                ptrDrmGralloc_->get_drm_device(),iWidth_, iHeightStride_,
                 uFourccFormat_, uFourccFormat_ >> 8, uFourccFormat_ >> 16, uFourccFormat_ >> 24,
                 gem_handles[0], pitches[0], uFbId_, modifier[0]);
     return ret;
@@ -719,7 +719,7 @@ uint32_t DrmBuffer::GetPreScaleFbId(){
 int ret = ptrDrmGralloc_->hwc_fbid_get_and_cached(uBufferId_,
                                        ptrDrmGralloc_->get_drm_device(),
                                        iWidth_,
-                                       iHeight_,
+                                       iHeightStride_,
                                        uFourccFormat_,
                                        gem_handles,
                                        pitches,
@@ -730,7 +730,7 @@ int ret = ptrDrmGralloc_->hwc_fbid_get_and_cached(uBufferId_,
 
   HWC2_ALOGD_IF_DEBUG("ImportBuffer fd=%d,w=%d,h=%d,format=%c%c%c%c,"
                "gem_handle=%d %d %d %d, pitches[0]=%d %d %d %d, offsets[0]=%d %d %d %d fb_id=%d, modifier = %" PRIx64 ,
-                ptrDrmGralloc_->get_drm_device(),iWidth_, iHeight_,
+                ptrDrmGralloc_->get_drm_device(),iWidth_, iHeightStride_,
                 uFourccFormat_, uFourccFormat_ >> 8, uFourccFormat_ >> 16, uFourccFormat_ >> 24,
                 gem_handles[0], gem_handles[1], gem_handles[2], gem_handles[3],
                 pitches[0], pitches[1], pitches[2], pitches[3],
@@ -740,7 +740,7 @@ int ret = ptrDrmGralloc_->hwc_fbid_get_and_cached(uBufferId_,
     ALOGE("could not create drm fb %d", ret);
     HWC2_ALOGE("ImportBuffer fd=%d,w=%d,h=%d,format=%c%c%c%c,"
                "gem_handle=%d %d %d %d, pitches[0]=%d %d %d %d, offsets[0]=%d %d %d %d fb_id=%d, modifier = %" PRIx64 ,
-                ptrDrmGralloc_->get_drm_device(),iWidth_, iHeight_,
+                ptrDrmGralloc_->get_drm_device(),iWidth_, iHeightStride_,
                 uFourccFormat_, uFourccFormat_ >> 8, uFourccFormat_ >> 16, uFourccFormat_ >> 24,
                 gem_handles[0], gem_handles[1], gem_handles[2], gem_handles[3],
                 pitches[0], pitches[1], pitches[2], pitches[3],

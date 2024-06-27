@@ -263,7 +263,7 @@ int DrmGenericImporter::ImportBuffer(buffer_handle_t handle, hwc_drm_bo_t *bo) {
 #endif
 
   int ret = drmGralloc_->hwc_fbid_get_and_cached(bo->buffer_id, drm_->fd(),
-                      bo->width, bo->height, bo->format,
+                      bo->width, bo->height_stride, bo->format,
                       bo->gem_handles, bo->pitches, bo->offsets, modifier,
 		                  &bo->fb_id, DRM_MODE_FB_MODIFIERS);
 
