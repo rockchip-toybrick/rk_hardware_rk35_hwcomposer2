@@ -18,7 +18,13 @@
 #define DRMHWC2_HAL_FORMAT_H
 
 #ifdef ANDROID_P
+#ifdef RK356x
 #include "gralloc_drm.h"
+#endif
+
+#ifdef RK3528
+#include "hardware/hardware.h"
+#endif
 #endif
 
 #ifdef ANDROID_S
