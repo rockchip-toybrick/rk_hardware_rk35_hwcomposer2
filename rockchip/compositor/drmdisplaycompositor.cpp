@@ -746,7 +746,7 @@ int DrmDisplayCompositor::CollectHwPqInfo() {
 
   if (!(crtc->get_port_id()==0 &&
         crtc->post_sharp_data().id() &&
-        crtc->acm_lut_data().id() && 
+        crtc->acm_lut_data().id() &&
         crtc->post_csc_data().id())) {
     HWC2_ALOGD_IF_DEBUG("display %d crtc_id=%" PRIu32" port_id=%" PRIu32" do not support hwpq. "
                "post_sharp_data_id=%" PRIu32" acm_lut_data_id=%" PRIu32" post_csc_data_id=%" PRIu32,
@@ -1437,23 +1437,33 @@ int DrmDisplayCompositor::CollectCommitInfo(drmModeAtomicReqPtr pset,
 
 #ifdef RK3528
       if(layer.bNeedPreScale_ && !layer.bIsPreScale_){
-        // Prescale 图层若无法满足送显示条件，需要将图层关闭.
-        ret = drmModeAtomicAddProperty(pset, plane->id(),
-                                      plane->crtc_property().id(), 0) < 0 ||
-              drmModeAtomicAddProperty(pset, plane->id(),
-                                      plane->fb_property().id(), 0) < 0;
-        if (ret) {
-          ALOGE("Failed to prescale_layer add plane %d disable to pset", plane->id());
-          continue;
+        // 如果PreScale图层没有准备号且填黑图层未准备好，则关闭该图层
+        // 如果填黑图层已准备好，则将填黑图层送显
+        if(layer.bUseBlackBuffer_ == false){
+          // Prescale 图层若无法满足送显示条件，需要将图层关闭.
+          ret = drmModeAtomicAddProperty(pset, plane->id(),
+                                        plane->crtc_property().id(), 0) < 0 ||
+                drmModeAtomicAddProperty(pset, plane->id(),
+                                        plane->fb_property().id(), 0) < 0;
+          if (ret) {
+            ALOGE("Failed to prescale_layer add plane %d disable to pset", plane->id());
+            continue;
+          }else{
+            HWC2_ALOGD_IF_WARN("%s bNeedPreScale_=%d bIsPreScale_=%d skip until PreScale ready.",
+                                layer.sLayerName_.c_str(),
+                                layer.bNeedPreScale_,
+                                layer.bIsPreScale_);
+            continue;
+          }
+
+          if(display_comp->update_drmplane_assign()){
+            will_disable_drmplane_types.push_back(plane->win_type());
+          }
         }else{
-          HWC2_ALOGD_IF_WARN("%s bNeedPreScale_=%d bIsPreScale_=%d skip until PreScale ready.",
-                              layer.sLayerName_.c_str(),
-                              layer.bNeedPreScale_,
-                              layer.bIsPreScale_);
-          continue;
-        }
-        if(display_comp->update_drmplane_assign()){
-          will_disable_drmplane_types.push_back(plane->win_type());
+          HWC2_ALOGD_IF_INFO("PreScale : %s bNeedPreScale_=%d bIsPreScale_=%d display by black layer until PreScale ready.",
+                                layer.sLayerName_.c_str(),
+                                layer.bNeedPreScale_,
+                                layer.bIsPreScale_);
         }
       }
 #endif

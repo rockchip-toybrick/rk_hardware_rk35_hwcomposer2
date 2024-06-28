@@ -1725,6 +1725,14 @@ int DrmHwcTwo::HwcDisplay::ImportBuffers() {
         continue;
 #endif
 
+#ifdef RK3528
+      // 当前状态为启用预缩小，但是解码端数据还没准备号，需要用本地的黑帧临时送显
+      if(drm_hwc_layer.bNeedPreScale_ &&
+         drm_hwc_layer.bIsPreScale_ == false &&
+         drm_hwc_layer.bUseBlackBuffer_)
+        continue;
+#endif
+
       // SidebandStream 不需要获取GemHandle
       if(drm_hwc_layer.bSidebandStreamLayer_)
         continue;
@@ -4534,7 +4542,6 @@ void DrmHwcTwo::HwcLayer::PopulateDrmLayer(hwc2_layer_t layer_id, DrmHwcLayer *d
   }
 #ifdef RK3528
  if(gIsRK3528()){
-   // 调试命令
    int enable_prescale_video = hwc_get_int_property("debug.hwc.enable_prescale_video", "0");
    if(enable_prescale_video > 0 && drmHwcLayer->bYuv_){
      metadata_for_rkvdec_scaling_t* metadata = NULL;

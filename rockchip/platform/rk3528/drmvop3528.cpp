@@ -854,6 +854,9 @@ int Vop3528::MatchPlanes(
 
   int total_size = 0;
 
+#ifdef RK3528
+  bool use_prescale = false;
+#endif
   // Fill up the remaining planes
   int zpos = 0;
   for (auto i = layer_map.begin(); i != layer_map.end(); i = layer_map.erase(i)) {
@@ -862,7 +865,6 @@ int Vop3528::MatchPlanes(
 #ifdef RK3528
     // RK3528 支持预缩小，当源片源无法匹配时，需要考虑预缩小是否可以满足需求；
     if(ret){
-      bool use_prescale = false;
       for(auto& drmlayer : i->second){
         if(drmlayer->bYuv_ && drmlayer->bAfbcd_){
           if(ctx.request.iAfbcdCnt > 0 && drmlayer->bAfbcd_){
@@ -884,6 +886,7 @@ int Vop3528::MatchPlanes(
             if(drmlayer->bYuv_){
               drmlayer->ResetInfoFromPreScaleStore();
               drmlayer->bNeedPreScale_ = false;
+              use_prescale = false;
               if(drmlayer->bAfbcd_){
                 ctx.request.iAfbcdCnt++;
               }
@@ -919,8 +922,139 @@ int Vop3528::MatchPlanes(
       }
     }
   }
+
+#ifdef RK3528
+    // 如果RK3528使能了预缩小图层，但是实际预缩小图层未传递到HWC，这期间需要HWC申请黑帧替代预缩小图层，避免图像花屏
+    if(use_prescale){
+      for(auto& drmlayer : layers){
+        // 请求预缩小，但是预缩小图像未准备好，需要本地申请黑帧
+        if(drmlayer->bNeedPreScale_ && drmlayer->bIsPreScale_ == false){
+          std::shared_ptr<DrmBuffer> dst_buffer = DequeuePreScaleBlackBuffer(ALIGN(drmlayer->iWidth_, 2),
+                                                                             drmlayer->iHeight_,
+                                                                             drmlayer->iFormat_);
+          if(dst_buffer == NULL){
+            break;
+          }
+          // drmlayer->ResetInfoFromPreScaleStore();
+          hwc_frect_t source_crop;
+          source_crop.left   = 0;
+          source_crop.top    = 0;
+          source_crop.right  = dst_buffer->GetWidth();
+          source_crop.bottom = dst_buffer->GetHeight();
+          drmlayer->UpdateAndStoreInfoFromDrmBuffer(dst_buffer->GetHandle(),
+                                                    dst_buffer->GetFd(),
+                                                    dst_buffer->GetFormat(),
+                                                    dst_buffer->GetWidth(),
+                                                    dst_buffer->GetHeight(),
+                                                    dst_buffer->GetStride(),
+                                                    dst_buffer->GetHeightStride(),
+                                                    dst_buffer->GetByteStride(),
+                                                    dst_buffer->GetSize(),
+                                                    dst_buffer->GetUsage(),
+                                                    dst_buffer->GetFourccFormat(),
+                                                    dst_buffer->GetModifier(),
+                                                    dst_buffer->GetByteStridePlanes(),
+                                                    dst_buffer->GetName(),
+                                                    source_crop,
+                                                    dst_buffer->GetBufferId(),
+                                                    dst_buffer->GetGemHandle(),
+                                                    DRM_MODE_ROTATE_0);
+          drmlayer->bUseBlackBuffer_ = true;
+          drmlayer->pBlackBuffer_ = dst_buffer;
+        }
+      }
+    }
+#endif
+
   return 0;
 }
+
+#ifdef RK3528
+std::shared_ptr<DrmBuffer> Vop3528::DequeuePreScaleBlackBuffer(int width, int height, int format){
+    static uint64_t black_buffer_id = 0;
+    std::shared_ptr<DrmBuffer> dst_buffer = preScaleBlackBufferQueue_->DequeueDrmBuffer(width,
+                                                                              height,
+                                                                              format,
+                                                                              0,
+                                                                              "PreScaleBlack");
+
+    if(dst_buffer == NULL){
+      HWC2_ALOGE("PreScale: DequeuePreScaleBlackBuffer w=%d h=%d format=%d fail!", width, height, format);
+      return NULL;
+    }
+    // 只有BufferId更新后才需要清黑，否则利用上一帧
+    if(black_buffer_id != dst_buffer->GetBufferId()){
+      int ret = 0;
+      rga_buffer_t dst;
+      im_rect dst_rect;
+      memset(&dst, 0x0, sizeof(dst));
+      memset(&dst, 0x0, sizeof(dst_rect));
+      rga_buffer_handle_t dst_handle;
+
+      int dst_width = dst_buffer->GetWidth();
+      int dst_height = dst_buffer->GetHeight();
+      int dst_format = dst_buffer->GetFormat();
+      int dst_buf_size = dst_buffer->GetSize();
+
+      /*
+      * Import the allocated dma_fd into RGA by calling
+      * importbuffer_fd, and use the returned buffer_handle
+      * to call RGA to process the image.
+      */
+      dst_handle = importbuffer_fd(dst_buffer->GetFd(), dst_buf_size);
+      if (dst_handle == 0) {
+          HWC2_ALOGE("PreScale: import dma_fd  w=%d h=%d format=%d fail!", width, height, format);
+          return NULL;
+      }
+
+      dst = wrapbuffer_handle(dst_handle, dst_width, dst_height, dst_format);
+
+      /*
+      * Fills a rectangular area on the dst image with the specified color.
+            dst_image
+          --------------
+          | -------    |
+          | |color|    |
+          | -------    |
+          --------------
+      */
+
+      dst_rect.x = 0;
+      dst_rect.y = 0;
+      dst_rect.width = dst_buffer->GetWidth();
+      dst_rect.height = dst_buffer->GetHeight();
+
+      ret = imcheck({}, dst, {}, dst_rect, IM_COLOR_FILL);
+      if (IM_STATUS_NOERROR != ret) {
+          HWC2_ALOGE("PreScale: check error! %s", imStrError((IM_STATUS)ret));
+        if (dst_handle > 0)
+            releasebuffer_handle(dst_handle);
+          return NULL;
+      }
+
+      ret = imfill(dst, dst_rect, 0xff000000);
+      if (ret != IM_STATUS_SUCCESS) {
+          HWC2_ALOGE("PreScale: RGA ColorFill running failed, %s\n", imStrError((IM_STATUS)ret));
+          if (dst_handle > 0)
+            releasebuffer_handle(dst_handle);
+          return NULL;
+      }
+
+      black_buffer_id = dst_buffer->GetBufferId();
+      HWC2_ALOGD_IF_DEBUG("PreScale: RGA ColorFill running success!\n");
+      if (dst_handle > 0)
+        releasebuffer_handle(dst_handle);
+    }
+
+
+    int ret = preScaleBlackBufferQueue_->QueueBuffer(dst_buffer);
+    if(ret){
+        HWC2_ALOGE("QueueBuffer buffer failed, ret=%d", ret);
+    }
+
+    return dst_buffer;
+}
+
 int  Vop3528::GetPlaneGroups(DrmCrtc *crtc, std::vector<PlaneGroup *>&out_plane_groups){
   DrmDevice *drm = crtc->getDrmDevice();
   out_plane_groups.clear();
@@ -932,7 +1066,7 @@ int  Vop3528::GetPlaneGroups(DrmCrtc *crtc, std::vector<PlaneGroup *>&out_plane_
 
   return out_plane_groups.size() > 0 ? 0 : -1;
 }
-
+#endif
 void Vop3528::ResetLayerFromTmpExceptFB(std::vector<DrmHwcLayer*>& layers,
                                               std::vector<DrmHwcLayer*>& tmp_layers){
   for (auto i = layers.begin(); i != layers.end();){
@@ -2085,14 +2219,14 @@ void Vop3528::InitRequestContext(std::vector<DrmHwcLayer*> &layers){
       continue;
     }
 
-#ifdef RK3528
-    if(layer->bAfbcd_ &&
-       (layer->fHScaleMul_ > INPUT_4K_SCALE_MAX_RATE ||
-        layer->fVScaleMul_ > INPUT_4K_SCALE_MAX_RATE)){
-      layer->bNeedPreScale_ = true;
-      layer->SwitchPreScaleBufferInfo();
-    }
-#endif
+// #ifdef RK3528
+//     if(layer->bAfbcd_ &&
+//        (layer->fHScaleMul_ > INPUT_4K_SCALE_MAX_RATE ||
+//         layer->fVScaleMul_ > INPUT_4K_SCALE_MAX_RATE)){
+//       layer->bNeedPreScale_ = true;
+//       layer->SwitchPreScaleBufferInfo();
+//     }
+// #endif
 
     if(layer->bSidebandStreamLayer_)
       ctx.request.bSidebandStreamMode=true;

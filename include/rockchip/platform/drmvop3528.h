@@ -198,7 +198,11 @@ struct SvepXml{
 
  public:
   Vop3528()
-    : rgaBufferQueue_((std::make_shared<DrmBufferQueue>()))
+    : rgaBufferQueue_(std::make_shared<DrmBufferQueue>())
+#ifdef RK3528
+      ,
+      preScaleBlackBufferQueue_((std::make_shared<DrmBufferQueue>(1)))
+#endif
   {
     Init();
   }
@@ -292,9 +296,17 @@ struct SvepXml{
                      std::vector<PlaneGroup *> &plane_groups,
                      DrmCompositionPlane::Type type, DrmCrtc *crtc,
                      std::pair<int, std::vector<DrmHwcLayer*>> layers, int zpos, bool match_best);
+
+#ifdef RK3528
+  std::shared_ptr<DrmBuffer> DequeuePreScaleBlackBuffer(int width, int height, int format);
+#endif
+
  private:
   Vop2Ctx ctx;
   std::shared_ptr<DrmBufferQueue> rgaBufferQueue_;
+#ifdef RK3528
+  std::shared_ptr<DrmBufferQueue> preScaleBlackBufferQueue_;
+#endif
 };
 
 }  // namespace android

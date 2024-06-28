@@ -41,7 +41,7 @@
 
 /*hwc version*/
 #define GHWC_VERSION                    "HWC2-1.5.165"
-#define GHWC_VERSION_NOTES              ""
+#define GHWC_VERSION_NOTES              "-hdr_green_err"
 
 //Print call statck when you call ALOGD_CALLSTACK.
 #define ALOGD_CALLSTACK(...)                             \

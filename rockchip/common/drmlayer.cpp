@@ -485,6 +485,7 @@ int DrmHwcLayer::SwitchPreScaleBufferInfo(){
       iWidth_  = metadata->width;
       iHeight_ = metadata->height;
       iStride_ = metadata->pixel_stride;
+      iHeightStride_ = metadata->height;
       iFormat_ = metadata->format;
       iUsage   = metadata->usage;
       iByteStride_     = metadata->byteStride[0];
@@ -535,6 +536,7 @@ int DrmHwcLayer::SwitchPreScaleBufferInfo(){
     iSize_         = iSize_ / 2;
     uModifier_     = 0;
     uFourccFormat_ = DRM_FORMAT_NV12;
+    iFormat_ = HAL_PIXEL_FORMAT_YCrCb_NV12;
 
     // source_crop.left   = source_crop.left;
     // source_crop.top    = source_crop.top;

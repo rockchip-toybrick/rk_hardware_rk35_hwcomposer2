@@ -314,6 +314,9 @@ struct DrmHwcLayer {
   // RK3528 vpu prescale info.
   bool bNeedPreScale_;
   bool bIsPreScale_;
+  bool bUseBlackBuffer_;
+  std::shared_ptr<DrmBuffer> pBlackBuffer_;
+
   DrmLayerInfoStore storePreScaleInfo_;
   metadata_for_rkvdec_scaling_t mMetadata_;
 
