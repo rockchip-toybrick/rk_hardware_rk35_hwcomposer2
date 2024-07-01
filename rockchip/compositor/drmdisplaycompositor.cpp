@@ -907,11 +907,11 @@ int DrmDisplayCompositor::CollectHwPqInfo() {
 
       HWC2_ALOGD_IF_DEBUG("crtc_id = %" PRIu32" disable hwpq", crtc->id());
       if(hwpq_crtc==NULL){
-        HWC2_ALOGD_IF_DEBUG("Could not found HWPQ Crtc, skip disable, soc_id=0x%" PRIx32" crtc_id=%" PRIu32, drm->getSocId());
+        HWC2_ALOGD_IF_DEBUG("Could not found HWPQ Crtc, skip disable, soc_id=0x%" PRIx32" crtc_id=%" PRIu32, drm->getSocId(), crtc->id());
         return 0;
       }
       if(hwpq_plane==NULL){
-        HWC2_ALOGD_IF_DEBUG("Could not found HWPQ Plane, skip disable, soc_id=0x%" PRIx32" crtc_id=%" PRIu32, drm->getSocId());
+        HWC2_ALOGD_IF_DEBUG("Could not found HWPQ Plane, skip disable, soc_id=0x%" PRIx32" crtc_id=%" PRIu32, drm->getSocId(), crtc->id());
         return 0;
       }
 
