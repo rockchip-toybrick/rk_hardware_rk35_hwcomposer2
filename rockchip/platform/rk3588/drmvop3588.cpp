@@ -1292,37 +1292,44 @@ int Vop3588::MatchPlane(std::vector<DrmCompositionPlane> *composition_planes,
                           }
 
                           // Only YUV use Cluster rotate
-                          if(b8kMode ? (*iter_plane)->is_support_transform_8k((*iter_layer)->transform) : \
-                                       (*iter_plane)->is_support_transform((*iter_layer)->transform)){
+                          if(!(*iter_layer)->bSidebandStreamLayer_){
+                            if(b8kMode ? (*iter_plane)->is_support_transform_8k((*iter_layer)->transform) : \
+                                         (*iter_plane)->is_support_transform((*iter_layer)->transform)){
 
-                            if(((*iter_plane)->win_type() & PLANE_RK3588_ALL_CLUSTER_MASK) &&
-                                !(*iter_layer)->bAfbcd_ && (*iter_layer)->transform != DRM_MODE_ROTATE_0){
-                              // Cluster only rotate afbc format
-                              ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support noAfbc(%d) layer transform",
-                                        (*iter_plane)->name(), (*iter_layer)->bAfbcd_);
-                              continue;
-                            }
-                            if(((*iter_layer)->transform & (DRM_MODE_REFLECT_X | DRM_MODE_ROTATE_90 | DRM_MODE_ROTATE_270)) != 0){
-                              // Cluster rotate must 64 align
-                              if(((*iter_layer)->iStride_ % 64 != 0)){
-                                ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support layer transform(xmirror or 90 or 270) 0x%x and iStride_ = %d",
-                                        (*iter_plane)->name(), (*iter_layer)->transform,(*iter_layer)->iStride_);
+                              if(((*iter_plane)->win_type() & PLANE_RK3588_ALL_CLUSTER_MASK) &&
+                                  !(*iter_layer)->bAfbcd_ && (*iter_layer)->transform != DRM_MODE_ROTATE_0){
+                                // Cluster only rotate afbc format
+                                ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support noAfbc(%d) layer transform",
+                                          (*iter_plane)->name(), (*iter_layer)->bAfbcd_);
                                 continue;
                               }
-                            }
-
-                            if(((*iter_layer)->transform & (DRM_MODE_ROTATE_90 | DRM_MODE_ROTATE_270)) != 0){
-                              //Cluster rotate input_h must <= 2048
-                              if(input_h > 2048){
-                                ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support layer transform(90 or 270) 0x%x and input_h = %d",
-                                        (*iter_plane)->name(), (*iter_layer)->transform,input_h);
-                                continue;
+                              if(((*iter_layer)->transform & (DRM_MODE_REFLECT_X | DRM_MODE_ROTATE_90 | DRM_MODE_ROTATE_270)) != 0){
+                                // Cluster rotate must 64 align
+                                if(((*iter_layer)->iStride_ % 64 != 0)){
+                                  ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support layer transform(xmirror or 90 or 270) 0x%x and iStride_ = %d",
+                                          (*iter_plane)->name(), (*iter_layer)->transform,(*iter_layer)->iStride_);
+                                  continue;
+                                }
                               }
+
+                              if(((*iter_layer)->transform & (DRM_MODE_ROTATE_90 | DRM_MODE_ROTATE_270)) != 0){
+                                //Cluster rotate input_h must <= 2048
+                                if(input_h > 2048){
+                                  ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support layer transform(90 or 270) 0x%x and input_h = %d",
+                                          (*iter_plane)->name(), (*iter_layer)->transform,input_h);
+                                  continue;
+                                }
+                              }
+                            }else{
+                                ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support layer transform 0x%x, support 0x%x",
+                                        (*iter_plane)->name(), (*iter_layer)->transform,(*iter_plane)->get_transform());
+                                continue;
                             }
                           }else{
-                              ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support layer transform 0x%x, support 0x%x",
-                                      (*iter_plane)->name(), (*iter_layer)->transform,(*iter_plane)->get_transform());
-                              continue;
+                            if((*iter_layer)->transform != DRM_MODE_ROTATE_0){
+                              ALOGD_IF(LogLevel(DBG_DEBUG),"%s sideband layer use DVP transform 0x%x",
+                                      (*iter_plane)->name(), (*iter_layer)->transform);
+                            }
                           }
 
                           ALOGD_IF(LogLevel(DBG_DEBUG),"MatchPlane: match id=%d name=%s, Plane=%s, zops=%d",

@@ -24,6 +24,8 @@
 #include "rockchip/producer/videotunnel/video_tunnel.h"
 #include "rockchip/producer/vpcontext.h"
 #include "utils/worker.h"
+#include <drm/drm_mode.h>
+#include <rga.h>
 
 namespace android {
 class DrmVideoProducer : public Worker{
@@ -42,7 +44,7 @@ public:
   // Is invalid.
   bool IsValid();
   // Create tunnel connection.
-  int CreateConnection(int display_id, int tunnel_id, android_dataspace_t dataspace = HAL_DATASPACE_UNKNOWN);
+  int CreateConnection(int display_id, int tunnel_id, android_dataspace_t dataspace = HAL_DATASPACE_UNKNOWN, uint32_t transform=DRM_MODE_ROTATE_0);
   // Destory Connection
   int DestoryConnection(int display_id, int tunnel_id);
   // Get Last video buffer
@@ -59,6 +61,7 @@ public:
   int SetProducerFps(int tunnel_id, float fps);
   float GetProducerFps(int tunnel_id);
   void PrintTimeStamp(int display_id, int tunnel_id, uint64_t buffer_id);
+  int DoTransform(std::shared_ptr<VpContext> ctx, std::shared_ptr<DrmBuffer> buffer, std::set<uint32_t> transforms);
 #ifdef USE_LIBPQ_HWPQ
   std::shared_ptr<DrmBuffer> DoHwPq(std::shared_ptr<VpContext> ctx, std::shared_ptr<DrmBuffer> buffer);
 #endif

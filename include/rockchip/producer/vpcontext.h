@@ -26,6 +26,8 @@
 #include "drmbuffer.h"
 #include "rockchip/drmgralloc.h"
 #include "rockchip/producer/videotunnel/video_tunnel.h"
+#include <drm_fourcc.h>
+#include <drmbufferqueue.h>
 
 namespace android {
 
@@ -228,7 +230,21 @@ public:
 
   int SetPqAcquireFence(uint64_t buffer_id, int fence_fd);
   int WaitPqAcquireFence(uint64_t buffer_id, int time);
+
+  void SetTransform(int display_id, uint32_t transform){
+    mTransform_[display_id] = transform;
+  }
+  uint32_t GetTransform(int display_id){
+    if(mTransform_.count(display_id))
+      return mTransform_[display_id];
+    else
+      return DRM_MODE_ROTATE_0;
+  }
+
   std::list<std::shared_ptr<DrmBuffer>> lBuffer_;
+  std::map<uint32_t, std::shared_ptr<DrmBufferQueue>> mapTransformBufferQueue_;
+  std::map<int ,uint32_t> mTransform_;
+  std::map<uint32_t, std::list<std::shared_ptr<DrmBuffer>>> mTransfromBuffers_;
 
   void SetProducerFps(float fps){
     fps_=fps;
@@ -258,6 +274,7 @@ private:
   SyncTimeline mTimeLine_;
   mutable std::mutex mtx_;
   float fps_=60;
+  uint32_t uTransform_ = DRM_MODE_ROTATE_0;
 };
 }; // namespace android
 

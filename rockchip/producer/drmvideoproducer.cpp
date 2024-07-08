@@ -22,6 +22,8 @@
 #include "rockchip/producer/drmvideoproducer.h"
 #include <utils/Trace.h>
 #include "resources/resourcemanager.h"
+#include <im2d.hpp>
+#include <rockchip/utils/rgautils.h>
 
 #include <dlfcn.h>
 #include <fcntl.h>
@@ -35,6 +37,11 @@ namespace android {
 #define RK_LIB_VT_PATH "/vendor/lib64/librkvt.so"
 #else
 #define RK_LIB_VT_PATH "/vendor/lib/librkvt.so"
+#endif
+
+#define ALIGN_DOWN( value, base)	(value & (~(base-1)) )
+#ifndef ALIGN
+#define ALIGN( value, base ) (((value) + ((base) - 1)) & ~((base) - 1))
 #endif
 
 // Next Hdr
@@ -147,7 +154,7 @@ bool DrmVideoProducer::IsValid(){
 }
 
 // Create tunnel connection.
-int DrmVideoProducer::CreateConnection(int display_id, int tunnel_id, android_dataspace_t dataspace ){
+int DrmVideoProducer::CreateConnection(int display_id, int tunnel_id, android_dataspace_t dataspace, uint32_t transform){
   std::lock_guard<std::mutex> lock(mtx_);
 
   if(!bInit_){
@@ -159,8 +166,9 @@ int DrmVideoProducer::CreateConnection(int display_id, int tunnel_id, android_da
     std::shared_ptr<VpContext> ctx = mMapCtx_[tunnel_id];
     ctx->iDataSpace_ = dataspace;
     if(!ctx->AddConnRef(display_id)){
-      HWC2_ALOGI("display-id=%d tunnel_id=%d success, connections size=%d", display_id, tunnel_id, ctx->ConnectionCnt());
+      HWC2_ALOGI("display-id=%d tunnel_id=%d success, transform = 0x%" PRIx32", connections size=%d", display_id, tunnel_id, transform, ctx->ConnectionCnt());
     }
+    ctx->SetTransform(display_id, transform);
     return 0;
   }
 
@@ -169,11 +177,12 @@ int DrmVideoProducer::CreateConnection(int display_id, int tunnel_id, android_da
       return ret;
   }
 
-  HWC2_ALOGI("display-id=%d tunnel_id=%d success", display_id, tunnel_id);
+  HWC2_ALOGI("display-id=%d tunnel_id=%d success, transfrom = 0x%" PRIx32, display_id, tunnel_id, transform);
   mMapCtx_[tunnel_id] = std::make_shared<VpContext>(tunnel_id);
   std::shared_ptr<VpContext> ctx = mMapCtx_[tunnel_id];
   ctx->AddConnRef(display_id);
   ctx->iDataSpace_ = dataspace;
+  ctx->SetTransform(display_id, transform);
   Signal();
   return 0;
 }
@@ -449,6 +458,33 @@ std::shared_ptr<DrmBuffer> DrmVideoProducer::AcquireBuffer(int display_id,
 
   std::shared_ptr<DrmBuffer> acquired_buffer=NULL;
 
+  uint32_t transform = ctx->GetTransform(display_id);
+  if(transform!=DRM_MODE_ROTATE_0){
+    //检查是否有符合旋转的buffer
+    if(ctx->mTransfromBuffers_.count(transform) && ctx->mTransfromBuffers_[transform].size()>0){
+      if(ctx->mTransfromBuffers_[transform].back()){
+        //优先使用最新的buffer，dup出Fence检查是否signal
+        acquired_buffer = ctx->mTransfromBuffers_[transform].back();
+        int fence_fd = acquired_buffer->GetFinishFence();
+        if(fence_fd>0){
+          int wait_ret = sync_wait(fence_fd, 0);
+          close(fence_fd);
+          //如果还没signal，则改用旧buffer，并等待fence
+          if(wait_ret){
+            acquired_buffer = ctx->mTransfromBuffers_[transform].front();
+            int ret = acquired_buffer->WaitFinishFence();
+            if(ret){
+              HWC2_ALOGE("tunnel_id=%d, display=%d, transform=%" PRIx32" wait transform fence failed!",
+                          tunnel_id, display_id, transform);
+            }
+          }
+        }
+      }
+      return acquired_buffer;
+    }else{
+      return nullptr;
+    }
+  }else{
   //if there is any buffer in list
   if(ctx->lBuffer_.size()>0){
     for(auto &b:ctx->lBuffer_){
@@ -560,6 +596,7 @@ std::shared_ptr<DrmBuffer> DrmVideoProducer::AcquireBuffer(int display_id,
   }else{
     return NULL;
   }
+  }
 }
 
 // Release video buffer
@@ -580,6 +617,290 @@ int DrmVideoProducer::SignalReleaseFence(int display_id, int tunnel_id, uint64_t
 
   std::shared_ptr<VpContext> ctx = mMapCtx_[tunnel_id];
   return ctx->SignalReleaseFence(display_id, buffer_id);;
+}
+
+int DrmVideoProducer::DoTransform(std::shared_ptr<VpContext> ctx, std::shared_ptr<DrmBuffer> buffer, std::set<uint32_t> transforms){
+  ATRACE_CALL();
+  int ret = 0;
+
+  // 1. 初始化RGA变量
+  rga_buffer_t src;
+  rga_buffer_t dst;
+  rga_buffer_t pat;
+  im_rect src_rect;
+  im_rect dst_rect;
+  im_rect pat_rect;
+  memset(&src, 0, sizeof(rga_buffer_t));
+  memset(&dst, 0, sizeof(rga_buffer_t));
+  memset(&pat, 0, sizeof(rga_buffer_t));
+  memset(&src_rect, 0, sizeof(im_rect));
+  memset(&dst_rect, 0, sizeof(im_rect));
+  memset(&pat_rect, 0, sizeof(im_rect));
+
+  int mergedReleaseFence = -1;
+
+  std::set<uint32_t> unused_tf;
+  for(auto &tfbq:ctx->mapTransformBufferQueue_){
+    if(transforms.count(tfbq.first)==0){
+      unused_tf.emplace(tfbq.first);
+    }
+  }
+  for(auto tf:unused_tf)
+    ctx->mapTransformBufferQueue_.erase(tf);
+
+  // 3.针对每个旋转类型进行旋转
+  for(uint32_t transform:transforms){
+
+    // 3.1 查找或创建BufferQueue
+    std::shared_ptr<DrmBufferQueue> bufferQueue;
+    if(ctx->mapTransformBufferQueue_.count(transform) && ctx->mapTransformBufferQueue_[transform]){
+      bufferQueue = ctx->mapTransformBufferQueue_[transform];
+    }else{
+      bufferQueue = std::make_shared<DrmBufferQueue>(4);
+      if(bufferQueue){
+        ctx->mapTransformBufferQueue_[transform] = bufferQueue;
+      }else{
+        HWC2_ALOGE("DVP_Transform: BufferQueue create failed!");
+        continue;
+      }
+    }
+
+    // 3.2 Set src buffer info
+    int src_format;
+    if(gIsRK3588()){
+      if(!hwc_rga_utils::isRK3588RGA3SupportFormat(buffer->GetFormat())){
+        HWC2_ALOGE("RK3588 RGA3 do not support this format, transform failed!");
+        return -1;
+      }else{
+        src_format = hwc_rga_utils::HwcGetRgaFormat(hwc_rga_utils::UnifyAndroidFormatForRK3588(buffer->GetFormat()));
+      }
+    }else if(gIsRK3576()){
+      if(!hwc_rga_utils::isRK3576RGA2SupportFormat(buffer->GetFormat())){
+        HWC2_ALOGE("RK3576 RGA2.5 do not support this format, transform failed!");
+        return -1;
+      }else{
+        src_format = hwc_rga_utils::HwcGetRgaFormat(hwc_rga_utils::UnifyAndroidFormatForRK3576(buffer->GetFormat()));
+      }
+    }else{
+      //目前RGA格式匹配，3576格式最全，默认使用此转换函数
+      src_format = hwc_rga_utils::HwcGetRgaFormat(hwc_rga_utils::UnifyAndroidFormatForRK3576(buffer->GetFormat()));
+    }
+    if(src_format==-1)
+      src_format = buffer->GetFormat();
+
+    // RGA 的特殊修改，需要通过 wstride
+    int src_stride;
+    if(buffer->GetFourccFormat() == DRM_FORMAT_NV15)
+      src_stride = buffer->GetByteStride();
+    else
+      src_stride = buffer->GetStride();
+
+    src = wrapbuffer_handle(buffer->GetRgaHandle(),
+                            buffer->GetWidth(),
+                            buffer->GetHeight(),
+                            src_format,
+                            src_stride,
+                            buffer->GetHeightStride());
+    // AFBC format
+    src.rd_mode = 0;
+    if(fourcc_mod_is_vendor(buffer->GetModifier(),ARM)){
+      if(gIsRK3576()){
+        src.rd_mode = IM_AFBC32x8_MODE;
+      }else{
+        src.rd_mode = IM_FBC_MODE;
+      }
+    }else if(IS_ROCKCHIP_RFBC_MOD(buffer->GetModifier())){
+        src.rd_mode = IM_RKFBC64x4_MODE;
+    }
+
+    // Set src rect info
+    int left,top,right,bottom;
+    buffer->GetCrop(&left, &top, &right, &bottom);
+
+    src_rect.x = ALIGN_DOWN((int)left,2);
+    src_rect.y = ALIGN_DOWN((int)top,2);
+    src_rect.width  = ALIGN_DOWN((int)(right-left),2);
+    src_rect.height = ALIGN_DOWN((int)(bottom-top),2);
+
+    // 3.3 设置目标buffer属性
+    int dst_width = buffer->GetWidth();
+    int dst_height = buffer->GetHeight();
+    if((transform==DRM_MODE_ROTATE_90) || (transform & DRM_MODE_ROTATE_270)){
+      std::swap(dst_height,dst_width);
+    }
+
+    int dst_buf_format = buffer->GetFormat();
+    if (dst_buf_format == HAL_PIXEL_FORMAT_YUV420_8BIT_RFBC ||
+        dst_buf_format == HAL_PIXEL_FORMAT_YUV422_8BIT_RFBC ||
+        dst_buf_format == HAL_PIXEL_FORMAT_YUV444_8BIT_RFBC ||
+        dst_buf_format == HAL_PIXEL_FORMAT_YUV420_8BIT_I    ||
+        dst_buf_format == HAL_PIXEL_FORMAT_YCBCR_420_888) {
+      dst_buf_format = HAL_PIXEL_FORMAT_YCrCb_NV12;
+    } else if (dst_buf_format == HAL_PIXEL_FORMAT_YUV420_10BIT_RFBC ||
+               dst_buf_format == HAL_PIXEL_FORMAT_YUV422_10BIT_RFBC ||
+               dst_buf_format == HAL_PIXEL_FORMAT_YUV420_10BIT_I) {
+        dst_buf_format = HAL_PIXEL_FORMAT_YCrCb_NV12_10;
+    }
+
+    std::shared_ptr<DrmBuffer> dst_buffer = bufferQueue->DequeueDrmBuffer(dst_width,
+                                              dst_height,
+                                              dst_buf_format,
+                                              RK_GRALLOC_USAGE_STRIDE_ALIGN_64 |
+                                              MALI_GRALLOC_USAGE_NO_AFBC|
+                                              RK_GRALLOC_USAGE_WITHIN_4G,
+                                              "DVP_TF-target");
+    if(!dst_buffer){
+      HWC2_ALOGE("tunnel_id=%d, buffer_id=0x%" PRIx64" Dequeue DstBuffer fail! ret = %d",
+        ctx->GetTunnelId(), buffer->GetExternalId(), ret);
+      continue;
+    }
+    // Set dst buffer info
+    // RGA 的特殊修改，需要通过 wstride
+    int dst_stride;
+    if(dst_buffer->GetFourccFormat() == DRM_FORMAT_NV15)
+      dst_stride = dst_buffer->GetByteStride();
+    else
+      dst_stride = dst_buffer->GetStride();
+
+    int dst_format;
+    if(gIsRK3588()){
+      if(!hwc_rga_utils::isRK3588RGA3SupportFormat(dst_buf_format)){
+        HWC2_ALOGE("RK3588 RGA3 do not support this format, transform failed!");
+        return -1;
+      }else{
+        dst_format = hwc_rga_utils::HwcGetRgaFormat(hwc_rga_utils::UnifyAndroidFormatForRK3588(dst_buf_format));
+      }
+    }else if(gIsRK3576()){
+      if(!hwc_rga_utils::isRK3576RGA2SupportFormat(dst_buf_format)){
+        HWC2_ALOGE("RK3576 RGA2.5 do not support this format, transform failed!");
+        return -1;
+      }else{
+        dst_format = hwc_rga_utils::HwcGetRgaFormat(hwc_rga_utils::UnifyAndroidFormatForRK3576(dst_buf_format));
+      }
+    }else{
+      //目前RGA格式匹配，3576格式最全，默认使用此转换函数
+      dst_format = hwc_rga_utils::HwcGetRgaFormat(hwc_rga_utils::UnifyAndroidFormatForRK3576(dst_buf_format));
+    }
+    if(dst_format==-1)
+      dst_format = dst_buf_format;
+
+    dst = wrapbuffer_handle(dst_buffer->GetRgaHandle(),
+                            dst_buffer->GetWidth(),
+                            dst_buffer->GetHeight(),
+                            dst_format,
+                            dst_stride,
+                            dst_buffer->GetHeightStride());
+
+    dst_rect.x = 0;
+    dst_rect.y = 0;
+    dst_rect.width  = ALIGN_DOWN((int)(dst_width),2);
+    dst_rect.height = ALIGN_DOWN((int)(dst_height),2);
+
+    dst_buffer->SetCrop(0, 0, dst_rect.width, dst_rect.height);
+    dst_buffer->SetExternalId(buffer->GetExternalId());
+    int usage = 0;
+    // 处理旋转
+    switch(transform){
+    case DRM_MODE_ROTATE_0:
+      usage = 0;
+      break;
+    case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_X:
+      usage = IM_HAL_TRANSFORM_FLIP_H;
+      break;
+    case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_Y:
+      usage = IM_HAL_TRANSFORM_FLIP_V;
+      break;
+    case DRM_MODE_ROTATE_90:
+      usage = IM_HAL_TRANSFORM_ROT_90;
+      break;
+    case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_X | DRM_MODE_REFLECT_Y:
+      usage = IM_HAL_TRANSFORM_ROT_180;
+      break;
+    case DRM_MODE_ROTATE_270:
+      usage = IM_HAL_TRANSFORM_ROT_270;
+      break;
+    // RGA2/RGA3的 flip + rotate 场景，硬件内部处理是先 rotate 再 flip
+    // 而 Android 请求的是先 flip 再 rotate，故此请求需要做转换
+    // Android请求 flip-v + rotate-90  等价于 rotate-90 + flip-h
+    case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_Y | DRM_MODE_ROTATE_90 :
+      usage = IM_HAL_TRANSFORM_ROT_90 | IM_HAL_TRANSFORM_FLIP_H ;
+      break;
+    // Android请求 flip-h + rotate-90  等价于 rotate-90 + flip-v
+    case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_X | DRM_MODE_ROTATE_90:
+      usage = IM_HAL_TRANSFORM_ROT_90 | IM_HAL_TRANSFORM_FLIP_V;
+      break;
+    default:
+      usage = 0;
+      ALOGE_IF(LogLevel(DBG_DEBUG),"Unknow sf transform 0x%x", transform);
+    }
+
+    IM_STATUS im_state;
+    // Call Im2d 格式转换
+    im_state = imcheck_composite(src, dst, pat, src_rect, dst_rect, pat_rect, usage|IM_ASYNC);
+    if(im_state != IM_STATUS_NOERROR){
+      HWC2_ALOGE("call im2d scale fail, %s",imStrError(im_state));
+      bufferQueue->QueueBuffer(dst_buffer);
+      continue;
+    }
+
+    int i=0;
+    int acquire_fence = ctx->DupAcquireFence(buffer->GetExternalId());
+    if(acquire_fence>0 && !ResourceManager::getInstance()->GetEnableRgaAcquireFence()){
+      int ret = sync_wait(acquire_fence, 500);
+      if(ret){
+        HWC2_ALOGE("tunnel_id=%d, buffer_id=0x%" PRIx64" Wait AcqurieFence 500ms Failed! fence_fd = %d, ret = %d", ctx->GetTunnelId(), buffer->GetExternalId(), acquire_fence, ret);
+      }
+    }else{
+      HWC2_ALOGD_IF_VERBOSE("RGA acquire fence is enabled, fence_fd = %d",acquire_fence);
+    }
+
+
+    int releaseFence = -1;
+    im_opt_t imOpt;
+    memset(&imOpt, 0x00, sizeof(im_opt_t));
+    if(gIsRK3588()){
+      imOpt.core = IM_SCHEDULER_RGA3_CORE0 | IM_SCHEDULER_RGA3_CORE1;
+    }
+    im_state = improcess(src, dst, pat, src_rect, dst_rect, pat_rect, acquire_fence, &releaseFence, &imOpt, usage|IM_ASYNC);
+    if(im_state != IM_STATUS_SUCCESS){
+      HWC2_ALOGE("call im2d scale fail, %s",imStrError(im_state));
+      bufferQueue->QueueBuffer(dst_buffer);
+      if(releaseFence>0){
+        close(releaseFence);
+      }
+      continue;
+    }
+
+    if(releaseFence>0){
+      dst_buffer->SetFinishFence(releaseFence);
+      //由于可能存在多种旋转角度，进行多次旋转，需要将多次旋转ReleaseFence Merge到一起，
+      //以确保在释放源buffer前等待所有旋转操作处理完成
+      if(mergedReleaseFence>0){
+        int fd = sync_merge("DVP_TF_Fence", mergedReleaseFence, releaseFence);
+        if(fd>0){
+          close(mergedReleaseFence);
+          mergedReleaseFence = fd;
+        }
+      }else{
+        mergedReleaseFence = dup(releaseFence);
+      }
+
+    }
+
+    char value[PROPERTY_VALUE_MAX];
+    property_get("vendor.dump", value, "false");
+    if(!strcmp(value, "true")){
+      dst_buffer->DumpData();
+    }
+
+    bufferQueue->QueueBuffer(dst_buffer);
+
+  }
+
+  if(mergedReleaseFence>0){
+    buffer->SetFinishFence(mergedReleaseFence);
+  }
+  return 0;
 }
 
 void DrmVideoProducer::Routine(){
@@ -618,8 +939,13 @@ void DrmVideoProducer::Routine(){
     HWC2_ALOGD_IF_DEBUG("Tunnel %d is not connected, release tunnel",tunnel_id);
     std::shared_ptr<VpContext> ctx = mMapCtx_[tunnel_id];
     while(ctx->lBuffer_.size()>0){
-      //Signal Release Fence 
-      uint64_t buffer_id = ctx->lBuffer_.front()->GetExternalId();
+      std::shared_ptr<DrmBuffer> frontBuffer = ctx->lBuffer_.front();
+      uint64_t buffer_id = frontBuffer->GetExternalId();
+      //Wait for DoTransform RGA finish
+      int ret = frontBuffer->WaitFinishFence();
+      if(ret){
+        HWC2_ALOGE("tunnel_id=%d wait transform fence failed!", tunnel_id);
+      }
 
       if(ctx->WaitPqAcquireFence(buffer_id,1500)){
         HWC2_ALOGE("tunnel_id=%d Wait Pq AcquireFence 1500ms Failed!", ctx->GetTunnelId());
@@ -757,6 +1083,7 @@ void DrmVideoProducer::Routine(){
     ctx->PrintReleaseFailedBuffer();
 
 #ifdef USE_LIBPQ_HWPQ
+    std::shared_ptr<DrmBuffer> originalBuffer = buffer;
     if(gIsRK3576()){
       int hwpq_mode = hwc_get_int_property("persist.vendor.tvinput.rkpq.mode","0");
       if(hwpq_mode == 2){
@@ -773,12 +1100,61 @@ void DrmVideoProducer::Routine(){
     }
 #endif
 
+    // 收集所需要的旋转类型
+    std::set<uint32_t> transforms;
+    for(auto tfpair : ctx->mTransform_){
+      if(tfpair.second!=DRM_MODE_ROTATE_0 && tfpair.second!=0)
+        transforms.emplace(tfpair.second);
+    }
+
+    //DoTransform可能耗时，解锁进行，同时函数内确保线程安全。
+    lock.unlock();
+#ifdef USE_LIBPQ_HWPQ
+    ret = DoTransform(ctx,originalBuffer,transforms);
+#else
+    ret = DoTransform(ctx,buffer,transforms);
+#endif
+    if(ret){
+      HWC2_ALOGE("DoTransform failed, ret = %d", ret);
+    }
+    lock.lock();
+    //将DoTransform旋转的buffer存放到队列中，队列长度为2，旧的一帧理论上已做完转换，保证acquirebuffer过程尽快返回。
+    for(uint32_t transform:transforms){
+      if(ctx->mapTransformBufferQueue_.count(transform) && ctx->mapTransformBufferQueue_[transform]){
+        std::shared_ptr<DrmBuffer> tf_buffer = ctx->mapTransformBufferQueue_[transform]->BackDrmBuffer();
+
+        if(ctx->mTransfromBuffers_.count(transform)){
+          ctx->mTransfromBuffers_[transform].push_back(tf_buffer);
+          //只保留最新两帧，如果队列长度>2则释放最旧一帧
+          if(ctx->mTransfromBuffers_[transform].size()>2)
+            ctx->mTransfromBuffers_[transform].pop_front();
+        }else{
+          //第一帧，新建list
+          ctx->mTransfromBuffers_[transform] = std::list<std::shared_ptr<DrmBuffer>>({tf_buffer});
+        }
+      }
+    }
+
+    std::set<uint32_t> unused_tf;
+    for(auto &tfbuffer:ctx->mTransfromBuffers_){
+      if(transforms.count(tfbuffer.first)==0){
+        unused_tf.emplace(tfbuffer.first);
+      }
+    }
+    for(auto tf:unused_tf)
+      ctx->mTransfromBuffers_.erase(tf);
+
     //Add buff to list
     ctx->lBuffer_.push_back(buffer);
     //if more than 2 buffer release old one
-    while(ctx->lBuffer_.size()>2){      
-      uint64_t buffer_id = ctx->lBuffer_.front()->GetExternalId();
-
+    while(ctx->lBuffer_.size()>2){
+      std::shared_ptr<DrmBuffer> frontBuffer = ctx->lBuffer_.front();
+      uint64_t buffer_id = frontBuffer->GetExternalId();
+      //Wait for DoTransform RGA process done
+      int ret = frontBuffer->WaitFinishFence();
+      if(ret){
+        HWC2_ALOGE("tunnel_id=%d wait transform fence failed!", tunnel_id);
+      }
       //Signal Release Fence 
       if(ctx->WaitPqAcquireFence(buffer_id,1500)){
         HWC2_ALOGE("tunnel_id=%d Wait Pq AcquireFence 1500ms Failed!", ctx->GetTunnelId());

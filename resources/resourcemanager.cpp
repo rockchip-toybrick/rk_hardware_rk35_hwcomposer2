@@ -180,6 +180,9 @@ int ResourceManager::InitProperty() {
   property_get("vendor.hwc.video_buf_cache_max_size", property_value, "0");
   mCacheBufferLimitSize_ = atoi(property_value);
 
+  property_get("vendor.hwc.enable_rga_acquire_fence", property_value, "0");
+  mEnableRgaAcquireFence = atoi(property_value);
+
   // Enable Edid report by GetDisplayIdentificationData
   // 上报EDID之后Surfaceflinger会生成不规则的Display ID
   // RK车机和投影平台需要0，1，2，3这样的顺序ID，因此默认不开启EDID上报
@@ -211,6 +214,10 @@ int ResourceManager::GetCacheBufferLimitSize() const{
 
 bool ResourceManager::GetEnableEdidReport() const{
   return mEnableEdidReport_;
+}
+
+bool ResourceManager::GetEnableRgaAcquireFence() const{
+  return mEnableRgaAcquireFence;
 }
 
 DrmDevice *ResourceManager::GetDrmDevice(int display) {

@@ -129,6 +129,7 @@ class ResourceManager {
   bool IsSidebandStream2Mode() const;
   int GetCacheBufferLimitSize() const;
   bool GetEnableEdidReport() const;
+  bool GetEnableRgaAcquireFence() const;
 
  private:
   ResourceManager();
@@ -191,6 +192,8 @@ class ResourceManager {
   int mCacheBufferLimitSize_ = 0;
   // Enable Edid report by GetDisplayIdentificationData
   bool mEnableEdidReport_ = false;
+  // Enable RGA acquire fence, RGA kernel driver before 20240724 may crash with acquire fence
+  bool mEnableRgaAcquireFence = false;
 
   mutable std::recursive_mutex mRecursiveMutex;
 };
