@@ -106,6 +106,7 @@ class DrmHwcTwo : public hwc2_device_t {
       return mCurrentState.validated_type_;
     }
     void accept_type_change() {
+      mCurrentState.sf_type_ = mCurrentState.validated_type_;
       mDrawingState = mCurrentState;
     }
     void set_validated_type(HWC2::Composition type) {
