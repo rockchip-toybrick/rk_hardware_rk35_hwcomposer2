@@ -21,6 +21,7 @@
 #include "rockchip/utils/drmdebug.h"
 #include "rockchip/producer/drmvideoproducer.h"
 #include <utils/Trace.h>
+#include "resources/resourcemanager.h"
 
 #include <dlfcn.h>
 #include <fcntl.h>
@@ -405,13 +406,14 @@ std::shared_ptr<DrmBuffer> DrmVideoProducer::DoHwPq(std::shared_ptr<VpContext> c
         ctx->GetTunnelId(), buffer->GetExternalId(), ret);
     return NULL;
   }
-  ctx->SetAcquireFence(buffer->GetExternalId(),output_fence);
+  ctx->SetPqAcquireFence(buffer->GetExternalId(),output_fence);
 
   if(dst_buffer){
     char value[PROPERTY_VALUE_MAX];
     property_get("vendor.dump", value, "false");
     if(!strcmp(value, "true")){
       ctx->WaitAcquireFence(buffer->GetExternalId(),3000);
+      ctx->WaitPqAcquireFence(buffer->GetExternalId(),3000);
       dst_buffer->DumpData();
     }
     //Update Crop form Query Result
@@ -457,9 +459,46 @@ std::shared_ptr<DrmBuffer> DrmVideoProducer::AcquireBuffer(int display_id,
     acquired_buffer = ctx->lBuffer_.back();
 
 #ifdef USE_LIBPQ_HWPQ
-    if(acquired_buffer->HasHwPqRegs()){
-      HWC2_ALOGD_IF_VERBOSE("display=%d, tunnel_id=%d, Force wait fence for HWPQ buffer",display_id,tunnel_id);
-      wait_fence = true;
+#define HWPQ_WAIT_FENCE_MIN_FPS (24)
+#define HWPQ_WAIT_FENCE_MAX_FPS (120)
+    //获取tunnel帧率
+    float fps = ctx->GetProducerFps();
+    //限制帧率范围，避免tunnel参数错误导致等待时间计算错误
+    if(fps < HWPQ_WAIT_FENCE_MIN_FPS)
+      fps = HWPQ_WAIT_FENCE_MIN_FPS;
+    if(fps > HWPQ_WAIT_FENCE_MAX_FPS)
+      fps = HWPQ_WAIT_FENCE_MAX_FPS;
+
+    //默认等待两倍VSYNC时间
+    int pq_wait_time = (1000.0f / fps * 2.0)+0.5;
+
+    //PQ等待逻辑：
+    //检查最新buffer是否被signal -> 如果未signal，则更换为上一帧 -> 等待上一帧signal
+    //wait 2VSYNC后未signal打警告 -> wait 3000ms ->仍未signal打错误返回NULL；
+    if(acquired_buffer->HasHwPqRegs() && !wait_fence){
+      int ret = ctx->WaitPqAcquireFence(acquired_buffer->GetExternalId(),0);
+      if(ret){
+        acquired_buffer = ctx->lBuffer_.front();
+        ret = ctx->WaitPqAcquireFence(acquired_buffer->GetExternalId(),pq_wait_time);
+        if(ret){
+          struct timespec ts;
+          clock_gettime(CLOCK_MONOTONIC, &ts);
+          int64_t time_begin_wait= ts.tv_sec * 1000 * 1000 + ts.tv_nsec / 1000;
+          HWC2_ALOGW("display-id=%d tunnel_id=%d Buffer 0x%" PRIx64" HWPQ is not signaled after %dms!!!",
+                     display_id,tunnel_id,acquired_buffer->GetExternalId(),pq_wait_time);
+          ret = ctx->WaitPqAcquireFence(acquired_buffer->GetExternalId(),3000);
+          if(ret){
+            HWC2_ALOGE("display-id=%d tunnel_id=%d Buffer 0x%" PRIx64" HWPQ is not signaled after 3000ms!!!",
+                       display_id,tunnel_id,acquired_buffer->GetExternalId());
+            return NULL;
+          }else{
+            clock_gettime(CLOCK_MONOTONIC, &ts);
+            int64_t time_end_wait= ts.tv_sec * 1000 * 1000 + ts.tv_nsec / 1000;
+            HWC2_ALOGW("display-id=%d tunnel_id=%d Buffer 0x%" PRIx64" HWPQ is signaled after %" PRIi64"ms!!!",
+                       display_id,tunnel_id,acquired_buffer->GetExternalId(),pq_wait_time+(time_end_wait-time_begin_wait)/1000);
+          }
+        }
+      }
     }
 #endif
 
@@ -470,6 +509,9 @@ std::shared_ptr<DrmBuffer> DrmVideoProducer::AcquireBuffer(int display_id,
       if(ctx->lBuffer_.size()==2){
         //check if new buffer is signaled
         ret = ctx->WaitAcquireFence(acquired_buffer->GetExternalId(),0);
+#ifdef USE_LIBPQ_HWPQ
+        ret |= ctx->WaitPqAcquireFence(acquired_buffer->GetExternalId(),0);
+#endif
         //if not, use old buffer.
         if(ret)
           acquired_buffer = ctx->lBuffer_.front();
@@ -480,9 +522,37 @@ std::shared_ptr<DrmBuffer> DrmVideoProducer::AcquireBuffer(int display_id,
         HWC2_ALOGE("display-id=%d tunnel_id=%d Buffer 0x%" PRIx64" is not signaled after 3000ms!!!",display_id,tunnel_id,acquired_buffer->GetExternalId());
         return NULL;
       }
+#ifdef USE_LIBPQ_HWPQ
+      //PQ等待逻辑：
+      //wait 2VSYNC后未signal打警告 -> wait 3000ms ->仍未signal打错误返回NULL；
+      ret = ctx->WaitPqAcquireFence(acquired_buffer->GetExternalId(),pq_wait_time);
+      if(ret){
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        int64_t time_begin_wait= ts.tv_sec * 1000 * 1000 + ts.tv_nsec / 1000;
+        HWC2_ALOGW("display-id=%d tunnel_id=%d Buffer 0x%" PRIx64" HWPQ is not signaled after %dms!!!",
+                    display_id,tunnel_id,acquired_buffer->GetExternalId(),pq_wait_time);
+        ret = ctx->WaitPqAcquireFence(acquired_buffer->GetExternalId(),3000);
+        if(ret){
+          HWC2_ALOGE("display-id=%d tunnel_id=%d Buffer 0x%" PRIx64" HWPQ is not signaled after 3000ms!!!",
+                      display_id,tunnel_id,acquired_buffer->GetExternalId());
+          return NULL;
+        }else{
+          clock_gettime(CLOCK_MONOTONIC, &ts);
+          int64_t time_end_wait= ts.tv_sec * 1000 * 1000 + ts.tv_nsec / 1000;
+          HWC2_ALOGW("display-id=%d tunnel_id=%d Buffer 0x%" PRIx64" HWPQ is signaled after %" PRIi64"ms!!!",
+                      display_id,tunnel_id,acquired_buffer->GetExternalId(),pq_wait_time+(time_end_wait-time_begin_wait)/1000);
+        }
+      }
+#endif
     }
+#ifdef USE_LIBPQ_HWPQ
+    HWC2_ALOGD_IF_DEBUG("tunnel_id=%d, display=%d, acquired buffer:%" PRIu64 " , %s Hwpq Regs, add Release fence Reference",
+                          tunnel_id, display_id, acquired_buffer->GetExternalId(),acquired_buffer->HasHwPqRegs()?"with":"without");
+#else
     HWC2_ALOGD_IF_VERBOSE("tunnel_id=%d, display=%d, acquired buffer:%" PRIu64 " ,add Release fence Reference",
                           tunnel_id, display_id, acquired_buffer->GetExternalId());
+#endif
     //release fence add refCount
     ctx->AddReleaseFenceRefCnt(display_id,acquired_buffer->GetExternalId());
 
