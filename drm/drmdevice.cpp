@@ -714,11 +714,18 @@ std::tuple<int, int> DrmDevice::Init(int num_displays) {
     std::tie(ret, zpos) = plane->zpos_property().value();
     std::tie(ret, crtc_id) = plane->crtc_property().value();
     uint32_t current_crtc_mask = 0;
-    // 将 uboot 阶段的 crtc 配置同步到 PlaneGroups中;
+    int current_display = -1;
+    // 将 uboot 阶段的 crtc / connector 配置同步到 PlaneGroups 中;
     if(crtc_id > 0){
       for (auto &crtc : crtcs_) {
         if (crtc->id() == crtc_id){
           current_crtc_mask = (1 << crtc->pipe());
+          break;
+        }
+      }
+      for (auto &conn : connectors_) {
+        if(conn->get_kernel_crtc_id() == crtc_id){
+          current_display = conn->display();
           break;
         }
       }
@@ -739,7 +746,10 @@ std::tuple<int, int> DrmDevice::Init(int num_displays) {
       plane_group->share_id = share_id;
       plane_group->win_type = plane->win_type();
       plane_group->planes.push_back(plane.get());
-      plane_group->current_crtc_ = current_crtc_mask;
+      // 将 uboot 阶段的 crtc / connector 配置同步到 PlaneGroups 中;
+      if(current_display >=  0 && current_crtc_mask > 0){
+        plane_group->set_current_crtc(current_crtc_mask, current_display);
+      }
       plane_groups_.push_back(plane_group);
     }
 

@@ -197,7 +197,7 @@ int DrmDisplayComposition::DisableUnusedPlanes() {
       for(std::vector<DrmPlane*> ::const_iterator iter_plane=(*iter)->planes.begin();
         !(*iter)->planes.empty() && iter_plane != (*iter)->planes.end(); ++iter_plane) {
         if (!(*iter_plane)->is_use()) {
-            ALOGD_IF(LogLevel(DBG_DEBUG),"DisableUnusedPlanes plane_groups plane id=%d (%s)",
+            HWC2_ALOGD_IF_DEBUG("DisableUnusedPlanes plane_groups plane id=%d (%s)",
                       (*iter_plane)->id(),(*iter_plane)->name());
             AddPlaneDisable(*iter_plane);
             // break;
@@ -207,7 +207,7 @@ int DrmDisplayComposition::DisableUnusedPlanes() {
             }
         }
         if((*iter)->is_will_disable()){
-            ALOGD_IF(LogLevel(DBG_DEBUG),"DisableUnusedPlanes plane_groups plane id=%d (%s)",
+            HWC2_ALOGD_IF_DEBUG("DisableUnusedPlanes will disable plane_groups plane id=%d (%s)",
                       (*iter_plane)->id(),(*iter_plane)->name());
             AddPlaneDisable(*iter_plane);
             update_drmplane_assign_ = true;
