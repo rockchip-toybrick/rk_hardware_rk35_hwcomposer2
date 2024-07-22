@@ -238,6 +238,12 @@ int DrmDevice::InitEnvFromXml(){
            _##x->GetText(), \
            sizeof(DmXml_.ConnectorInfo[iConnectorCnt].x));
 
+    #define PARSE_OPT_INT(x) \
+    tinyxml2::XMLElement* _##x = pConnector->FirstChildElement(#x); \
+    if (_##x) { \
+      DmXml_.ConnectorInfo[iConnectorCnt].x = atoi(_##x->GetText());\
+    }
+
     PARSE_STR(Type);
     PARSE_INT(TypeId);
     PARSE_INT(SrcX);
@@ -248,8 +254,10 @@ int DrmDevice::InitEnvFromXml(){
     PARSE_INT(DstY);
     PARSE_INT(DstW);
     PARSE_INT(DstH);
+    DmXml_.ConnectorInfo[iConnectorCnt].Transform = 0;
+    PARSE_OPT_INT(Transform);
 
-    HWC2_ALOGI("Connector[%d] type=%s-%d [%d,%d,%d,%d]=>[%d,%d,%d,%d]",
+    HWC2_ALOGI("Connector[%d] type=%s-%d [%d,%d,%d,%d]=>[%d,%d,%d,%d] Transform =%d",
                 iConnectorCnt,
                 DmXml_.ConnectorInfo[iConnectorCnt].Type,
                 DmXml_.ConnectorInfo[iConnectorCnt].TypeId,
@@ -260,7 +268,8 @@ int DrmDevice::InitEnvFromXml(){
                 DmXml_.ConnectorInfo[iConnectorCnt].DstX,
                 DmXml_.ConnectorInfo[iConnectorCnt].DstY,
                 DmXml_.ConnectorInfo[iConnectorCnt].DstW,
-                DmXml_.ConnectorInfo[iConnectorCnt].DstH);
+                DmXml_.ConnectorInfo[iConnectorCnt].DstH,
+                DmXml_.ConnectorInfo[iConnectorCnt].Transform);
     iConnectorCnt++;
     pConnector = pConnector->NextSiblingElement();
   }
@@ -296,7 +305,8 @@ int DrmDevice::UpdateInfoFromXml(){
                                 DmXml_.ConnectorInfo[i].SrcX,
                                 DmXml_.ConnectorInfo[i].SrcY,
                                 DmXml_.ConnectorInfo[i].SrcW,
-                                DmXml_.ConnectorInfo[i].SrcH)){
+                                DmXml_.ConnectorInfo[i].SrcH,
+                                DmXml_.ConnectorInfo[i].Transform)){
             HWC2_ALOGW("%s-%d enter CropSpilt Mode fail.",
                         connector_type_str(conn->type()), conn->type_id());
           }else{

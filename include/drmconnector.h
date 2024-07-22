@@ -167,9 +167,11 @@ class DrmConnector {
                    int32_t srcX,
                    int32_t srcY,
                    int32_t srcW,
-                   int32_t srcH);
+                   int32_t srcH,
+                   int32_t transform);
   int getCropSpiltFb(int32_t *fbWidth, int32_t *fbHeight);
   int getCropInfo(int32_t *srcX, int32_t *srcY, int32_t *srcW, int32_t *srcH);
+  int getCropSpiltTransform();
 
 
   const DrmProperty &brightness_id_property() const;
@@ -286,6 +288,7 @@ class DrmConnector {
   int32_t SrcY_=0;
   int32_t SrcW_=0;
   int32_t SrcH_=0;
+  int32_t iCropSpiltTransform = 0;
 
   // Connector mirror
   std::map<DrmCrtc*, std::vector<int>> mMapCrtcDisplays_;

@@ -63,6 +63,7 @@ struct ConnectorInfoXml{
   int32_t DstY;
   int32_t DstW;
   int32_t DstH;
+  int32_t Transform;
 };
 
 // DisplayMode

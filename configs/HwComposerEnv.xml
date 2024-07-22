@@ -73,6 +73,14 @@
           Type-TypeId = HDMI-A-2
           Type-TypeId = HDMI-A-3
           Type-TypeId = DP-1
+
+        Transform:
+          "flip" is applied before "90 degree clockwise rotation".
+          1: Horizontal flip. 
+          2: Vertical flip.
+          4: 90 degree clockwise rotation.
+          3: 180 degree clockwise rotation.(Horizontal flip + Vertical flip)
+          7: 270 degree clockwise rotation.(Horizontal flip + Vertical flip + 90 degree clockwise rotation)
       -->
       <Type>HDMI-A</Type>
       <TypeId>1</TypeId>
@@ -84,6 +92,7 @@
       <DstY>0</DstY>    <!-- unuse , reserved -->
       <DstW>0</DstW>    <!-- unuse , reserved -->
       <DstH>0</DstH>    <!-- unuse , reserved -->
+      <Transform>0</Transform>     <!-- Screen Transform -->
     </Connector>
     <Connector>
       <Type>HDMI-A</Type>
@@ -96,6 +105,7 @@
       <DstY>0</DstY>    <!-- unuse , reserved-->
       <DstW>0</DstW>    <!-- unuse , reserved-->
       <DstH>0</DstH>    <!-- unuse , reserved-->
+      <Transform>0</Transform>     <!-- Screen Transform -->
     </Connector>
     <Connector>
       <Type>HDMI-A</Type>
@@ -108,6 +118,7 @@
       <DstY>0</DstY>    <!-- unuse , reserved-->
       <DstW>0</DstW>    <!-- unuse , reserved-->
       <DstH>0</DstH>    <!-- unuse , reserved-->
+      <Transform>0</Transform>     <!-- Screen Transform -->
     </Connector>
     <Connector>
       <Type>DP</Type>
@@ -120,6 +131,7 @@
       <DstY>0</DstY>    <!-- unuse , reserved-->
       <DstW>0</DstW>    <!-- unuse , reserved-->
       <DstH>0</DstH>    <!-- unuse , reserved-->
+      <Transform>0</Transform>     <!-- Screen Transform -->
     </Connector>
   </DsiplayMode>
 </HwComposerEnv>

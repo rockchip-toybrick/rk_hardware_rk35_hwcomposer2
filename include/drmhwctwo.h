@@ -603,6 +603,7 @@ class DrmHwcTwo : public hwc2_device_t {
     int DoSvep(bool validate, DrmHwcLayer *drmHwcLayer);
     int DoSwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_drm_display_t* ctx);
     int DoHwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_drm_display_t* ctx);
+    int DoFbTransform(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_drm_display_t* ctx);
 
     // Layer hooks
     HWC2::Error SetCursorPosition(int32_t x, int32_t y);
@@ -668,6 +669,7 @@ class DrmHwcTwo : public hwc2_device_t {
     // DRM Resource
     DrmGralloc *drmGralloc_;
     DrmDevice *drm_;
+    std::shared_ptr<DrmBufferQueue> FbTfBufferQueue_;
 #ifdef USE_LIBPQ
     std::shared_ptr<DrmBufferQueue> bufferQueue_;
     Pq* swpq_;

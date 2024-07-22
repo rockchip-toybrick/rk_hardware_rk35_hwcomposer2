@@ -1480,7 +1480,8 @@ int DrmConnector::setCropSpilt(int32_t fbWidth,
                                int32_t srcX,
                                int32_t srcY,
                                int32_t srcW,
-                               int32_t srcH){
+                               int32_t srcH,
+                               int32_t transform){
   bCropSpilt_ = true;
   FbWidth_ = fbWidth;
   FbHeight_ = fbHeight;
@@ -1488,6 +1489,7 @@ int DrmConnector::setCropSpilt(int32_t fbWidth,
   SrcY_ = srcY;
   SrcW_ = srcW;
   SrcH_ = srcH;
+  iCropSpiltTransform = transform;
   return 0;
 }
 
@@ -1676,6 +1678,10 @@ uint8_t* DrmConnector::MakeFakeEDID(){
   buffer[127]=0x100-sum;
 
   return buffer;
+}
+
+int DrmConnector::getCropSpiltTransform(){
+  return iCropSpiltTransform;
 }
 
 }  // namespace android
