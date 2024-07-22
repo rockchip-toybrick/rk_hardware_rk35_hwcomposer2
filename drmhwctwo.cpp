@@ -884,6 +884,36 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetActiveConfig(hwc2_config_t *config) {
   }else{
     *config = 0;
   }
+
+  //如果Surfaceflinger查询到当前的ActiveConfig与Surfaceflinger内部保存的一致，
+  //将不会再调用SetActiveConfig,因此需要在这里设置 client_layer_ 参数
+  if(connector_->isCropSpilt()){
+    int32_t srcX, srcY, srcW, srcH;
+    connector_->getCropInfo(&srcX, &srcY, &srcW, &srcH);
+    hwc_rect_t display_frame = {.left = 0,
+                                .top = 0,
+                                .right = static_cast<int>(ctx_.framebuffer_width),
+                                .bottom = static_cast<int>(ctx_.framebuffer_height)};
+    client_layer_.SetLayerDisplayFrame(display_frame);
+    hwc_frect_t source_crop = {.left = srcX + 0.0f,
+                                .top  = srcY + 0.0f,
+                                .right = srcX + srcW + 0.0f,
+                                .bottom = srcY + srcH + 0.0f};
+    client_layer_.SetLayerSourceCrop(source_crop);
+
+  }else{
+    // Setup the client layer's dimensions
+    hwc_rect_t display_frame = {.left = 0,
+                                .top = 0,
+                                .right = static_cast<int>(ctx_.framebuffer_width),
+                                .bottom = static_cast<int>(ctx_.framebuffer_height)};
+    client_layer_.SetLayerDisplayFrame(display_frame);
+    hwc_frect_t source_crop = {.left = 0.0f,
+                              .top = 0.0f,
+                              .right = ctx_.framebuffer_width + 0.0f,
+                              .bottom = ctx_.framebuffer_height + 0.0f};
+    client_layer_.SetLayerSourceCrop(source_crop);
+  }
   HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 " config-id=%d" ,handle_,*config);
   return HWC2::Error::None;
 }
