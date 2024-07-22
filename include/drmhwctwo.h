@@ -898,6 +898,7 @@ class DrmHwcTwo : public hwc2_device_t {
 
     bool bUseWriteBack_;
     int iLastTunnelId_=0;
+    hwc2_layer_t uCropSpiltDummyLayer_ = 0;
 
 #ifdef USE_LIBEBOOK
     // EBook

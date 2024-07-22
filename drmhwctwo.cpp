@@ -4179,12 +4179,11 @@ int DrmHwcTwo::HwcDisplay::DoMirrorDisplay(int32_t *retire_fence){
     if(!conn->IsSpiltPrimary()){
       auto &display = resource_manager_->GetHwc2()->displays_.at(display_id);
       if (conn->state() == DRM_MODE_CONNECTED) {
-        static hwc2_layer_t layer_id = 0;
-        if(display.has_layer(layer_id)){
+        if(display.has_layer(uCropSpiltDummyLayer_)){
         }else{
-          display.CreateLayer(&layer_id);
+          display.CreateLayer(&uCropSpiltDummyLayer_);
         }
-        HwcLayer &layer = display.get_layer(layer_id);
+        HwcLayer &layer = display.get_layer(uCropSpiltDummyLayer_);
         hwc_rect_t frame = {0,0,1920,1080};
         layer.SetLayerDisplayFrame(frame);
         hwc_frect_t crop = {0.0, 0.0, 1920.0, 1080.0};
