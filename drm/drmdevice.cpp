@@ -236,7 +236,7 @@ int DrmDevice::InitEnvFromXml(){
     } \
     strncpy(DmXml_.ConnectorInfo[iConnectorCnt].x, \
            _##x->GetText(), \
-           sizeof(_##x->GetText()));
+           sizeof(DmXml_.ConnectorInfo[iConnectorCnt].x));
 
     PARSE_STR(Type);
     PARSE_INT(TypeId);
