@@ -84,8 +84,12 @@ int HwcGetRgaFormatFromAndroid(int format) {
       return RK_FORMAT_YCbCr_420_SP;
     case HAL_PIXEL_FORMAT_YCrCb_NV12_10:
       return RK_FORMAT_YCbCr_420_SP_10B;  // 0x20
+    case HAL_PIXEL_FORMAT_YCbCr_422_SP:
+      return RK_FORMAT_YCbCr_422_SP;
+    case HAL_PIXEL_FORMAT_BGR_888:
+      return RK_FORMAT_BGR_888;
     default:
-      HWC2_ALOGD_IF_ERR("%x is not supported, please fix.", format);
+      HWC2_ALOGD_IF_ERR("0x%x is not supported, please fix.", format);
       return -1;
   }
 }
