@@ -312,14 +312,14 @@ LOCAL_C_INCLUDES += \
   hardware/rockchip/libsvep/libsvepsr/lib/Android/$(TARGET_SOC_PLATFORM)/include
 
 LOCAL_SHARED_LIBRARIES += \
-	libsvepsr \
-	librknnrt-svep
+	libsvepsr
 
 LOCAL_CFLAGS += \
 	-DUSE_LIBSR=1
 
 LOCAL_REQUIRED_MODULES += \
 	HwcSvepEnv.xml
+
 endif
 
 # MEMC
