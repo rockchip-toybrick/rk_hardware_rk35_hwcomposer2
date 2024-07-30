@@ -1588,14 +1588,37 @@ uint8_t* DrmConnector::MakeFakeEDID(){
     mDummyEDID_ = std::make_shared<dummyEdid>();
   uint8_t* buffer = mDummyEDID_.get()->data;
 
-  //查找prefermode，若没有prefer，则使用current
-  DrmMode preferred_mode=current_mode_;
-  for(auto &mode :raw_modes_){
-    if(mode.type() & DRM_MODE_TYPE_PREFERRED){
-      preferred_mode = mode;
+  DrmMode preferred_mode;
+
+  //查找prefer mode，参考UpdateDisplayMode流程
+  do{
+    for (const DrmMode &conn_mode : modes()) {
+      if (conn_mode.type() & DRM_MODE_TYPE_PREFERRED) {
+        preferred_mode = conn_mode;
+        break;
+      }
+    }
+
+    //参考uboot分辨率获取逻辑，如果获取不到最佳分辨率，则直接使用白名单列表第一个分辨率
+    for (const DrmMode &conn_mode : modes()) {
+      preferred_mode = conn_mode;
       break;
     }
-  }
+
+    //use raw modes to get mode.
+    for (const DrmMode &conn_mode : raw_modes()) {
+      if (conn_mode.type() & DRM_MODE_TYPE_PREFERRED) {
+        preferred_mode = conn_mode;
+        break;
+      }
+    }
+
+    //如果白名单分辨率一个都没有，直接获取分辨率列表第一个分辨率
+    for (const DrmMode &conn_mode : raw_modes()) {
+      preferred_mode = conn_mode;
+      break;
+    }
+  }while(0);
 
   //显示mode基本信息
   int h_act_pix  =   preferred_mode.h_display();
