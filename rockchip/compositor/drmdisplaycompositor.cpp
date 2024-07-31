@@ -1483,6 +1483,18 @@ int DrmDisplayCompositor::CollectCommitInfo(drmModeAtomicReqPtr pset,
       display_frame = layer.display_frame;
       display_frame_mirror = layer.display_frame_mirror;
       source_crop = layer.source_crop;
+      //RK3399/RK3326使用抽行降低带宽
+      if((gIsRK3399()||gIsRK3326()) && layer.iSkipLine_>0 && !layer.bUseRga_){
+        int src_h = source_crop.bottom-source_crop.top;
+        src_h /= layer.iSkipLine_;
+        src_h += src_h%2;
+        int src_top = source_crop.top;
+        src_top /= layer.iSkipLine_;
+        src_top -= src_top%2;
+
+        source_crop.top = src_top;
+        source_crop.bottom = src_top + src_h;
+      }
       if (layer.blending == DrmHwcBlending::kPreMult) alpha = layer.alpha << 8;
       eotf = layer.uEOTF;
       afbcd = layer.bAfbcd_;

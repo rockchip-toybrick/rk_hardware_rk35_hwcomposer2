@@ -159,9 +159,25 @@ int DrmHwcLayer::ImportBuffer(Importer *importer) {
     offsets[3] = mMetadata_.offset[3];
   }
 #endif
-  buffer.SetBoInfo(uBufferId_, iFd_, iWidth_, iHeight_, iHeightStride_, uFourccFormat_,
-                   iFormat_, uModifier_, iUsage, iByteStride_, uGemHandle_,
-                   offsets, uByteStridePlanes_);
+  if((gIsRK3399()||gIsRK3326()) && iSkipLine_>0){
+    // RK3399/RK3326使用抽行方式降低带宽
+    int height = iHeight_ / iSkipLine_ + (iHeight_/iSkipLine_) % 2;
+    int heightStride = iHeightStride_ / iSkipLine_ + (iHeight_/iSkipLine_) % 2;
+    int byteStride = iByteStride_*iSkipLine_;
+    auto byteStridePlanes = uByteStridePlanes_;
+
+    for(auto &bsp:byteStridePlanes)
+      bsp *= iSkipLine_;
+
+    buffer.SetBoInfo(uBufferId_, iFd_, iWidth_, height, heightStride, uFourccFormat_,
+                    iFormat_, uModifier_, iUsage, byteStride, uGemHandle_,
+                    offsets, byteStridePlanes);
+
+  }else{
+    buffer.SetBoInfo(uBufferId_, iFd_, iWidth_, iHeight_, iHeightStride_, uFourccFormat_,
+                    iFormat_, uModifier_, iUsage, iByteStride_, uGemHandle_,
+                    offsets, uByteStridePlanes_);
+  }
   int ret = buffer.ImportBuffer(sf_handle, importer);
   if (ret)
     return ret;
