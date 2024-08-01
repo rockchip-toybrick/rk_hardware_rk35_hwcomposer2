@@ -342,8 +342,6 @@ int Vop3399::MatchPlane(std::vector<DrmCompositionPlane> *composition_planes,
     bHdrSupport = connector->is_hdmi_support_hdr() && ctx.support.iHdrCnt > 0;
   }
 
-  bool afbc_used=false;
-
   //loop plane groups.
   for (iter = plane_groups.begin();
     iter != plane_groups.end(); ++iter) {
@@ -355,7 +353,7 @@ int Vop3399::MatchPlane(std::vector<DrmCompositionPlane> *composition_planes,
       if(!(*iter)->bUse && !(*iter)->bReserved && (((1<<crtc->pipe()) & (*iter)->current_crtc_) > 0))
       {
           ALOGD_IF(LogLevel(DBG_DEBUG),"line=%d,layer_size=%d,planes size=%zu",__LINE__,layer_size,(*iter)->planes.size());
-          bool afbc_skip=afbc_used;
+          bool afbc_skip=ctx.state.bAfbcLayerUsed;
 
           //find the match combine layer count with plane size.
           if(layer_size <= (*iter)->planes.size())
@@ -480,10 +478,14 @@ int Vop3399::MatchPlane(std::vector<DrmCompositionPlane> *composition_planes,
                           }
                           if((*iter_layer)->bAfbcd_ && afbc_skip)
                             continue;
-                          if(!(*iter_layer)->bMatch_ || (*iter)->afbc_layer_used==-1){
+                          if((*iter)->afbc_layer_used==-1){
                               (*iter)->afbc_layer_used=(*iter_layer)->bAfbcd_?1:0;
                               if((*iter)->afbc_layer_used==1)
-                                afbc_used=true;
+                                ctx.state.bAfbcLayerUsed=true;
+                              HWC2_ALOGD_IF_DEBUG("layer %s use %s mode, plane group %s use %s mode, afbc used=%d",
+                                                  (*iter_layer)->sLayerName_.c_str(),(*iter_layer)->bAfbcd_?"afbc":"non-afbc",
+                                                  (*iter)->planes[0]->name(),(*iter)->afbc_layer_used?"afbc":"non-afbc",ctx.state.bAfbcLayerUsed
+                                                  );
                           }else if((*iter)->afbc_layer_used ==0 && (*iter_layer)->bAfbcd_){
                               continue;
                           }else if((*iter)->afbc_layer_used ==1 && !(*iter_layer)->bAfbcd_){
@@ -549,6 +551,7 @@ int Vop3399::MatchPlanes(
     HWC2_ALOGD_IF_DEBUG("Combine layer Failed!");
     return -1;
   }
+  ctx.state.bAfbcLayerUsed = false;
 
   // Fill up the remaining planes
   int zpos = 0;
