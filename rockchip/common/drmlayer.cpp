@@ -159,6 +159,15 @@ int DrmHwcLayer::ImportBuffer(Importer *importer) {
     offsets[3] = mMetadata_.offset[3];
   }
 #endif
+  if((gIsRK3399()||gIsRK3326()) && bAfbcd_){
+    //VOP1 驱动要求宽16对齐
+    if(!IS_ALIGN(iWidth_,16)){
+      iWidth_ = ALIGN(iWidth_,16);
+    }
+    // if(!IS_ALIGN(iHeight_,8)){
+    //   iHeight_ = ALIGN(iHeight_,8);
+    // }
+  }
   if((gIsRK3399()||gIsRK3326()) && iSkipLine_>0){
     // RK3399/RK3326使用抽行方式降低带宽
     int height = iHeight_ / iSkipLine_ + (iHeight_/iSkipLine_) % 2;
