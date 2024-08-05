@@ -469,13 +469,17 @@ std::shared_ptr<DrmBuffer> DrmVideoProducer::AcquireBuffer(int display_id,
         if(fence_fd>0){
           int wait_ret = sync_wait(fence_fd, 0);
           close(fence_fd);
+          fence_fd = -1;
           //如果还没signal，则改用旧buffer，并等待fence
           if(wait_ret){
             acquired_buffer = ctx->mTransfromBuffers_[transform].front();
             int ret = acquired_buffer->WaitFinishFence();
             if(ret){
-              HWC2_ALOGE("tunnel_id=%d, display=%d, transform=%" PRIx32" wait transform fence failed!",
+              HWC2_ALOGE("tunnel_id=%d, display=%d, transform=%" PRIx32" wait transform fence failed in both back and front buffer!!",
                           tunnel_id, display_id, transform);
+              HWC2_ALOGE("back buffer id=%" PRIx64", front buffer id=%" PRIx64"",
+                          ctx->mTransfromBuffers_[transform].back()->GetExternalId(),
+                          ctx->mTransfromBuffers_[transform].front()->GetExternalId());
             }
           }
         }
@@ -485,117 +489,117 @@ std::shared_ptr<DrmBuffer> DrmVideoProducer::AcquireBuffer(int display_id,
       return nullptr;
     }
   }else{
-  //if there is any buffer in list
-  if(ctx->lBuffer_.size()>0){
-    for(auto &b:ctx->lBuffer_){
-      HWC2_ALOGD_IF_VERBOSE("tunnel_id=%d, display=%d, lBuffer_ have buffer:%" PRIu64 ,
-                            tunnel_id, display_id, b->GetExternalId());
-    }
+    //if there is any buffer in list
+    if(ctx->lBuffer_.size()>0){
+      for(auto &b:ctx->lBuffer_){
+        HWC2_ALOGD_IF_VERBOSE("tunnel_id=%d, display=%d, lBuffer_ have buffer:%" PRIu64 ,
+                              tunnel_id, display_id, b->GetExternalId());
+      }
 
-    acquired_buffer = ctx->lBuffer_.back();
+      acquired_buffer = ctx->lBuffer_.back();
 
-#ifdef USE_LIBPQ_HWPQ
-#define HWPQ_WAIT_FENCE_MIN_FPS (24)
-#define HWPQ_WAIT_FENCE_MAX_FPS (120)
-    //获取tunnel帧率
-    float fps = ctx->GetProducerFps();
-    //限制帧率范围，避免tunnel参数错误导致等待时间计算错误
-    if(fps < HWPQ_WAIT_FENCE_MIN_FPS)
-      fps = HWPQ_WAIT_FENCE_MIN_FPS;
-    if(fps > HWPQ_WAIT_FENCE_MAX_FPS)
-      fps = HWPQ_WAIT_FENCE_MAX_FPS;
+  #ifdef USE_LIBPQ_HWPQ
+  #define HWPQ_WAIT_FENCE_MIN_FPS (24)
+  #define HWPQ_WAIT_FENCE_MAX_FPS (120)
+      //获取tunnel帧率
+      float fps = ctx->GetProducerFps();
+      //限制帧率范围，避免tunnel参数错误导致等待时间计算错误
+      if(fps < HWPQ_WAIT_FENCE_MIN_FPS)
+        fps = HWPQ_WAIT_FENCE_MIN_FPS;
+      if(fps > HWPQ_WAIT_FENCE_MAX_FPS)
+        fps = HWPQ_WAIT_FENCE_MAX_FPS;
 
-    //默认等待两倍VSYNC时间
-    int pq_wait_time = (1000.0f / fps * 2.0)+0.5;
+      //默认等待两倍VSYNC时间
+      int pq_wait_time = (1000.0f / fps * 2.0)+0.5;
 
-    //PQ等待逻辑：
-    //检查最新buffer是否被signal -> 如果未signal，则更换为上一帧 -> 等待上一帧signal
-    //wait 2VSYNC后未signal打警告 -> wait 3000ms ->仍未signal打错误返回NULL；
-    if(acquired_buffer->HasHwPqRegs() && !wait_fence){
-      int ret = ctx->WaitPqAcquireFence(acquired_buffer->GetExternalId(),0);
-      if(ret){
-        acquired_buffer = ctx->lBuffer_.front();
+      //PQ等待逻辑：
+      //检查最新buffer是否被signal -> 如果未signal，则更换为上一帧 -> 等待上一帧signal
+      //wait 2VSYNC后未signal打警告 -> wait 3000ms ->仍未signal打错误返回NULL；
+      if(acquired_buffer->HasHwPqRegs() && !wait_fence){
+        int ret = ctx->WaitPqAcquireFence(acquired_buffer->GetExternalId(),0);
+        if(ret){
+          acquired_buffer = ctx->lBuffer_.front();
+          ret = ctx->WaitPqAcquireFence(acquired_buffer->GetExternalId(),pq_wait_time);
+          if(ret){
+            struct timespec ts;
+            clock_gettime(CLOCK_MONOTONIC, &ts);
+            int64_t time_begin_wait= ts.tv_sec * 1000 * 1000 + ts.tv_nsec / 1000;
+            HWC2_ALOGW("display-id=%d tunnel_id=%d Buffer 0x%" PRIx64" HWPQ is not signaled after %dms!!!",
+                      display_id,tunnel_id,acquired_buffer->GetExternalId(),pq_wait_time);
+            ret = ctx->WaitPqAcquireFence(acquired_buffer->GetExternalId(),3000);
+            if(ret){
+              HWC2_ALOGE("display-id=%d tunnel_id=%d Buffer 0x%" PRIx64" HWPQ is not signaled after 3000ms!!!",
+                        display_id,tunnel_id,acquired_buffer->GetExternalId());
+              return NULL;
+            }else{
+              clock_gettime(CLOCK_MONOTONIC, &ts);
+              int64_t time_end_wait= ts.tv_sec * 1000 * 1000 + ts.tv_nsec / 1000;
+              HWC2_ALOGW("display-id=%d tunnel_id=%d Buffer 0x%" PRIx64" HWPQ is signaled after %" PRIi64"ms!!!",
+                        display_id,tunnel_id,acquired_buffer->GetExternalId(),pq_wait_time+(time_end_wait-time_begin_wait)/1000);
+            }
+          }
+        }
+      }
+  #endif
+
+      //if wait fence is acquired
+      if(wait_fence){
+        int ret = 0;
+        //if we have two buffer, try new one first.
+        if(ctx->lBuffer_.size()==2){
+          //check if new buffer is signaled
+          ret = ctx->WaitAcquireFence(acquired_buffer->GetExternalId(),0);
+  #ifdef USE_LIBPQ_HWPQ
+          ret |= ctx->WaitPqAcquireFence(acquired_buffer->GetExternalId(),0);
+  #endif
+          //if not, use old buffer.
+          if(ret)
+            acquired_buffer = ctx->lBuffer_.front();
+        }
+        //wait acquire fence
+        ret = ctx->WaitAcquireFence(acquired_buffer->GetExternalId(),3000);
+        if(ret){
+          HWC2_ALOGE("display-id=%d tunnel_id=%d Buffer 0x%" PRIx64" is not signaled after 3000ms!!!",display_id,tunnel_id,acquired_buffer->GetExternalId());
+          return NULL;
+        }
+  #ifdef USE_LIBPQ_HWPQ
+        //PQ等待逻辑：
+        //wait 2VSYNC后未signal打警告 -> wait 3000ms ->仍未signal打错误返回NULL；
         ret = ctx->WaitPqAcquireFence(acquired_buffer->GetExternalId(),pq_wait_time);
         if(ret){
           struct timespec ts;
           clock_gettime(CLOCK_MONOTONIC, &ts);
           int64_t time_begin_wait= ts.tv_sec * 1000 * 1000 + ts.tv_nsec / 1000;
           HWC2_ALOGW("display-id=%d tunnel_id=%d Buffer 0x%" PRIx64" HWPQ is not signaled after %dms!!!",
-                     display_id,tunnel_id,acquired_buffer->GetExternalId(),pq_wait_time);
+                      display_id,tunnel_id,acquired_buffer->GetExternalId(),pq_wait_time);
           ret = ctx->WaitPqAcquireFence(acquired_buffer->GetExternalId(),3000);
           if(ret){
             HWC2_ALOGE("display-id=%d tunnel_id=%d Buffer 0x%" PRIx64" HWPQ is not signaled after 3000ms!!!",
-                       display_id,tunnel_id,acquired_buffer->GetExternalId());
+                        display_id,tunnel_id,acquired_buffer->GetExternalId());
             return NULL;
           }else{
             clock_gettime(CLOCK_MONOTONIC, &ts);
             int64_t time_end_wait= ts.tv_sec * 1000 * 1000 + ts.tv_nsec / 1000;
             HWC2_ALOGW("display-id=%d tunnel_id=%d Buffer 0x%" PRIx64" HWPQ is signaled after %" PRIi64"ms!!!",
-                       display_id,tunnel_id,acquired_buffer->GetExternalId(),pq_wait_time+(time_end_wait-time_begin_wait)/1000);
+                        display_id,tunnel_id,acquired_buffer->GetExternalId(),pq_wait_time+(time_end_wait-time_begin_wait)/1000);
           }
         }
+  #endif
       }
-    }
-#endif
+  #ifdef USE_LIBPQ_HWPQ
+      HWC2_ALOGD_IF_DEBUG("tunnel_id=%d, display=%d, acquired buffer:%" PRIu64 " , %s Hwpq Regs, add Release fence Reference",
+                            tunnel_id, display_id, acquired_buffer->GetExternalId(),acquired_buffer->HasHwPqRegs()?"with":"without");
+  #else
+      HWC2_ALOGD_IF_VERBOSE("tunnel_id=%d, display=%d, acquired buffer:%" PRIu64 " ,add Release fence Reference",
+                            tunnel_id, display_id, acquired_buffer->GetExternalId());
+  #endif
+      //release fence add refCount
+      ctx->AddReleaseFenceRefCnt(display_id,acquired_buffer->GetExternalId());
 
-    //if wait fence is acquired
-    if(wait_fence){
-      int ret = 0;
-      //if we have two buffer, try new one first.
-      if(ctx->lBuffer_.size()==2){
-        //check if new buffer is signaled
-        ret = ctx->WaitAcquireFence(acquired_buffer->GetExternalId(),0);
-#ifdef USE_LIBPQ_HWPQ
-        ret |= ctx->WaitPqAcquireFence(acquired_buffer->GetExternalId(),0);
-#endif
-        //if not, use old buffer.
-        if(ret)
-          acquired_buffer = ctx->lBuffer_.front();
-      }
-      //wait acquire fence
-      ret = ctx->WaitAcquireFence(acquired_buffer->GetExternalId(),3000);
-      if(ret){
-        HWC2_ALOGE("display-id=%d tunnel_id=%d Buffer 0x%" PRIx64" is not signaled after 3000ms!!!",display_id,tunnel_id,acquired_buffer->GetExternalId());
-        return NULL;
-      }
-#ifdef USE_LIBPQ_HWPQ
-      //PQ等待逻辑：
-      //wait 2VSYNC后未signal打警告 -> wait 3000ms ->仍未signal打错误返回NULL；
-      ret = ctx->WaitPqAcquireFence(acquired_buffer->GetExternalId(),pq_wait_time);
-      if(ret){
-        struct timespec ts;
-        clock_gettime(CLOCK_MONOTONIC, &ts);
-        int64_t time_begin_wait= ts.tv_sec * 1000 * 1000 + ts.tv_nsec / 1000;
-        HWC2_ALOGW("display-id=%d tunnel_id=%d Buffer 0x%" PRIx64" HWPQ is not signaled after %dms!!!",
-                    display_id,tunnel_id,acquired_buffer->GetExternalId(),pq_wait_time);
-        ret = ctx->WaitPqAcquireFence(acquired_buffer->GetExternalId(),3000);
-        if(ret){
-          HWC2_ALOGE("display-id=%d tunnel_id=%d Buffer 0x%" PRIx64" HWPQ is not signaled after 3000ms!!!",
-                      display_id,tunnel_id,acquired_buffer->GetExternalId());
-          return NULL;
-        }else{
-          clock_gettime(CLOCK_MONOTONIC, &ts);
-          int64_t time_end_wait= ts.tv_sec * 1000 * 1000 + ts.tv_nsec / 1000;
-          HWC2_ALOGW("display-id=%d tunnel_id=%d Buffer 0x%" PRIx64" HWPQ is signaled after %" PRIi64"ms!!!",
-                      display_id,tunnel_id,acquired_buffer->GetExternalId(),pq_wait_time+(time_end_wait-time_begin_wait)/1000);
-        }
-      }
-#endif
+      return acquired_buffer;
+    }else{
+      return NULL;
     }
-#ifdef USE_LIBPQ_HWPQ
-    HWC2_ALOGD_IF_DEBUG("tunnel_id=%d, display=%d, acquired buffer:%" PRIu64 " , %s Hwpq Regs, add Release fence Reference",
-                          tunnel_id, display_id, acquired_buffer->GetExternalId(),acquired_buffer->HasHwPqRegs()?"with":"without");
-#else
-    HWC2_ALOGD_IF_VERBOSE("tunnel_id=%d, display=%d, acquired buffer:%" PRIu64 " ,add Release fence Reference",
-                          tunnel_id, display_id, acquired_buffer->GetExternalId());
-#endif
-    //release fence add refCount
-    ctx->AddReleaseFenceRefCnt(display_id,acquired_buffer->GetExternalId());
-
-    return acquired_buffer;
-  }else{
-    return NULL;
-  }
   }
 }
 
@@ -619,7 +623,7 @@ int DrmVideoProducer::SignalReleaseFence(int display_id, int tunnel_id, uint64_t
   return ctx->SignalReleaseFence(display_id, buffer_id);;
 }
 
-int DrmVideoProducer::DoTransform(std::shared_ptr<VpContext> ctx, std::shared_ptr<DrmBuffer> buffer, std::set<uint32_t> transforms){
+int DrmVideoProducer::DoTransform(std::shared_ptr<VpContext> ctx, std::shared_ptr<DrmBuffer> src_buffer, std::set<uint32_t> transforms){
   ATRACE_CALL();
   int ret = 0;
 
@@ -666,56 +670,56 @@ int DrmVideoProducer::DoTransform(std::shared_ptr<VpContext> ctx, std::shared_pt
     }
 
     // 3.2 Set src buffer info
-    int src_format;
+    int src_format = -1;
     if(gIsRK3588()){
-      if(!hwc_rga_utils::isRK3588RGA3SupportFormat(buffer->GetFormat())){
+      if(!hwc_rga_utils::isRK3588RGA3SupportFormat(src_buffer->GetFormat())){
         HWC2_ALOGE("RK3588 RGA3 do not support this format, transform failed!");
         return -1;
       }else{
-        src_format = hwc_rga_utils::HwcGetRgaFormat(hwc_rga_utils::UnifyAndroidFormatForRK3588(buffer->GetFormat()));
+        src_format = hwc_rga_utils::HwcGetRgaFormat(hwc_rga_utils::UnifyAndroidFormatForRK3588(src_buffer->GetFormat()));
       }
     }else if(gIsRK3576()){
-      if(!hwc_rga_utils::isRK3576RGA2SupportFormat(buffer->GetFormat())){
+      if(!hwc_rga_utils::isRK3576RGA2SupportFormat(src_buffer->GetFormat())){
         HWC2_ALOGE("RK3576 RGA2.5 do not support this format, transform failed!");
         return -1;
       }else{
-        src_format = hwc_rga_utils::HwcGetRgaFormat(hwc_rga_utils::UnifyAndroidFormatForRK3576(buffer->GetFormat()));
+        src_format = hwc_rga_utils::HwcGetRgaFormat(hwc_rga_utils::UnifyAndroidFormatForRK3576(src_buffer->GetFormat()));
       }
     }else{
       //目前RGA格式匹配，3576格式最全，默认使用此转换函数
-      src_format = hwc_rga_utils::HwcGetRgaFormat(hwc_rga_utils::UnifyAndroidFormatForRK3576(buffer->GetFormat()));
+      src_format = hwc_rga_utils::HwcGetRgaFormat(hwc_rga_utils::UnifyAndroidFormatForRK3576(src_buffer->GetFormat()));
     }
     if(src_format==-1)
-      src_format = buffer->GetFormat();
+      src_format = src_buffer->GetFormat();
 
     // RGA 的特殊修改，需要通过 wstride
     int src_stride;
-    if(buffer->GetFourccFormat() == DRM_FORMAT_NV15)
-      src_stride = buffer->GetByteStride();
+    if(src_buffer->GetFourccFormat() == DRM_FORMAT_NV15)
+      src_stride = src_buffer->GetByteStride();
     else
-      src_stride = buffer->GetStride();
+      src_stride = src_buffer->GetStride();
 
-    src = wrapbuffer_handle(buffer->GetRgaHandle(),
-                            buffer->GetWidth(),
-                            buffer->GetHeight(),
+    src = wrapbuffer_handle(src_buffer->GetRgaHandle(),
+                            src_buffer->GetWidth(),
+                            src_buffer->GetHeight(),
                             src_format,
                             src_stride,
-                            buffer->GetHeightStride());
+                            src_buffer->GetHeightStride());
     // AFBC format
     src.rd_mode = 0;
-    if(fourcc_mod_is_vendor(buffer->GetModifier(),ARM)){
+    if(fourcc_mod_is_vendor(src_buffer->GetModifier(),ARM)){
       if(gIsRK3576()){
         src.rd_mode = IM_AFBC32x8_MODE;
       }else{
         src.rd_mode = IM_FBC_MODE;
       }
-    }else if(IS_ROCKCHIP_RFBC_MOD(buffer->GetModifier())){
+    }else if(IS_ROCKCHIP_RFBC_MOD(src_buffer->GetModifier())){
         src.rd_mode = IM_RKFBC64x4_MODE;
     }
 
     // Set src rect info
     int left,top,right,bottom;
-    buffer->GetCrop(&left, &top, &right, &bottom);
+    src_buffer->GetCrop(&left, &top, &right, &bottom);
 
     src_rect.x = ALIGN_DOWN((int)left,2);
     src_rect.y = ALIGN_DOWN((int)top,2);
@@ -723,13 +727,13 @@ int DrmVideoProducer::DoTransform(std::shared_ptr<VpContext> ctx, std::shared_pt
     src_rect.height = ALIGN_DOWN((int)(bottom-top),2);
 
     // 3.3 设置目标buffer属性
-    int dst_width = buffer->GetWidth();
-    int dst_height = buffer->GetHeight();
+    int dst_width = src_buffer->GetWidth();
+    int dst_height = src_buffer->GetHeight();
     if((transform==DRM_MODE_ROTATE_90) || (transform & DRM_MODE_ROTATE_270)){
       std::swap(dst_height,dst_width);
     }
 
-    int dst_buf_format = buffer->GetFormat();
+    int dst_buf_format = src_buffer->GetFormat();
     if (dst_buf_format == HAL_PIXEL_FORMAT_YUV420_8BIT_RFBC ||
         dst_buf_format == HAL_PIXEL_FORMAT_YUV422_8BIT_RFBC ||
         dst_buf_format == HAL_PIXEL_FORMAT_YUV444_8BIT_RFBC ||
@@ -742,16 +746,17 @@ int DrmVideoProducer::DoTransform(std::shared_ptr<VpContext> ctx, std::shared_pt
         dst_buf_format = HAL_PIXEL_FORMAT_YCrCb_NV12_10;
     }
 
+    uint64_t dst_buf_usage = RK_GRALLOC_USAGE_STRIDE_ALIGN_64 |
+                             MALI_GRALLOC_USAGE_NO_AFBC|
+                             RK_GRALLOC_USAGE_WITHIN_4G;
     std::shared_ptr<DrmBuffer> dst_buffer = bufferQueue->DequeueDrmBuffer(dst_width,
                                               dst_height,
                                               dst_buf_format,
-                                              RK_GRALLOC_USAGE_STRIDE_ALIGN_64 |
-                                              MALI_GRALLOC_USAGE_NO_AFBC|
-                                              RK_GRALLOC_USAGE_WITHIN_4G,
+                                              dst_buf_usage,
                                               "DVP_TF-target");
     if(!dst_buffer){
-      HWC2_ALOGE("tunnel_id=%d, buffer_id=0x%" PRIx64" Dequeue DstBuffer fail! ret = %d",
-        ctx->GetTunnelId(), buffer->GetExternalId(), ret);
+      HWC2_ALOGE("tunnel_id=%d, buffer_id=0x%" PRIx64" Dequeue DstBuffer fail! wxh=(%dx%d),format=%d,usage = 0x%" PRIx64,
+                 ctx->GetTunnelId(), src_buffer->GetExternalId(), dst_width, dst_height, dst_buf_format, dst_buf_usage);
       continue;
     }
     // Set dst buffer info
@@ -797,7 +802,7 @@ int DrmVideoProducer::DoTransform(std::shared_ptr<VpContext> ctx, std::shared_pt
     dst_rect.height = ALIGN_DOWN((int)(dst_height),2);
 
     dst_buffer->SetCrop(0, 0, dst_rect.width, dst_rect.height);
-    dst_buffer->SetExternalId(buffer->GetExternalId());
+    dst_buffer->SetExternalId(src_buffer->GetExternalId());
     int usage = 0;
     // 处理旋转
     switch(transform){
@@ -844,14 +849,28 @@ int DrmVideoProducer::DoTransform(std::shared_ptr<VpContext> ctx, std::shared_pt
     }
 
     int i=0;
-    int acquire_fence = ctx->DupAcquireFence(buffer->GetExternalId());
-    if(acquire_fence>0 && !ResourceManager::getInstance()->GetEnableRgaAcquireFence()){
-      int ret = sync_wait(acquire_fence, 500);
-      if(ret){
-        HWC2_ALOGE("tunnel_id=%d, buffer_id=0x%" PRIx64" Wait AcqurieFence 500ms Failed! fence_fd = %d, ret = %d", ctx->GetTunnelId(), buffer->GetExternalId(), acquire_fence, ret);
+    int acquire_fence = ctx->DupAcquireFence(src_buffer->GetExternalId());
+
+    // GetEnableRgaAcquireFence 查询是否使用RGA的AcquireFence支持，
+    // 由属性 vendor.hwc.enable_rga_acquire_fence控制，默认为0，即不使用RGA AcquireFence支持
+    // 不使用RGA AcquireFence支持时，即使多屏中存在无旋转屏幕，也不再支持低延迟送显功能
+    //
+    // RGA驱动版本为1.3.5及之前，在使用HDMI-in传递的AcquireFence输入时，可能会出现内核崩溃问题。
+    // 若确认内核驱动已支持，可设置vendor.hwc.enable_rga_acquire_fence=1启用RGA的AcquireFence.
+
+    if(acquire_fence>0){
+      if(!ResourceManager::getInstance()->GetEnableRgaAcquireFence()){
+        int ret = sync_wait(acquire_fence, 500);
+        if(ret){
+          HWC2_ALOGE("tunnel_id=%d, buffer_id=0x%" PRIx64" Wait AcqurieFence 500ms Failed! fence_fd = %d, ret = %d", ctx->GetTunnelId(), src_buffer->GetExternalId(), acquire_fence, ret);
+        }
+        close(acquire_fence);
+        acquire_fence = -1;
+      }else{
+        HWC2_ALOGD_IF_VERBOSE("RGA acquire fence is enabled, fence_fd = %d",acquire_fence);
       }
     }else{
-      HWC2_ALOGD_IF_VERBOSE("RGA acquire fence is enabled, fence_fd = %d",acquire_fence);
+      HWC2_ALOGD_IF_VERBOSE("RGA acquire fence dup failed or signaled, fence_fd = %d",acquire_fence);
     }
 
 
@@ -898,7 +917,7 @@ int DrmVideoProducer::DoTransform(std::shared_ptr<VpContext> ctx, std::shared_pt
   }
 
   if(mergedReleaseFence>0){
-    buffer->SetFinishFence(mergedReleaseFence);
+    src_buffer->SetFinishFence(mergedReleaseFence);
   }
   return 0;
 }
@@ -1109,14 +1128,30 @@ void DrmVideoProducer::Routine(){
 
     //DoTransform可能耗时，解锁进行，同时函数内确保线程安全。
     lock.unlock();
+    auto getTimeStamp=[](){
+      struct timespec ts;
+      clock_gettime(CLOCK_MONOTONIC, &ts);
+      return (int64_t)ts.tv_sec * 1000 * 1000 + ts.tv_nsec / 1000;
+    };
+    int64_t begin_tf_timestamp = getTimeStamp();
 #ifdef USE_LIBPQ_HWPQ
     ret = DoTransform(ctx,originalBuffer,transforms);
 #else
     ret = DoTransform(ctx,buffer,transforms);
 #endif
+    int64_t end_tf_timestamp = getTimeStamp();
     if(ret){
       HWC2_ALOGE("DoTransform failed, ret = %d", ret);
     }
+    if(LogLevel(DBG_DEBUG) && transforms.size()>0){
+      char print_buffer[100]="Sideband-Transform: collect transform: ";
+      for(auto tf:transforms){
+        sprintf(print_buffer+strlen(print_buffer),"0x%" PRIx32", ", tf);
+      }
+      sprintf(print_buffer+strlen(print_buffer)," transform time: %" PRIi64"us.", end_tf_timestamp - begin_tf_timestamp);
+      HWC2_ALOGD_IF_DEBUG("%s",print_buffer);
+    }
+
     lock.lock();
     //将DoTransform旋转的buffer存放到队列中，队列长度为2，旧的一帧理论上已做完转换，保证acquirebuffer过程尽快返回。
     for(uint32_t transform:transforms){
@@ -1132,6 +1167,19 @@ void DrmVideoProducer::Routine(){
           //第一帧，新建list
           ctx->mTransfromBuffers_[transform] = std::list<std::shared_ptr<DrmBuffer>>({tf_buffer});
         }
+      }
+      
+      if(ctx->mTransfromBuffers_.count(transform) && ctx->mTransfromBuffers_[transform].size()>0){
+        if(LogLevel(DBG_DEBUG)){
+          char print_buffer[100]="";
+          sprintf(print_buffer+strlen(print_buffer),"Sideband-Transform:Transform 0x%" PRIx32" have buffer: ", transform);
+          for(auto buffer:ctx->mTransfromBuffers_[transform]){
+            sprintf(print_buffer+strlen(print_buffer),"0x%" PRIx64", ", buffer->GetExternalId());
+          }
+          HWC2_ALOGD_IF_DEBUG("%s",print_buffer);
+        }
+      }else{
+        HWC2_ALOGE("Sideband-Transform:Transform 0x%" PRIx32" buffer list is empty, transform may failed", transform);
       }
     }
 

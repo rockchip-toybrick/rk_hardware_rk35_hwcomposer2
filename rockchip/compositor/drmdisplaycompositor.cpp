@@ -3067,6 +3067,7 @@ int DrmDisplayCompositor::CollectVPInfo() {
         zpos=1;
       if(zpos < 0)
         ALOGE("The zpos(%d) is invalid", zpos);
+      //Sideband图层由DrmVideoProducer内部使用rga完成旋转
       if(layer.bSidebandStreamLayer_)
         rotation = DRM_MODE_ROTATE_0;
       else

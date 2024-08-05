@@ -180,6 +180,8 @@ int ResourceManager::InitProperty() {
   property_get("vendor.hwc.video_buf_cache_max_size", property_value, "0");
   mCacheBufferLimitSize_ = atoi(property_value);
 
+  // RGA驱动版本为1.3.5及之前，在使用HDMI-in传递的AcquireFence输入时，可能会出现内核崩溃问题。
+  // 若确认内核驱动已支持，可设置vendor.hwc.enable_rga_acquire_fence=1启用RGA的AcquireFence.
   property_get("vendor.hwc.enable_rga_acquire_fence", property_value, "0");
   mEnableRgaAcquireFence = atoi(property_value);
 

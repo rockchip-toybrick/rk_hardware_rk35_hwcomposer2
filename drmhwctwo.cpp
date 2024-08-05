@@ -3955,10 +3955,13 @@ int DrmHwcTwo::HwcDisplay::UpdateSidebandMode(){
   // 判断是否存在Sideband图层，并保存tunnel_id信息
   int tunnel_id = 0;
   uint64_t fps = 0;
+  android_dataspace_t dataspace;
+
   for (std::pair<const hwc2_layer_t, DrmHwcTwo::HwcLayer> &l : layers_){
     if(l.second.isSidebandLayer()){
       tunnel_id = l.second.getTunnelId();
       fps= l.second.GetSidebandLayerFps();
+      dataspace = (android_dataspace_t)l.second.GetSidebandLayerDataspace();
     }
   }
 
@@ -3975,7 +3978,7 @@ int DrmHwcTwo::HwcDisplay::UpdateSidebandMode(){
         }
       }
       // 创建新连接
-      int ret = dvp->CreateConnection((int(handle_) + 1000), tunnel_id);
+      int ret = dvp->CreateConnection((int(handle_) + 1000), tunnel_id, dataspace, DRM_MODE_ROTATE_0);
       if(ret){
         HWC2_ALOGD_IF_ERR("CreateConnection display=%" PRIu64 " fail tunnel-id=%d ret=%d", handle_, tunnel_id, ret);
       }else{
