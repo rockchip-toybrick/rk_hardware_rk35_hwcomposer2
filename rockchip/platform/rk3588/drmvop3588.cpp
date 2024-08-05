@@ -2637,9 +2637,13 @@ int Vop3588::TrySrPolicy(std::vector<DrmCompositionPlane> *composition,
             int disp_h = ALIGN_DOWN(drmLayer->display_frame.bottom - drmLayer->display_frame.top, 2);
 
             if(sr_dst_w > disp_w || sr_dst_h > disp_h){
-                sr_dst_w = disp_w;
-                sr_dst_h = disp_h;
-                use_sr_scale = true;
+              float enable_sr_scale_max_rate = 1.5;
+              if(((sr_dst_w * 1.0) / disp_w > enable_sr_scale_max_rate) ||
+                ((sr_dst_h * 1.0) / disp_h > enable_sr_scale_max_rate)){
+                  sr_dst_w = disp_w;
+                  sr_dst_h = disp_h;
+                  use_sr_scale = true;
+              }
             }
           }
 

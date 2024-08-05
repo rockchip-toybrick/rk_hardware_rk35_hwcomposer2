@@ -1879,8 +1879,9 @@ int Vop356x::TrySrPolicy(std::vector<DrmCompositionPlane> *composition,
           if(mSrSupportScale_){
             int disp_w = ALIGN_DOWN(drmLayer->display_frame.right - drmLayer->display_frame.left, 2);
             int disp_h = ALIGN_DOWN(drmLayer->display_frame.bottom - drmLayer->display_frame.top, 2);
-
-            if(sr_dst_w > disp_w || sr_dst_h > disp_h){
+            float enable_sr_scale_max_rate = 1.5;
+            if(((sr_dst_w * 1.0) / disp_w > enable_sr_scale_max_rate) ||
+              ((sr_dst_h * 1.0) / disp_h > enable_sr_scale_max_rate)){
                 sr_dst_w = disp_w;
                 sr_dst_h = disp_h;
                 use_sr_scale = true;
