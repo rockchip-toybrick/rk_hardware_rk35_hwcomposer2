@@ -242,12 +242,15 @@ public:
   }
 
   std::list<std::shared_ptr<DrmBuffer>> lBuffer_;
-  //map DRM_MODE_ROTATE to std::shared_ptr<DrmBufferQueue>, only access in routine thread, do not need lock.
-  std::map<uint32_t, std::shared_ptr<DrmBufferQueue>> mapTransformBufferQueue_;
-  //map display_id to DRM_MODE_ROTATE, must lock before read/write.
-  std::map<int ,uint32_t> mTransform_;
-  //map DRM_MODE_ROTATE to list of rotated buffer, must lock before read/write.
-  std::map<uint32_t, std::list<std::shared_ptr<DrmBuffer>>> mTransfromBuffers_;
+
+  //BufferQueue for DoTransform, only access in routine thread, do not need lock.
+  std::map<uint32_t /*DRM_MODE_ROTATE*/, std::shared_ptr<DrmBufferQueue>> mapTransformBufferQueue_;
+
+  //Transform of displays, must lock before read/write.
+  std::map<int /*display_id*/, uint32_t /*DRM_MODE_ROTATE*/> mTransform_;
+
+  //List of rotated buffer, must lock before read/write.
+  std::map<uint32_t /*DRM_MODE_ROTATE*/, std::list<std::shared_ptr<DrmBuffer>>> mTransfromBuffers_;
 
   void SetProducerFps(float fps){
     fps_=fps;

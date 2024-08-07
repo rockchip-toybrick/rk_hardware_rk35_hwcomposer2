@@ -222,6 +222,13 @@ bool ResourceManager::GetEnableRgaAcquireFence() const{
   return mEnableRgaAcquireFence;
 }
 
+bool ResourceManager::GetRgaSupportAbove4GB() const{
+  if(gIsRK3588() || gIsRK3576())
+    return true;
+  else
+    return false;
+}
+
 DrmDevice *ResourceManager::GetDrmDevice(int display) {
   for (auto &drm : drms_) {
     if (drm->HandlesDisplay(display & ~DRM_CONNECTOR_SPILT_MODE_MASK))

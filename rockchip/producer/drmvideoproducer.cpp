@@ -475,11 +475,11 @@ std::shared_ptr<DrmBuffer> DrmVideoProducer::AcquireBuffer(int display_id,
             acquired_buffer = ctx->mTransfromBuffers_[transform].front();
             int ret = acquired_buffer->WaitFinishFence();
             if(ret){
-              HWC2_ALOGE("tunnel_id=%d, display=%d, transform=%" PRIx32" wait transform fence failed in both back and front buffer!!",
-                          tunnel_id, display_id, transform);
-              HWC2_ALOGE("back buffer id=%" PRIx64", front buffer id=%" PRIx64"",
-                          ctx->mTransfromBuffers_[transform].back()->GetExternalId(),
-                          ctx->mTransfromBuffers_[transform].front()->GetExternalId());
+              HWC2_ALOGE("tunnel_id=%d, display=%d, transform=%" PRIx32" wait transform fence failed in both back and front buffer! "
+                         "back buffer id=%" PRIx64", front buffer id=%" PRIx64,
+                         tunnel_id, display_id, transform,
+                         ctx->mTransfromBuffers_[transform].back()->GetExternalId(),
+                         ctx->mTransfromBuffers_[transform].front()->GetExternalId());
             }
           }
         }
@@ -746,9 +746,12 @@ int DrmVideoProducer::DoTransform(std::shared_ptr<VpContext> ctx, std::shared_pt
         dst_buf_format = HAL_PIXEL_FORMAT_YCrCb_NV12_10;
     }
 
-    uint64_t dst_buf_usage = RK_GRALLOC_USAGE_STRIDE_ALIGN_64 |
-                             MALI_GRALLOC_USAGE_NO_AFBC|
-                             RK_GRALLOC_USAGE_WITHIN_4G;
+    uint64_t dst_buf_usage = RK_GRALLOC_USAGE_STRIDE_ALIGN_64 | MALI_GRALLOC_USAGE_NO_AFBC;
+    //检查当前平台RGA是否支持4G以上内存，如果不支持，则申请4G以内内存
+    if(!ResourceManager::getInstance()->GetRgaSupportAbove4GB()){
+      dst_buf_usage |= RK_GRALLOC_USAGE_WITHIN_4G;
+    }
+
     std::shared_ptr<DrmBuffer> dst_buffer = bufferQueue->DequeueDrmBuffer(dst_width,
                                               dst_height,
                                               dst_buf_format,
@@ -1144,12 +1147,13 @@ void DrmVideoProducer::Routine(){
       HWC2_ALOGE("DoTransform failed, ret = %d", ret);
     }
     if(LogLevel(DBG_DEBUG) && transforms.size()>0){
-      char print_buffer[100]="Sideband-Transform: collect transform: ";
+      std::ostringstream stream;
+      stream << "Sideband-Transform:Collect transform: ";
       for(auto tf:transforms){
-        sprintf(print_buffer+strlen(print_buffer),"0x%" PRIx32", ", tf);
+        stream << "0x" << std::hex << tf << ", ";
       }
-      sprintf(print_buffer+strlen(print_buffer)," transform time: %" PRIi64"us.", end_tf_timestamp - begin_tf_timestamp);
-      HWC2_ALOGD_IF_DEBUG("%s",print_buffer);
+      stream << "transform time: " << std::dec << (end_tf_timestamp - begin_tf_timestamp) << "us";
+      HWC2_ALOGD_IF_DEBUG("%s",stream.str().c_str());
     }
 
     lock.lock();
@@ -1171,12 +1175,13 @@ void DrmVideoProducer::Routine(){
       
       if(ctx->mTransfromBuffers_.count(transform) && ctx->mTransfromBuffers_[transform].size()>0){
         if(LogLevel(DBG_DEBUG)){
-          char print_buffer[100]="";
-          sprintf(print_buffer+strlen(print_buffer),"Sideband-Transform:Transform 0x%" PRIx32" have buffer: ", transform);
+          std::ostringstream stream;
+          stream << "Sideband-Transform:Transform 0x" << std::hex << transform;
+          stream << " have buffer ";
           for(auto buffer:ctx->mTransfromBuffers_[transform]){
-            sprintf(print_buffer+strlen(print_buffer),"0x%" PRIx64", ", buffer->GetExternalId());
+            stream << "0x" << std::hex << buffer->GetExternalId() << ",";
           }
-          HWC2_ALOGD_IF_DEBUG("%s",print_buffer);
+          HWC2_ALOGD_IF_DEBUG("%s",stream.str().c_str());
         }
       }else{
         HWC2_ALOGE("Sideband-Transform:Transform 0x%" PRIx32" buffer list is empty, transform may failed", transform);

@@ -130,6 +130,7 @@ class ResourceManager {
   int GetCacheBufferLimitSize() const;
   bool GetEnableEdidReport() const;
   bool GetEnableRgaAcquireFence() const;
+  bool GetRgaSupportAbove4GB() const;
 
  private:
   ResourceManager();
