@@ -258,7 +258,7 @@ endif
 
 endif
 
-# RK356x
+# RK3576
 ifneq ($(filter rk3576, $(strip $(TARGET_BOARD_PLATFORM))), )
 TARGET_SOC_PLATFORM := rk3576
 LOCAL_CPPFLAGS += -DRK3576=1
@@ -268,7 +268,8 @@ LOCAL_CPPFLAGS += -DANDROID_P=1
 LOCAL_C_INCLUDES += \
   hardware/rockchip/libgralloc/ \
   system/core/liblog/include/\
-  hardware/libhardware/modules/gralloc
+  hardware/libhardware/modules/gralloc \
+  hardware/libhardware/include/
 endif
 
 endif

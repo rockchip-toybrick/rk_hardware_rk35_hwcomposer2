@@ -36,6 +36,11 @@
 
 #include <set>
 
+#ifdef ANDROID_P
+#ifdef RK3576
+#include "hardware/hardware.h"
+#endif
+#endif
 
 #include <rockchip/utils/drmdebug.h>
 #include <rockchip/utils/rgautils.h>
@@ -43,7 +48,6 @@
 #include <3rd/hal/drmhwc2_hal_format.h>
 
 #include <system/graphics.h>
-
 
 namespace hwc_rga_utils{
 
