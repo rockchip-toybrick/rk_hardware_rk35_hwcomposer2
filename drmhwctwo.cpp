@@ -5831,7 +5831,8 @@ void DrmHwcTwo::DrmHotplugHandler::HandleResolutionSwitchEvent(int display_id) {
                   connector->id(),
                   drm_->connector_type_str(connector->type()),
                   connector->type_id());
-    hwc2_->HandleDisplayHotplug(display_id, DRM_MODE_CONNECTED);
+    if(!connector->isCropSpilt() || (connector->isCropSpilt() && connector->IsSpiltPrimary()))
+      hwc2_->HandleDisplayHotplug(display_id, DRM_MODE_CONNECTED);
     auto &primary = hwc2_->displays_.at(0);
     primary.InvalidateControl(5,20);
     display.ActiveModeChange(false);
@@ -5898,7 +5899,8 @@ int DrmHwcTwo::EventWorker::SendHotplugEvent(DrmEvent event){
                   connector->id(),
                   drm->connector_type_str(connector->type()),
                   connector->type_id());
-    hwc2_->HandleDisplayHotplug(event.display_id, DRM_MODE_CONNECTED);
+    if(!connector->isCropSpilt() || (connector->isCropSpilt() && connector->IsSpiltPrimary()))
+      hwc2_->HandleDisplayHotplug(event.display_id, DRM_MODE_CONNECTED);
   }
 
   if(hwc2_->displays_.count(primary_id)){
