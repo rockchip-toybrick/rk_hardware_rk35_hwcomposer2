@@ -692,7 +692,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::CheckStateAndReinit(bool clear_layer) {
   }
 
   // Reset HwcLayer resource
-  if(clear_layer && handle_ != HWC_DISPLAY_PRIMARY){
+  if(clear_layer && handle_ != HWC_DISPLAY_PRIMARY && !connector_->isCropSpilt()){
     // Clear Layers
     for(auto &map_layer : layers_){
       map_layer.second.clear();
@@ -4183,6 +4183,18 @@ int DrmHwcTwo::HwcDisplay::DoMirrorDisplay(int32_t *retire_fence){
         }else{
           display.CreateLayer(&uCropSpiltDummyLayer_);
         }
+
+        // Clear Unused Layers
+        std::vector<hwc2_layer_t> layer_to_clear;
+        for(auto &map_layer : display.get_layers()){
+          if(map_layer.first!=uCropSpiltDummyLayer_){
+            map_layer.second.clear();
+            layer_to_clear.push_back(map_layer.first);
+          }
+        }
+        for(auto l:layer_to_clear)
+          display.get_layers().erase(l);
+
         HwcLayer &layer = display.get_layer(uCropSpiltDummyLayer_);
         hwc_rect_t frame = {0,0,1920,1080};
         layer.SetLayerDisplayFrame(frame);
