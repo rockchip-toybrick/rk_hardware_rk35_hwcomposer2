@@ -1791,12 +1791,59 @@ int DrmHwcTwo::HwcDisplay::ImportBuffers() {
 
         if(connector_->isCropSpilt()){
           int32_t transform = connector_->getCropSpiltTransform();
-          if(transform != 0){
-            drm_hwc_layer.SetTransform(static_cast<HWC2::Transform>(transform));
-            ret = client_layer_.DoFbTransform(true, &drm_hwc_layer, &ctx_);
-            if(ret){
-              HWC2_ALOGE("CropSpilt: ClientLayer DoFbTransform fail, Please check config file HwComposerEnv.xml, ret = %d", ret);
+          std::vector<PlaneGroup *> all_plane_groups = drm_->GetPlaneGroups();
+          bool IsSupportAfbc = false;
+          if(gIsRK356x()){
+            for(auto &plane_group : all_plane_groups){
+              if(plane_group->acquire(1 << crtc_->pipe(), handle_) && plane_group->win_type & DRM_PLANE_TYPE_ALL_CLUSTER_MASK){
+                IsSupportAfbc = true;
+                break;
+              }
+            }
+          }else if(gIsRK3588()){
+            for(auto &plane_group : all_plane_groups){
+              if(plane_group->acquire(1 << crtc_->pipe(), handle_) && plane_group->win_type & PLANE_RK3588_ALL_CLUSTER_MASK){
+                IsSupportAfbc = true;
+                break;
+              }
+            }
+          }else if(gIsRK3576()){
+            if(transform==0){
+              //3576 Afbc 不支持旋转，如果有旋转认为不支持Afbc
+              for(auto &plane_group : all_plane_groups){
+                if(plane_group->acquire(1 << crtc_->pipe(), handle_) && plane_group->win_type & PLANE_RK3576_ALL_CLUSTER_MASK){
+                  IsSupportAfbc = true;
+                  break;
+                }
+              }
+            }
+          }
+          
+          drm_hwc_layer.SetTransform(static_cast<HWC2::Transform>(transform));
+          if(IsSupportAfbc && drm_hwc_layer.bAfbcd_){
+            HWC2_ALOGD_IF_DEBUG("CropSpilt: display %d use vop transform",(int)handle_);
+          }else if(drm_hwc_layer.bAfbcd_){
+            if(gIsRK356x()){
+              HWC2_ALOGD_IF_DEBUG("CropSpilt: display %d RK356x no Afbc layer do not support transform",(int)handle_);
               drm_hwc_layer.SetTransform(static_cast<HWC2::Transform>(0));
+            }else{
+              HWC2_ALOGD_IF_DEBUG("CropSpilt: display %d use RGA transform",(int)handle_);
+              ret = client_layer_.DoFbTransform(true, &drm_hwc_layer, &ctx_);
+              if(ret){
+                HWC2_ALOGE("CropSpilt: ClientLayer DoFbTransform fail, Please check config file HwComposerEnv.xml, ret = %d", ret);
+                drm_hwc_layer.SetTransform(static_cast<HWC2::Transform>(0));
+              }
+            }
+          }else{
+            if(transform != 0){
+              HWC2_ALOGD_IF_DEBUG("CropSpilt: display %d use RGA transform",(int)handle_);
+              ret = client_layer_.DoFbTransform(true, &drm_hwc_layer, &ctx_);
+              if(ret){
+                HWC2_ALOGE("CropSpilt: ClientLayer DoFbTransform fail, Please check config file HwComposerEnv.xml, ret = %d", ret);
+                drm_hwc_layer.SetTransform(static_cast<HWC2::Transform>(0));
+              }
+            }else{
+              HWC2_ALOGD_IF_DEBUG("CropSpilt: display %d no Afbc use VOP transform",(int)handle_);
             }
           }
         }

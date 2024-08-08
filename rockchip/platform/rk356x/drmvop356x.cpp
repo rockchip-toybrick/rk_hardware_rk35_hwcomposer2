@@ -2880,11 +2880,13 @@ void Vop356x::InitStateContext(
         ALOGI_IF(LogLevel(DBG_DEBUG),"%s,line=%d No Cluster must to overlay Video, FB-target must disable AFBC(%d).",
             __FUNCTION__,__LINE__,ctx.state.bDisableFBAfbcd);
       }
-
-      if(ctx.request.iAfcbdLargeYuvCnt > 0 && ctx.support.iAfbcdYuvCnt <= 2){
-        ctx.state.bDisableFBAfbcd = true;
-        ALOGI_IF(LogLevel(DBG_DEBUG),"%s,line=%d All Cluster must to overlay Video, FB-target must disable AFBC(%d).",
-            __FUNCTION__,__LINE__,ctx.state.bDisableFBAfbcd);
+      //CropSpilt do not use hwc composite video
+      if(conn && (!conn->isCropSpilt())){
+        if(ctx.request.iAfcbdLargeYuvCnt > 0 && ctx.support.iAfbcdYuvCnt <= 2){
+          ctx.state.bDisableFBAfbcd = true;
+          ALOGI_IF(LogLevel(DBG_DEBUG),"%s,line=%d All Cluster must to overlay Video, FB-target must disable AFBC(%d).",
+              __FUNCTION__,__LINE__,ctx.state.bDisableFBAfbcd);
+        }
       }
 
       // If FB-target unable to meet the scaling requirements, AFBC must be disable.
