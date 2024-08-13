@@ -57,6 +57,18 @@
 #define ALIGN_DOWN(value, base) (value & (~(base - 1)))
 #endif
 
+#ifndef RK_GRALLOC_USAGE_STRIDE_ALIGN_64
+#define RK_GRALLOC_USAGE_STRIDE_ALIGN_64 (1ULL << 60)
+#endif
+
+#ifndef MALI_GRALLOC_USAGE_NO_AFBC
+#define MALI_GRALLOC_USAGE_NO_AFBC (1ULL << 29)
+#endif
+
+#ifndef RK_GRALLOC_USAGE_WITHIN_4G
+#define RK_GRALLOC_USAGE_WITHIN_4G (1ULL << 56)
+#endif
+
 namespace android {
 
 static inline long __currentTime(){

@@ -36,12 +36,7 @@
 
 #include <set>
 
-#ifdef ANDROID_P
-#ifdef RK3576
-#include "hardware/hardware.h"
-#endif
-#endif
-
+#include <hardware/hardware.h>
 #include <rockchip/utils/drmdebug.h>
 #include <rockchip/utils/rgautils.h>
 #include <rockchip/utils/rgaformats.h>
