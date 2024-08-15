@@ -196,6 +196,7 @@ typedef struct StateContext{
   bool bRequireGLESMode;
   bool bHDRVideoForceOverlay;
   bool bEnableHwPqVideoMode_;
+  bool bMustRunHwPqVideoMode_;
 
   int iVopPerformanceFactor;
 } StaCtx;
@@ -414,6 +415,9 @@ struct PqBufferInfo{
     sp<AcquireFence> lastHwPqAcquireFence = NULL;
     bool lastHwPqUseNewBuffer = false;
     std::shared_ptr<HwpqDisplayStatus> CollectPqDisplayStatus(std::vector<DrmHwcLayer*> &drm_hwc_layers_);
+    //For buffer check
+    std::shared_ptr<Pq> pq_cs_ = NULL;
+    int CheckHwPqDstScale(DrmHwcLayer* drmLayer);
 #endif
 #ifdef USE_LIBSR
   // SR

@@ -1156,11 +1156,29 @@ int Vop3576::MatchPlane(std::vector<DrmCompositionPlane> *composition_planes,
                               (*iter_plane)->is_support_scale((*iter_layer)->fVScaleMul_)){
                               bNeed = true;
                           }else{
-                            ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support scale factor(%f,%f)",
-                                      (*iter_plane)->name(),
-                                      (*iter_layer)->fHScaleMul_,
-                                      (*iter_layer)->fVScaleMul_);
-                            continue;
+                            if((*iter_plane)->win_type() ==  PLANE_RK3576_CLUSTER0_WIN0 && crtc->get_port_id()==0 && ctx.state.bEnableHwPqVideoMode_){
+                              CheckHwPqDstScale((*iter_layer));
+                              if((*iter_layer)->bCheckPqScale &&
+                                 (*iter_plane)->is_support_scale((*iter_layer)->fPqHScale) &&
+                                 (*iter_plane)->is_support_scale((*iter_layer)->fPqVScale)){
+                                  ctx.state.bMustRunHwPqVideoMode_ = true;
+                              }else{
+                                ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support scale factor(%f,%f), GetPqScale %s, can not support post hwpq scale factor(%f,%f)",
+                                         (*iter_plane)->name(),
+                                         (*iter_layer)->fHScaleMul_,
+                                         (*iter_layer)->fVScaleMul_,
+                                         (*iter_layer)->bCheckPqScale?"OK":"failed",
+                                         (*iter_layer)->fPqHScale,
+                                         (*iter_layer)->fPqVScale);
+                                continue;
+                              }
+                            }else{
+                              ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support scale factor(%f,%f)",
+                                        (*iter_plane)->name(),
+                                        (*iter_layer)->fHScaleMul_,
+                                        (*iter_layer)->fVScaleMul_);
+                              continue;
+                            }
                           }
 
                           // Scale 4K 120帧分辨率下
@@ -1406,6 +1424,11 @@ int Vop3576::MatchPlanes(
       return 0;
     }
     else{
+      if(ctx.state.bMustRunHwPqVideoMode_){
+        HWC2_ALOGE("HWPQ: match need run HWPQ succeed, but it failed, MatchPlanes again!");
+        ctx.state.bEnableHwPqVideoMode_ = false;
+        return MatchPlanes(composition,layers,crtc,plane_groups);
+      }
       HWC2_ALOGD_IF_DEBUG("Not use HwPq Video Mode.");
       return 0;
     }
@@ -4297,6 +4320,109 @@ void Vop3576::TryMix(){
     ctx.state.setHwcPolicy.insert(HWC_ACCELERATE_POLICY);
   }
 }
+#ifdef USE_LIBPQ
+int Vop3576::CheckHwPqDstScale(DrmHwcLayer* drmLayer) {
+  if(drmLayer->bCheckPqScale){
+    return 0;
+  }
+  int ret = 0;
+  // 0. Check if HwPq is Ready
+  if(pq_ == NULL){
+    pq_ = std::make_shared<Pq>();
+    if(pq_ != NULL){
+      ret = pq_->Init(PQ_VERSION);
+      if(ret!=0){
+        HWC2_ALOGE("Pq module Init Failed, ret=%d", ret);
+        pq_ = NULL;
+      }
+    }
+  }
+
+  if(pq_ == NULL){
+    HWC2_ALOGD_IF_DEBUG("Pq module not ready! use other policy");
+    return -1;
+  }
+
+  //目前只考虑对视频图层做HWPQ
+  if(!drmLayer->bYuv_){
+    HWC2_ALOGD_IF_VERBOSE("layer is not video, skip hwpq");
+    return -1;
+  }
+  if(drmLayer->bAfbcd_ || drmLayer->bRfbcd_){
+    HWC2_ALOGD_IF_DEBUG("HwPq do not support Fbc layer:%s", drmLayer->sLayerName_.c_str());
+    return -1;
+  }
+  // 1. Fill buffer Info
+  HwPqImageInfo src;
+  src.mBufferInfo_.iFd_     = drmLayer->iFd_;
+  src.mBufferInfo_.iWidth_  = drmLayer->iWidth_;
+  src.mBufferInfo_.iHeight_ = drmLayer->iHeight_;
+  src.mBufferInfo_.iFormat_ = drmLayer->iFormat_;
+  src.mBufferInfo_.iStride_ = drmLayer->iStride_;
+  src.mBufferInfo_.iHeightStride_ = drmLayer->iHeightStride_;
+  src.mBufferInfo_.uBufferId_ = drmLayer->uBufferId_;
+  src.mBufferInfo_.uDataSpace_ = (uint64_t)drmLayer->eDataSpace_;
+
+  src.iMetaDataFd_ = -1;
+  src.iMetaDataSize_ = 0;
+  src.iMetaDataOffset_ = 0;
+
+  DrmGralloc* gralloc = DrmGralloc::getInstance();
+  if(gralloc == NULL){
+    HWC2_ALOGD_IF_INFO("DrmGralloc is null, Can not get PQ Metadata");
+  }else{
+    src.iMetaDataOffset_ = gralloc->hwc_get_offset_of_pq_metadata(drmLayer->sf_handle);
+    if(src.iMetaDataOffset_>0){
+      src.iMetaDataFd_ = drmLayer->iFd_;
+      src.iMetaDataSize_ = drmLayer->iSize_;
+      HWC2_ALOGD_IF_DEBUG("Pq metadata:fd=%d offset=%" PRIi64" size=%" PRIi64,src.iMetaDataFd_,
+                          src.iMetaDataOffset_, src.iMetaDataSize_);
+    }
+  }
+
+  src.mCrop_.iLeft_  = (int)drmLayer->source_crop.left;
+  src.mCrop_.iTop_   = (int)drmLayer->source_crop.top;
+  src.mCrop_.iRight_ = (int)drmLayer->source_crop.right;
+  src.mCrop_.iBottom_= (int)drmLayer->source_crop.bottom;
+
+  // 2. Alloc Dst buffer
+  if(drmLayer->hwPqReg_ == NULL){
+    drmLayer->hwPqReg_ = std::shared_ptr<rk_hwpq_reg>(new rk_hwpq_reg);
+    if(drmLayer->hwPqReg_ == NULL){
+      HWC2_ALOGE("rk_hwpq_reg alloc failed");
+      return -1;
+    }
+  }
+
+  // 3. Set buffer Info
+  hwPqDstInfo_.mBufferInfo_.iFd_ = -1;
+  hwPqDstInfo_.mRkHwpqReg_ = drmLayer->hwPqReg_.get();
+
+  bool needAllocNewBuffer = false;
+  HWC2_ALOGD_IF_DEBUG("src: fd:%d,wh:%d,%d, format:%d, ws/hs=%d,%d buffid:0x%" PRIx64,src.mBufferInfo_.iFd_,
+  src.mBufferInfo_.iWidth_,src.mBufferInfo_.iHeight_,src.mBufferInfo_.iFormat_,src.mBufferInfo_.iStride_,src.mBufferInfo_.iHeightStride_,src.mBufferInfo_.uBufferId_);
+
+  ret = pq_->Query(src,hwPqDstInfo_,&needAllocNewBuffer);
+  if(ret){
+    if(ret == PqUnInit)
+      HWC2_ALOGW("Pq SetHwPqSrcImage fail, Pq may still initializing, ret = %d", ret);
+    else if(PqUnSupported)
+      HWC2_ALOGE("Pq SetHwPqSrcImage fail, Src is UnSupported, ret = %d", ret);
+    else
+      HWC2_ALOGE("Pq SetHwPqSrcImage fail, ret = %d", ret);
+    return ret;
+  }
+  int dst_w = static_cast<int>(drmLayer->display_frame.right - drmLayer->display_frame.left);
+  int dst_h = static_cast<int>(drmLayer->display_frame.bottom - drmLayer->display_frame.top);
+  int src_w = hwPqDstInfo_.mCrop_.Width();
+  int src_h = hwPqDstInfo_.mCrop_.Height();
+  drmLayer->bCheckPqScale = true;
+  drmLayer->fPqHScale = (float)src_w/(float)dst_w;
+  drmLayer->fPqVScale = (float)src_h/(float)dst_h;
+  HWC2_ALOGD_IF_DEBUG("Get After HWPQ scale:(%f,%f), name=%s", drmLayer->fPqHScale, drmLayer->fPqVScale, drmLayer->sLayerName_.c_str());
+  return 0;
+}
+#endif
 
 int Vop3576::InitContext(
     std::vector<DrmHwcLayer*> &layers,
