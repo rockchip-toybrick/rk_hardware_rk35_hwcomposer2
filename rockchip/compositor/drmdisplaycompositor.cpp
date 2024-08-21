@@ -3922,6 +3922,7 @@ int DrmDisplayCompositor::WriteBackByRGA() {
               src.wstride = layer.storeLayerInfo_.iStride_;
               src.hstride = layer.storeLayerInfo_.iHeightStride_;
               src.format = layer.storeLayerInfo_.iFormat_;
+              src.global_alpha = layer.alpha;
 
               // Set src rect info
               src_rect.x = ALIGN_DOWN_INT(layer.storeLayerInfo_.source_crop.left, YUV_ALIGN);
@@ -3939,6 +3940,7 @@ int DrmDisplayCompositor::WriteBackByRGA() {
               src.wstride = layer.iStride_;
               src.hstride = layer.iHeightStride_;
               src.format = layer.iFormat_;
+              src.global_alpha = layer.alpha;
 
               // Set src rect info
               src_rect.x = ALIGN_DOWN_INT(layer.source_crop.left, YUV_ALIGN);
@@ -3958,6 +3960,7 @@ int DrmDisplayCompositor::WriteBackByRGA() {
         dst.wstride = dst_buffer->GetStride();
         dst.hstride = dst_buffer->GetHeightStride();
         dst.format = dst_buffer->GetFormat();
+        dst.global_alpha=0xff;
 
         // Set src rect info
         dst_rect.x = ALIGN_DOWN_INT(layer.display_frame_sf.left, YUV_ALIGN);
@@ -3999,6 +4002,7 @@ int DrmDisplayCompositor::WriteBackByRGA() {
         src.wstride = layer.iStride_;
         src.hstride = layer.iHeightStride_;
         src.format = layer.iFormat_;
+        src.global_alpha = layer.alpha;
 
         // Set src rect info
         src_rect.x = ALIGN_DOWN_INT(layer.source_crop.left, YUV_ALIGN);
@@ -4016,6 +4020,7 @@ int DrmDisplayCompositor::WriteBackByRGA() {
         dst.wstride = dst_buffer->GetStride();
         dst.hstride = dst_buffer->GetHeightStride();
         dst.format = dst_buffer->GetFormat();
+        dst.global_alpha = 0xff;
 
         // Set src rect info
         dst_rect.x = ALIGN_DOWN_INT(layer.source_crop.left, YUV_ALIGN);
