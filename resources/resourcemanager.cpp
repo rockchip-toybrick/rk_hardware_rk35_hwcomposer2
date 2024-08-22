@@ -722,13 +722,30 @@ int ResourceManager::OutputWBBuffer(int display_id,
   src_rect.width  = output_buffer->GetWidth();
   src_rect.height = output_buffer->GetHeight();
 
+  // dst is rgb?
+  // WriteBack 默认格式为NV12，故调用RGA CSC转换模式完全取决于dst的数据格式，如果存在 YUV2RGB 转换
+  // 则需要指定色彩空间转换公式
+  bool dstIsRgb = false;
+  switch (dst.format)
+  {
+      case HAL_PIXEL_FORMAT_RGBA_8888:
+      case HAL_PIXEL_FORMAT_RGBX_8888:
+      case HAL_PIXEL_FORMAT_RGB_888:
+      case HAL_PIXEL_FORMAT_RGB_565:
+      case HAL_PIXEL_FORMAT_BGRA_8888:dstIsRgb = true; break;
+      default: dstIsRgb = false; break;
+  }
+
   // Set Dataspace
-  // if((srcBuffer.mBufferInfo_.uDataSpace_ & HAL_DATASPACE_STANDARD_BT709) == HAL_DATASPACE_STANDARD_BT709){
-  //   dst.color_space_mode = IM_YUV_TO_RGB_BT709_LIMIT;
-  //   SVEP_ALOGD_IF("color_space_mode = BT709 dataspace=0x%" PRIx64,srcBuffer.mBufferInfo_.uDataSpace_);
-  // }else{
-  //   SVEP_ALOGD_IF("color_space_mode = BT601 dataspace=0x%" PRIx64,srcBuffer.mBufferInfo_.uDataSpace_);
-  // }
+  if(dstIsRgb){
+    if((output_buffer->GetDataspace() & android_dataspace_t::HAL_DATASPACE_RANGE_FULL) != 0){
+      dst.color_space_mode = IM_YUV_TO_RGB_BT601_FULL;
+      HWC2_ALOGD_IF_DEBUG("VDS : output_dataspace is bt601-full, src_format=%d dst_format=%d", src.format, dst.format);
+    }else{
+      dst.color_space_mode = IM_YUV_TO_RGB_BT601_LIMIT;
+      HWC2_ALOGD_IF_DEBUG("VDS : output_dataspace is bt601-limit, src_format=%d dst_format=%d", src.format, dst.format);
+    }
+  }
 
   IM_STATUS im_state;
 

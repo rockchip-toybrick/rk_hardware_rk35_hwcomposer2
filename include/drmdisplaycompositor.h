@@ -141,13 +141,14 @@ struct SidebandState {
                   DrmHwcBuffer *writeback_buffer = NULL);
   int SetupWritebackCommit(drmModeAtomicReqPtr pset, uint32_t crtc_id,
                            DrmConnector *writeback_conn,
-                           DrmHwcBuffer *writeback_buffer);
+                           DrmHwcBuffer *writeback_buffer,
+                           android_dataspace_t dataspace);
   int DisableWritebackCommit(drmModeAtomicReqPtr pset,
                              DrmConnector *writeback_conn);
 #ifdef USE_LIBPQ_HWPQ
   int CollectHwPqInfo();
   int UpdateHwPqState();
-#endif                      
+#endif
   int CollectModeSetInfo(drmModeAtomicReqPtr pset,
                          DrmDisplayComposition *display_comp,
                          bool is_sideband_collect);

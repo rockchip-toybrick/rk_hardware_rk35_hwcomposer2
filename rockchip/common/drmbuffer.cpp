@@ -61,6 +61,7 @@ DrmBuffer::DrmBuffer(int w, int h, int format, uint64_t usage, std::string name,
           usage),
   uFourccFormat_(0),
   uModifier_(0),
+  uDataspace_(HAL_DATASPACE_UNKNOWN),
   iFinishFence_(-1),
   iReleaseFence_(-1),
   bInit_(false),
@@ -81,6 +82,7 @@ DrmBuffer::DrmBuffer(native_handle_t* in_handle) :
   iUsage_(0),
   uFourccFormat_(0),
   uModifier_(0),
+  uDataspace_(HAL_DATASPACE_UNKNOWN),
   iFinishFence_(-1),
   iReleaseFence_(-1),
   bInit_(false),
@@ -320,6 +322,14 @@ uint32_t DrmBuffer::DrmFormatToPlaneNum(uint32_t drm_format) {
     default:
       return 1;
   }
+}
+
+void DrmBuffer::SetDataspace(android_dataspace_t dataspace){
+  uDataspace_ = dataspace;
+}
+
+android_dataspace_t DrmBuffer::GetDataspace(){
+  return uDataspace_;
 }
 
 uint32_t DrmBuffer::GetFbId(){

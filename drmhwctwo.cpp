@@ -1763,7 +1763,7 @@ int DrmHwcTwo::HwcDisplay::ImportBuffers() {
 
 #ifdef USE_LIBPQ_HWPQ
       // 如果是HWPQ处理后的图层，已经更新了GemHandle参数，则不再获取GemHandle
-      if(drm_hwc_layer.bUseVideoHwpq_)
+      if(drm_hwc_layer.bUseHwpqScale_)
         continue;
 #endif
 
@@ -1830,7 +1830,7 @@ int DrmHwcTwo::HwcDisplay::ImportBuffers() {
               }
             }
           }
-          
+
           drm_hwc_layer.SetTransform(static_cast<HWC2::Transform>(transform));
           if(IsSupportAfbc && drm_hwc_layer.bAfbcd_){
             HWC2_ALOGD_IF_DEBUG("CropSpilt: display %d use vop transform",(int)handle_);
@@ -5202,7 +5202,7 @@ int DrmHwcTwo::HwcLayer::DoFbTransform(bool validate, DrmHwcLayer *drmLayer, hwc
   memset(&src_rect, 0, sizeof(im_rect));
   memset(&dst_rect, 0, sizeof(im_rect));
   memset(&pat_rect, 0, sizeof(im_rect));
-  
+
   if(FbTfBufferQueue_ == NULL){
     FbTfBufferQueue_ = std::make_shared<DrmBufferQueue>();
   }

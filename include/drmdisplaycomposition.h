@@ -231,6 +231,10 @@ class DrmDisplayComposition {
     return has_sideband2_layer_;
   }
 
+  bool has_hwpq() {
+    return has_hwpq_layer_;
+  }
+
   uint64_t get_sideband_tunnel_id() const {
     return sideband_tunnel_id_;
   }
@@ -266,6 +270,7 @@ class DrmDisplayComposition {
 
   bool geometry_changed_;
   bool has_svep_layer_;
+  bool has_hwpq_layer_;
   // sideband
   bool has_sideband2_layer_ = false;
   uint64_t sideband_tunnel_id_ = 0;

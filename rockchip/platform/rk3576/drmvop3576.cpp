@@ -2142,7 +2142,7 @@ int Vop3576::RunHwPqVideoMode(
         dst_buffer->SetFinishFence(dup(output_fence));
         hwPqBufferQueue_->QueueBuffer(dst_buffer);
 
-        drmLayer->bUseVideoHwpq_ = true;
+        drmLayer->bUseHwpqScale_ = true;
         drmLayer->pPqBuffer_ = dst_buffer;
         hwc_frect_t source_crop;
         source_crop.left   = hwPqDstInfo_.mCrop_.iLeft_;
@@ -2214,7 +2214,7 @@ int Vop3576::RunHwPqVideoMode(
                                                   drmLayer->transform);
         // Update Layer info
         drmLayer->acquire_fence = lastHwPqAcquireFence;
-        drmLayer->bUseVideoHwpq_ = true;
+        drmLayer->bUseHwpqScale_ = true;
         drmLayer->pPqBuffer_ = dst_buffer;
       }else{
         HWC2_ALOGD_IF_DEBUG("dst_buffer = null, hwpq use original buffer");

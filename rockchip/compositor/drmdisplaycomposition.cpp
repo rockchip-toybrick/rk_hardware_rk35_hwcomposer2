@@ -79,6 +79,7 @@ int DrmDisplayComposition::SetLayers(DrmHwcLayer *layers, size_t num_layers,
 
   sideband_tunnel_id_ = 0;
   has_sideband2_layer_ = false;
+  has_hwpq_layer_ = false;
 
   for (size_t layer_index = 0; layer_index < num_layers; layer_index++) {
     if(layers[layer_index].bUseSr_ ||
@@ -89,6 +90,13 @@ int DrmDisplayComposition::SetLayers(DrmHwcLayer *layers, size_t num_layers,
         has_sideband2_layer_ = layers[layer_index].bSideband2_;
         sideband_tunnel_id_ = layers[layer_index].iTunnelId_;
     }
+
+#ifdef USE_LIBPQ_HWPQ
+    if(layers[layer_index].hwPqReg_ != NULL){
+        has_hwpq_layer_ = true;
+    }
+#endif
+
     layers_.emplace_back(std::move(layers[layer_index]));
   }
 
@@ -262,7 +270,7 @@ int DrmDisplayComposition::CreateAndAssignReleaseFences(SyncTimeline &sync_timel
         HWC2_ALOGD_IF_DEBUG(" Create RgaReleaseFence(%s) Sucess: frame = %" PRIu64 " LayerName=%s",acBuf, frame_no_, layer->sLayerName_.c_str());
       }
 #ifdef USE_LIBPQ_HWPQ
-      if(layer->bUseVideoHwpq_ && layer->pPqBuffer_!=NULL){
+      if(layer->bUseHwpqScale_ && layer->pPqBuffer_!=NULL){
         layer->pPqBuffer_->SetReleaseFence(dup(layer->release_fence->getFd()));
         HWC2_ALOGD_IF_DEBUG(" Create HwPqReleaseFence(%s) Sucess: frame = %" PRIu64 " LayerName=%s",acBuf, frame_no_, layer->sLayerName_.c_str());
       }

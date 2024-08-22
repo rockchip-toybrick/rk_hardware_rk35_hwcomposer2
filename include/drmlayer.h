@@ -293,7 +293,7 @@ struct DrmHwcLayer {
   std::shared_ptr<DrmBuffer> pPqBuffer_;
 
 #ifdef USE_LIBPQ_HWPQ
-  bool bUseVideoHwpq_;
+  bool bUseHwpqScale_;
   std::shared_ptr<rk_hwpq_reg> hwPqReg_;
 #endif
 

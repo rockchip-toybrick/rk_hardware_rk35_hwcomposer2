@@ -327,7 +327,8 @@ int DrmDisplayCompositor::DisablePlanes(DrmDisplayComposition *display_comp) {
 int DrmDisplayCompositor::SetupWritebackCommit(drmModeAtomicReqPtr pset,
                                                uint32_t crtc_id,
                                                DrmConnector *writeback_conn,
-                                               DrmHwcBuffer *writeback_buffer) {
+                                               DrmHwcBuffer *writeback_buffer,
+                                               android_dataspace_t dataspace) {
 
   int ret = 0;
 
@@ -380,6 +381,9 @@ int DrmDisplayCompositor::SetupWritebackCommit(drmModeAtomicReqPtr pset,
   }
 
   bWriteBackEnable_ = true;
+
+  // RK3576 若使能 HWPQ ,则回写回的色彩空间为 bt709-full range
+  wbBuffer->SetDataspace(dataspace);
 
   HWC2_ALOGD_IF_DEBUG("WB: id=%" PRIu64 " fbid=%d conn-id=%d crtc_id=%d", wbBuffer->GetId(),
                                                                  wbBuffer->GetFbId(),
@@ -1273,10 +1277,17 @@ int DrmDisplayCompositor::CollectCommitInfo(drmModeAtomicReqPtr pset,
        resource_manager_->IsWriteBackByVop()){
       int wbDisplay = resource_manager_->GetWBDisplay();
       if(wbDisplay == display_){
+        android_dataspace_t writeback_dataspace = HAL_DATASPACE_UNKNOWN;
+        if(display_comp->has_hwpq()){
+          writeback_dataspace = HAL_DATASPACE_V0_JFIF; // BT601-full
+        }else{
+          writeback_dataspace = HAL_DATASPACE_V0_BT601_625; // BT601-limit
+        }
         ret = SetupWritebackCommit(pset,
                                   crtc->id(),
                                   drm->GetWritebackConnectorForDisplay(wbDisplay),
-                                  NULL);
+                                  NULL,
+                                  writeback_dataspace);
         if (ret < 0) {
           ALOGE("Failed to Setup Writeback Commit ret = %d", ret);
           return ret;
@@ -1986,7 +1997,7 @@ int DrmDisplayCompositor::CommitFrame(DrmDisplayComposition *display_comp,
       return -EINVAL;
     }
     ret = SetupWritebackCommit(pset, crtc->id(), writeback_conn,
-                               writeback_buffer);
+                               writeback_buffer, HAL_DATASPACE_UNKNOWN);
     if (ret < 0) {
       ALOGE("Failed to Setup Writeback Commit ret = %d", ret);
       return ret;
@@ -4301,7 +4312,7 @@ int DrmDisplayCompositor::FlattenSerial(DrmConnector *writeback_conn) {
     return -EINVAL;
   }
   ret = SetupWritebackCommit(pset, crtc->id(), writeback_conn,
-                             &writeback_layer.buffer);
+                             &writeback_layer.buffer, HAL_DATASPACE_UNKNOWN);
   if (ret < 0) {
     ALOGE("Failed to Setup Writeback Commit");
     drmModeAtomicFree(pset);

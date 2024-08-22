@@ -74,6 +74,9 @@ public:
   int WaitReleaseFence();
   int DumpData();
 
+  void SetDataspace(android_dataspace_t dataspace);
+  android_dataspace_t GetDataspace();
+
 #ifdef USE_LIBPQ_HWPQ
   std::shared_ptr<rk_hwpq_reg> GetHwPqRegs(){
     if(spHwPqReg_ == NULL)
@@ -116,6 +119,7 @@ private:
   uint32_t uGemHandle_;
   uint32_t uFbId_;
   rga_buffer_handle_t uRgaHandle_=0;
+  android_dataspace_t uDataspace_;
 
   // rect crop info
   int iLeft_;
