@@ -1622,13 +1622,13 @@ void Vop3588::OutputMatchLayer(int iFirst, int iLast,
                                           std::vector<DrmHwcLayer *>& layers,
                                           std::vector<DrmHwcLayer *>& tmp_layers){
 
-  if(iFirst < 0 || iLast < 0 || iFirst > iLast || (layers.size()-1-iLast) < 0)
+  int interval = layers.size()-1-iLast;
+  if(iFirst < 0 || iLast < 0 || iFirst > iLast || interval < 0 || iLast > (layers.size()-1))
   {
       HWC2_ALOGD_IF_DEBUG("invalid value iFirst=%d, iLast=%d layer.size=%zu ", iFirst, iLast, layers.size());
       return;
   }
 
-  int interval = layers.size()-1-iLast;
   ALOGD_IF(LogLevel(DBG_DEBUG), "OutputMatchLayer iFirst=%d,iLast,=%d,interval=%d",iFirst,iLast,interval);
   for (auto i = layers.begin() + iFirst; i != layers.end() - interval;)
   {
@@ -2286,7 +2286,7 @@ int Vop3588::TryMixSidebandPolicy(
       // 若只有两个图层，则取第底层作为mix图层
       layer_indices.second = layer_indices.first;
     }else{
-      layer_indices.second = layer_indices.first + 1;
+      layer_indices.second = layer_indices.first;
     }
   }
 
