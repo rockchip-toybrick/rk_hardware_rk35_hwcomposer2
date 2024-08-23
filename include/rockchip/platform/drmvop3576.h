@@ -220,6 +220,33 @@ struct SvepXml{
   std::set<uint32_t> mSvepWhitelistUid_;
 };
 
+struct PqBufferInfo{
+  hwc_frect_t source_crop;
+  hwc_rect_t display_frame;  
+  uint64_t buffer_id=0;
+  bool match(DrmHwcLayer* layer){
+    if(!layer)
+      return false;
+    else
+      return (layer->uBufferId_ == buffer_id &&
+              memcmp(&layer->source_crop, &source_crop, sizeof(source_crop))==0 &&
+              memcmp(&layer->display_frame, &display_frame, sizeof(display_frame))==0);
+  }
+  void set(DrmHwcLayer* layer){
+    if(!layer)
+      return;
+    buffer_id = layer->uBufferId_;
+    source_crop = layer->source_crop;
+    display_frame = layer->display_frame;
+  }
+  void clear(){
+    buffer_id = 0;
+    memset(&source_crop,0,sizeof(source_crop));
+    memset(&display_frame,0,sizeof(display_frame));
+  }
+};
+
+
  public:
   Vop3576()
     : rgaBufferQueue_((std::make_shared<DrmBufferQueue>()))
@@ -383,7 +410,7 @@ struct SvepXml{
     HwPqImageInfo hwPqDstInfo_;
     std::shared_ptr<rk_hwpq_reg> lastHwPqReg_ = NULL;
     std::shared_ptr<Pq> pq_ = NULL;
-    uint64_t lastHwPqBufferId = 0;
+    PqBufferInfo lastHwPqBufInfo;  
     sp<AcquireFence> lastHwPqAcquireFence = NULL;
     bool lastHwPqUseNewBuffer = false;
 #endif

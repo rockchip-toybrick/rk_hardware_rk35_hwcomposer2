@@ -2011,7 +2011,7 @@ int Vop3576::RunHwPqVideoMode(
   }
   if(drmLayer->bYuv_){
 
-    if(lastHwPqBufferId != drmLayer->uBufferId_){
+    if(!lastHwPqBufInfo.match(drmLayer)){
       if(drmLayer->bAfbcd_ || drmLayer->bRfbcd_){
         HWC2_ALOGD_IF_DEBUG("HwPq do not support Fbc layer:%s", drmLayer->sLayerName_.c_str());
         return -1;
@@ -2132,7 +2132,7 @@ int Vop3576::RunHwPqVideoMode(
       // 6. Update Layer info
       drmLayer->acquire_fence = sp<AcquireFence>(new AcquireFence(output_fence));
 
-      lastHwPqBufferId = drmLayer->uBufferId_;
+      lastHwPqBufInfo.set(drmLayer);
       lastHwPqReg_ = drmLayer->hwPqReg_;
       lastHwPqAcquireFence = drmLayer->acquire_fence;
 
@@ -4140,7 +4140,7 @@ int Vop3576::InitContext(
       ctx.state.bEnableHwPqVideoMode_ = true;
     }else{
       lastHwPqAcquireFence = NULL;
-      lastHwPqBufferId = 0;
+      lastHwPqBufInfo.clear();
       lastHwPqReg_ = NULL;
     }
 #endif // USE_LIBPQ_HWPQ
