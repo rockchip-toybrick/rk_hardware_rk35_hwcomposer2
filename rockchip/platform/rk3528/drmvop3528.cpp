@@ -591,6 +591,12 @@ int Vop3528::MatchPlane(std::vector<DrmCompositionPlane> *composition_planes,
                             // RK3528 通过 output_max_w 参数来决定Esmart是否支持 4K 进 4K 出
                             // 如果该参数大于2048 ,则表示支持
                             if((*iter_plane)->get_output_w_max() > 2048){
+                              // 不支持 <= 4 pixel  图层 overlay
+                              if(input_w <= 4 || input_h <= 4 || output_w <=4 || output_h <=4){
+                                ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support intput (%d,%d), max_input_range is (%d,%d)",
+                                        (*iter_plane)->name(),input_w,input_h,(*iter_plane)->get_input_w_max(),(*iter_plane)->get_input_h_max());
+                                continue;
+                              }
                               if(input_w > 4096 || output_w > 4096){
                                 ALOGD_IF(LogLevel(DBG_DEBUG),"%s %s-4k-mode cann't support input(%d,%d) to output (%d,%d)",
                                         (*iter_plane)->name(),
