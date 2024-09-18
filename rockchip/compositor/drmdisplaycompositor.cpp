@@ -1561,6 +1561,10 @@ int DrmDisplayCompositor::CollectCommitInfo(drmModeAtomicReqPtr pset,
     if(yuv){
       src_l = ALIGN_DOWN(src_l, 2);
       src_t = ALIGN_DOWN(src_t, 2);
+      //RK3576 Cluster/Esmart 要求YUV422/YUV420格式 act_width 偶数对齐
+      if(gIsRK3576()){
+        src_w = ALIGN_DOWN(src_w, 2);
+      }
     }
 
     // 非afbc 10bit 片源 x_offset 需要8对齐
