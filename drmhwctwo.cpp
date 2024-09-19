@@ -2570,12 +2570,19 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetPowerMode(int32_t mode_in) {
   HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ", mode_in=%d",handle_,mode_in);
 #ifdef USE_LIBEBOOK
   if(isEBook()){
+    HWC2::PowerMode old_mode = mPowerMode_;
     mPowerMode_ = static_cast<HWC2::PowerMode>(mode_in);
     if(mPowerMode_ == HWC2::PowerMode::On){
       HWC2_ALOGI("EBook PowerOn, enable force update frame.");
       ebook_stop_commit_util_power_on_ = false;
       // 如果电源模式切换为 PowerOn，则设置强制刷新帧率为10fps，刷新10帧
       InvalidateControl(10,10);
+
+      // 如果电源模式从PowerOff切换为PowerOn，则第一帧要全刷
+      if (old_mode == HWC2::PowerMode::Off) {
+        HWC2_ALOGI("EBOOK RESUME");
+        force_full_once_ = true;
+      }
     }
     return HWC2::Error::None;
   }
@@ -2876,6 +2883,10 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateEBookDisplay(uint32_t *num_types,
     // 如果 EBook 停止送显，则关闭SurfaceFlinger GPU合成，目的是为了降低功耗
     if(ebook_stop_commit_util_power_on_){
       validate_success_ = false;
+    }
+    if (force_full_once_) {
+      current_mode_ = EBOOK_FORCE_FULL;
+      force_full_once_ = false;
     }
 
 

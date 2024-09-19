@@ -916,6 +916,7 @@ class DrmHwcTwo : public hwc2_device_t {
     int ebook_framebuffer_height  = 0;
     int ebook_framebuffer_mmwidth = 0;
     int ebook_framebuffer_mmheight = 0;
+    bool force_full_once_ = false;
 #endif
   };
 
