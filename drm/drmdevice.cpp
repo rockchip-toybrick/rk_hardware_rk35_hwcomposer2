@@ -3340,4 +3340,99 @@ int DrmDevice::SetScreenInfo(unsigned int connector_type,
   return baseparameter_.SetScreenInfo(connector_type,connector_id,index,info);
 }
 
+
+int DrmDevice::UpdatePrimaryInfo(){
+  ConfigurePossibleDisplays();
+  DrmConnector *primary = NULL;
+  bool found_primary = false;
+  if(isRK3528(soc_id_)){
+    for (auto &conn : connectors_) {
+      if(conn->type() == DRM_MODE_CONNECTOR_HDMIA){
+        primary = conn.get();
+        found_primary = true;
+      }
+    }
+  }else{
+    for (auto &conn : connectors_) {
+      if (!(conn->possible_displays() & HWC_DISPLAY_PRIMARY_BIT))
+        continue;
+      if (conn->internal())
+        continue;
+      if (conn->state() != DRM_MODE_CONNECTED)
+        continue;
+      found_primary = true;
+      if(NULL == primary){
+        primary = conn.get();
+      }else{
+        // High priority devices can become the primary
+        if(conn.get()->priority() < primary->priority()){
+          primary = conn.get();
+        }
+      }
+    }
+  }
+
+  if (!found_primary) {
+    for (auto &conn : connectors_) {
+      if (!(conn->possible_displays() & HWC_DISPLAY_PRIMARY_BIT))
+        continue;
+      if (conn->state() != DRM_MODE_CONNECTED)
+        continue;
+      found_primary = true;
+      if(NULL == primary){
+        primary = conn.get();
+      }else{
+        // High priority devices can become the primary
+        if(conn.get()->priority() < primary->priority()){
+          primary = conn.get();
+        }
+      }
+    }
+  }
+
+  if (!found_primary) {
+    for (auto &conn : connectors_) {
+      if (!(conn->possible_displays() & HWC_DISPLAY_PRIMARY_BIT))
+        continue;
+      found_primary = true;
+      if(NULL == primary){
+        primary = conn.get();
+      }else{
+        // High priority devices can become the primary
+        if(conn.get()->priority() < primary->priority()){
+          primary = conn.get();
+        }
+      }
+    }
+  }
+
+  if (!found_primary) {
+    for (auto &conn : connectors_) {
+      found_primary = true;
+      conn->set_possible_displays(conn->possible_displays() | HWC_DISPLAY_PRIMARY_BIT);
+      primary = conn.get();
+      if (primary) break;
+    }
+  }
+
+  int unused_display_id = 0;
+  if (!found_primary) {
+    ALOGE("failed to find primary display\n");
+    return -1;
+  }else{
+    if(primary != NULL){
+      primary->set_display(unused_display_id);
+      unused_display_id++;
+    }
+  }
+
+  for (auto &conn : connectors_) {
+    if (primary == conn.get())
+      continue;
+    conn->set_display(unused_display_id);
+    unused_display_id++;
+  }
+  return 0;
+}
+
 }  // namespace android

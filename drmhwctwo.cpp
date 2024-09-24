@@ -439,9 +439,19 @@ int DrmHwcTwo::HwcDisplay::ClearDisplay() {
     compositor_->ClearDisplay();
   }
 
-  HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64,handle_);
+  HWC2_ALOGI("display-id=%" PRIu64,handle_);
   return 0;
 }
+
+int DrmHwcTwo::HwcDisplay::ResetDisplay(){
+  init_success_ = false;
+  usleep(50*1000);
+  if(compositor_ != NULL){
+    compositor_->ClearDisplay();
+  }
+  HWC2_ALOGI("display-id=%" PRIu64,handle_);
+  return 0;
+};
 
 int DrmHwcTwo::HwcDisplay::ActiveModeChange(bool change) {
   HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64,handle_);
@@ -2415,6 +2425,19 @@ HWC2::Error DrmHwcTwo::HwcDisplay::PresentDisplay(int32_t *retire_fence) {
     g_ctx->eventWorker_.SendDrmEvent(event);
     ActiveModeChange(false);
   }
+
+
+    char value[PROPERTY_VALUE_MAX];
+    property_get("vendor.hwc.debug", value, "0");
+    if(atoi(value) > 0){
+      DrmEvent event;
+      event.type = PRIMARY_UPDATE_EVENT;
+      event.display_id = (int)handle_;
+      event.connection = DRM_MODE_CONNECTED;
+      g_ctx->eventWorker_.SendDrmEvent(event);
+      property_set("vendor.hwc.debug", "0");
+    }
+
   return HWC2::Error::None;
 }
 
@@ -6223,6 +6246,74 @@ int DrmHwcTwo::EventWorker::SendLocalHotplugEvent(DrmEvent event){
   return 0;
 }
 
+int DrmHwcTwo::EventWorker::UpdatePrimaryEvent(DrmEvent event){
+
+  // 将所有屏幕设置为不送显模式
+  for(auto &map : hwc2_->displays_){
+    map.second.ResetDisplay();
+  }
+
+  ResourceManager* rm = ResourceManager::getInstance();
+
+  int primary_id = 0;
+  DrmDevice* drm = rm->GetDrmDevice(primary_id);
+  if(drm == NULL){
+    HWC2_ALOGE("Failed to get DrmDevice for display %d", event.display_id);
+  }
+
+  // 删除所有状态是已连接的屏幕
+  for(auto &connector : drm->connectors()){
+    if(connector->hotplug_state() == DRM_MODE_DISCONNECTED){
+      continue;
+    }
+    int display_id = connector->display();
+    // 释放当前display的 drm resource 资源
+    int ret = drm->ReleaseDpyRes(display_id);
+    if(ret){
+      HWC2_ALOGE("Failed to ReleaseDpyRes for display=%d %d\n", display_id, ret);
+      continue;
+    }
+
+    HWC2_ALOGI("hwc_hotplug: Unplug for display_id=%d connector %u type=%s, type_id=%d \n",
+              display_id,
+              connector->id(),
+              drm->connector_type_str(connector->type()),
+              connector->type_id());
+
+    // 上报拔出事件，通知SurfaceFlinger删除屏幕
+    hwc2_->HandleDisplayHotplug(display_id, DRM_MODE_DISCONNECTED);
+  }
+
+  // 更新主屏信息,可能存在主副屏幕切换行为
+  drm->UpdatePrimaryInfo();
+
+  // 根据新绑定的display-id信息进行重新初始化
+  for(auto &map : hwc2_->displays_){
+    map.second.CheckStateAndReinit();
+  }
+
+  // 根据设备的连接状态重新上报插入事件
+  for(auto &connector : drm->connectors()){
+    if(connector->hotplug_state() == DRM_MODE_CONNECTED){
+      int display_id = connector->display();
+      HWC2_ALOGI("hwc_hotplug: Plug for display_id=%d connector %u type=%s, type_id=%d \n",
+                display_id,
+                connector->id(),
+                drm->connector_type_str(connector->type()),
+                connector->type_id());
+      hwc2_->HandleDisplayHotplug(display_id, DRM_MODE_CONNECTED);
+    }
+  }
+
+  if(hwc2_->displays_.count(primary_id)){
+    auto &primary = hwc2_->displays_.at(primary_id);
+    primary.InvalidateControl(5,20);
+  }
+
+  return 0;
+}
+
+
 void DrmHwcTwo::EventWorker::Routine() {
   ATRACE_CALL();
   Lock();
@@ -6247,6 +6338,9 @@ void DrmHwcTwo::EventWorker::Routine() {
       break;
     case HOTPLUG_EVENT:
       ret = SendLocalHotplugEvent(event);
+      break;
+    case PRIMARY_UPDATE_EVENT:
+      ret = UpdatePrimaryEvent(event);
       break;
     default:
       ret = -1;

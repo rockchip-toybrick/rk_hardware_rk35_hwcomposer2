@@ -55,6 +55,7 @@ class DrmDevice {
     return fd_.get();
   }
 
+
   const std::vector<std::unique_ptr<DrmConnector>> &connectors() const {
     return connectors_;
   }
@@ -160,6 +161,7 @@ class DrmDevice {
   int SetScreenInfo(unsigned int connector_type,unsigned int connector_id, int index, struct screen_info *info);
 
   std::map<int, int> GetDisplays() { return displays_;}
+  int UpdatePrimaryInfo();
 
  private:
   void init_white_modes(void);

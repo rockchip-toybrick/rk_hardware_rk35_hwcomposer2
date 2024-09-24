@@ -837,6 +837,7 @@ class DrmHwcTwo : public hwc2_device_t {
    int InvalidateControl(uint64_t refresh, int refresh_cnt);
    int isVirtual() { return type_ == HWC2::DisplayType::Virtual;}
 
+   int ResetDisplay();
 #ifdef USE_LIBEBOOK
    int isEBook() { return ebook_framebuffer_width > 0;}
 #endif
@@ -948,6 +949,7 @@ class DrmHwcTwo : public hwc2_device_t {
     UNKNOW_EVENT = 0,
     DISPLAY_MODE_UPDATE_EVENT,
     HOTPLUG_EVENT,
+    PRIMARY_UPDATE_EVENT,
   };
 
   struct DrmEvent{
@@ -970,6 +972,8 @@ class DrmHwcTwo : public hwc2_device_t {
     int SendLocalHotplugEvent(DrmEvent event);
     // 异步上报分辨率更新事件
     int SendDisplayModeUpdateEvent(DrmEvent event);
+    // DrmHwc2 完全初始化
+    int UpdatePrimaryEvent(DrmEvent event);
 
   private:
     DrmHwcTwo *hwc2_;
