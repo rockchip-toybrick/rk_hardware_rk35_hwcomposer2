@@ -2327,7 +2327,7 @@ int DrmDevice::DoPowerOnNormal(int display_id){
      conn->encoder()->crtc() != NULL){
     crtc = conn->encoder()->crtc();
   }else{
-    HWC2_ALOGE("display_id=%d encoder or crtc is null");
+    HWC2_ALOGE("display_id=%d encoder or crtc is null", display_id);
     return -1;
   }
 
@@ -2419,13 +2419,13 @@ int DrmDevice::DoPowerOnMirror(int display_id){
      conn->encoder()->crtc() != NULL){
     crtc = conn->encoder()->crtc();
   }else{
-    HWC2_ALOGE("display_id=%d encoder or crtc is null");
+    HWC2_ALOGE("display_id=%d encoder or crtc is null", display_id);
     return -1;
   }
 
   // 非 MirrorPrimary 不进行PowerOn操作
   if(conn->is_connector_mirror_primary() == false){
-    HWC2_ALOGE("display_id=%d is not MirrorPrimary, skip PowerOn.");
+    HWC2_ALOGE("display_id=%d is not MirrorPrimary, skip PowerOn.", display_id);
     return -1;
   }
 
@@ -2549,7 +2549,7 @@ int DrmDevice::DoPowerOffNormal(int display_id){
      conn->encoder()->crtc() != NULL){
     crtc = conn->encoder()->crtc();
   }else{
-    HWC2_ALOGE("display_id=%d encoder or crtc is null");
+    HWC2_ALOGE("display_id=%d encoder or crtc is null", display_id);
     return -1;
   }
 
@@ -2622,7 +2622,7 @@ int DrmDevice::DoPowerOffMirror(int display_id){
 
   // 非 MirrorPrimary 不进行PowerOn操作
   if(conn->is_connector_mirror_primary() == false){
-    HWC2_ALOGE("display_id=%d is not MirrorPrimary, skip PowerOn.");
+    HWC2_ALOGE("display_id=%d is not MirrorPrimary, skip PowerOn.", display_id);
     return -1;
   }
 
@@ -2631,7 +2631,7 @@ int DrmDevice::DoPowerOffMirror(int display_id){
      conn->encoder()->crtc() != NULL){
     crtc = conn->encoder()->crtc();
   }else{
-    HWC2_ALOGE("display_id=%d encoder or crtc is null");
+    HWC2_ALOGE("display_id=%d encoder or crtc is null", display_id);
     return -1;
   }
 
