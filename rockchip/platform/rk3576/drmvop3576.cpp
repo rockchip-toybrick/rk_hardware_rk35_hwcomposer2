@@ -958,6 +958,7 @@ int Vop3576::MatchPlane(std::vector<DrmCompositionPlane> *composition_planes,
                   (*iter_layer)->bMatch_ = false;
 
                   if(ctx.state.bEnableHwPqVideoMode_ == true &&
+                     ctx.state.bMatchPlaneHasYuvLayer == true &&
                      (*iter)->win_type==PLANE_RK3576_CLUSTER0_WIN0 &&
                      (*iter_layer)->bYuv_!=true){
                     HWC2_ALOGD_IF_DEBUG("Hwpq Enabled, Cluster0_win0 only overlay yuv layer. layer->bYuv_=false");
@@ -1384,6 +1385,14 @@ int Vop3576::MatchPlanes(
   CombineLayer(layer_map, layers, plane_groups.size());
 
   int total_size = 0;
+
+  ctx.state.bMatchPlaneHasYuvLayer = false;
+  for(auto &layer: layers){
+    if(layer->bYuv_){
+      ctx.state.bMatchPlaneHasYuvLayer = true;
+      break;
+    }
+  }
 
   // Fill up the remaining planes
   int zpos = 0;

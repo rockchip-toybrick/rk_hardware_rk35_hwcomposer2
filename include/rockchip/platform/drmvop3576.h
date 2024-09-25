@@ -199,6 +199,8 @@ typedef struct StateContext{
   bool bMustRunHwPqVideoMode_;
 
   int iVopPerformanceFactor;
+
+  bool bMatchPlaneHasYuvLayer;
 } StaCtx;
 
 typedef struct DrmVop2Context{
