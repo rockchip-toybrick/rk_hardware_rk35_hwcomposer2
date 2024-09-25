@@ -46,6 +46,9 @@
 #endif
 
 #include <hardware/gralloc.h>
+#ifdef USE_LIBPQ
+#include "Pq.h"
+#endif
 #define PROPERTY_TYPE "vendor"
 
 /* hdr usage */
@@ -279,6 +282,14 @@ typedef struct hwc2_drm_display {
   android_dataspace_t dataspace = HAL_DATASPACE_UNKNOWN;
   char overscan_value[PROPERTY_VALUE_MAX]={0};
   const struct disp_info* baseparameter_info;
+#ifdef USE_LIBPQ_HWPQ
+  int hwpq_meta_fd;
+  int64_t hwpq_meta_offset;
+  int64_t hwpq_meta_size;
+#endif
+#ifdef USE_LIBPQ
+  std::shared_ptr<android::HwpqDisplayStatus> pq_display_status;
+#endif
 } hwc2_drm_display_t;
 
 uint32_t ConvertHalFormatToDrm(uint32_t hal_format);

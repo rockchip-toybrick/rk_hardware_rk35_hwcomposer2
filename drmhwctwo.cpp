@@ -30,6 +30,7 @@
 
 #include <inttypes.h>
 #include <string>
+#include <iomanip>
 
 #include <cutils/properties.h>
 #include <hardware/hardware.h>
@@ -1737,6 +1738,37 @@ hwc2_drm_display_t* DrmHwcTwo::HwcDisplay::GetDisplayCtxPtr(){
   return &ctx_;
 }
 
+#ifdef USE_LIBPQ_HWPQ
+int DrmHwcTwo::HwcDisplay::CollectInfoForHwPqUIMode(){
+  //HWPQ metadata Should gether here
+  ctx_.hwpq_meta_fd = -1;
+  ctx_.hwpq_meta_offset = 0;
+  ctx_.hwpq_meta_size = 0;
+  DrmGralloc* gralloc = DrmGralloc::getInstance();
+
+  if(gralloc == NULL){
+    HWC2_ALOGD_IF_INFO("DrmGralloc is null, Can not get PQ Metadata");
+  }else{
+    int hwpq_min_ratio = hwc_get_int_property("persist.vendor.hwc.hdr_video_area","6");
+    for (auto &layer : drm_hwc_layers_) {
+      if(layer.bYuv_){
+        int64_t iMetaDataOffset_ = gralloc->hwc_get_offset_of_pq_metadata(layer.sf_handle);
+        if(iMetaDataOffset_>0){
+          ctx_.hwpq_meta_fd = layer.iFd_;
+          ctx_.hwpq_meta_offset = iMetaDataOffset_;
+          ctx_.hwpq_meta_size = layer.iSize_;
+          HWC2_ALOGD_IF_DEBUG("Pq metadata:fd=%d offset=%" PRIi64" name:%s",ctx_.hwpq_meta_fd,
+                              ctx_.hwpq_meta_offset,layer.sLayerName_.c_str());
+          break;
+        }
+      }
+    }
+  }
+  ctx_.pq_display_status = CollectPqDisplayStatus();
+  return 0;
+}
+#endif
+
 int DrmHwcTwo::HwcDisplay::ImportBuffers() {
   int ret = 0;
   // 匹配 DrmPlane 图层，请求获取 GemHandle
@@ -1863,9 +1895,10 @@ int DrmHwcTwo::HwcDisplay::ImportBuffers() {
 #ifdef USE_LIBPQ
         if(handle_ == 0){
 #ifdef USE_LIBPQ_HWPQ
-          if(gIsRK3576())
+          if(gIsRK3576()){
+            CollectInfoForHwPqUIMode();
             ret = client_layer_.DoHwPq(false, &drm_hwc_layer, &ctx_);
-          else
+          }else
 #endif
             ret = client_layer_.DoSwPq(false, &drm_hwc_layer, &ctx_);
           if(ret){
@@ -5009,6 +5042,185 @@ int DrmHwcTwo::HwcLayer::DoSwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_dr
   }
   return 0;
 }
+
+static inline void PopulatePqLayerBufferInfo(DrmHwcLayer* layer, HwpqDisplayStatus::LayerBufferInfo &layerBufferInfo){
+  layerBufferInfo.srcRect_.iLeft_ = layer->source_crop.left;
+  layerBufferInfo.srcRect_.iRight_ = layer->source_crop.right;
+  layerBufferInfo.srcRect_.iTop_ = layer->source_crop.top;
+  layerBufferInfo.srcRect_.iBottom_ = layer->source_crop.bottom;
+
+  layerBufferInfo.intRect_.iLeft_ = layer->display_frame_sf.left;
+  layerBufferInfo.intRect_.iRight_ = layer->display_frame_sf.right;
+  layerBufferInfo.intRect_.iTop_ = layer->display_frame_sf.top;
+  layerBufferInfo.intRect_.iBottom_ = layer->display_frame_sf.bottom;
+
+  layerBufferInfo.uFourccFormat_ = layer->uFourccFormat_;
+  layerBufferInfo.iHalFormat_ = layer->iFormat_;
+
+  layerBufferInfo.uTransform_ = layer->transform;
+  layerBufferInfo.uDataSpace_ = layer->eDataSpace_;
+  layerBufferInfo.sLayerName_ = layer->sLayerName_;
+}
+
+static inline void PopulatePqLayerInfo(DrmHwcLayer &layer, HwpqDisplayStatus::PlaneInfo &layerInfo){
+  layerInfo.VopSrcRect_.iLeft_ = layer.source_crop.left;
+  layerInfo.VopSrcRect_.iRight_ = layer.source_crop.right;
+  layerInfo.VopSrcRect_.iTop_ = layer.source_crop.top;
+  layerInfo.VopSrcRect_.iBottom_ = layer.source_crop.bottom;
+
+  layerInfo.VopDstRect_.iLeft_ = layer.display_frame.left;
+  layerInfo.VopDstRect_.iRight_ = layer.display_frame.right;
+  layerInfo.VopDstRect_.iTop_ = layer.display_frame.top;
+  layerInfo.VopDstRect_.iBottom_ = layer.display_frame.bottom;
+
+  layerInfo.uFourccFormat_ = layer.uFourccFormat_;
+  layerInfo.iHalFormat_ = layer.iFormat_;
+  layerInfo.uModifier_ = layer.uModifier_;
+
+  layerInfo.uTransform_ = layer.transform;
+  layerInfo.uDataSpace_ = layer.eDataSpace_;
+  layerInfo.sLayerName_ = layer.sLayerName_;
+
+  HwpqDisplayStatus::PlaneInfo::PlaneType plane_type;
+  if(gIsRK3576()){
+    if(layer.uWinType_ & PLANE_RK3576_ALL_CLUSTER_MASK){
+      plane_type.type = HwpqDisplayStatus::PlaneInfo::PLANE_TYPE_CLUSTER;
+    }else if(layer.uWinType_ & PLANE_RK3576_ALL_ESMART_MASK){
+      plane_type.type = HwpqDisplayStatus::PlaneInfo::PLANE_TYPE_ESMART;
+    }
+  }
+  layerInfo.PlaneType_ = plane_type;
+  layerInfo.iZpos_ = layer.iDrmZpos_;
+}
+
+static void dumpPqBufInfo(const HwpqDisplayStatus::LayerBufferInfo & bufinfo, std::stringstream &ss){
+  ss << "|    |" << std::dec 
+    << std::setfill(' ') << std::setw(6) << bufinfo.intRect_.iLeft_ 
+    << std::setfill(' ') << std::setw(6) << bufinfo.intRect_.iTop_ 
+    << std::setfill(' ') << std::setw(6) << bufinfo.intRect_.iRight_ 
+    << std::setfill(' ') << std::setw(6) << bufinfo.intRect_.iBottom_;
+
+  ss << "|" 
+    << std::setfill(' ') << std::setw(6) << bufinfo.srcRect_.iLeft_ 
+    << std::setfill(' ') << std::setw(6) << bufinfo.srcRect_.iTop_ 
+    << std::setfill(' ') << std::setw(6) << bufinfo.srcRect_.iRight_ 
+    << std::setfill(' ') << std::setw(6) << bufinfo.srcRect_.iBottom_;
+
+  ss << "|" << "0x" << std::setfill('0') << std::setw(8) << std::hex << bufinfo.uFourccFormat_;
+  ss << "|" << "0x" << std::setfill('0') << std::setw(8) << bufinfo.uTransform_;
+  ss << "|" << "0x" << std::setfill('0') << std::setw(8) << bufinfo.uDataSpace_;
+  ss << "|" << bufinfo.sLayerName_;
+  ss << std::endl;
+}
+static void dumpPqPlaneInfo(const HwpqDisplayStatus::PlaneInfo & planeinfo, std::stringstream &ss){
+  ss << "|" << std::dec 
+    << std::setfill(' ') << std::setw(4) << planeinfo.iZpos_;
+  ss << "|" 
+    << std::setfill(' ') << std::setw(6) << planeinfo.VopDstRect_.iLeft_ 
+    << std::setfill(' ') << std::setw(6) << planeinfo.VopDstRect_.iTop_ 
+    << std::setfill(' ') << std::setw(6) << planeinfo.VopDstRect_.iRight_ 
+    << std::setfill(' ') << std::setw(6) << planeinfo.VopDstRect_.iBottom_;
+
+  ss << "|" 
+    << std::setfill(' ') << std::setw(6) << planeinfo.VopSrcRect_.iLeft_ 
+    << std::setfill(' ') << std::setw(6) << planeinfo.VopSrcRect_.iTop_ 
+    << std::setfill(' ') << std::setw(6) << planeinfo.VopSrcRect_.iRight_ 
+    << std::setfill(' ') << std::setw(6) << planeinfo.VopSrcRect_.iBottom_;
+
+  ss << "|" << "0x" << std::setfill('0') << std::setw(8) << std::hex << planeinfo.uFourccFormat_;
+  ss << "|" << "0x" << std::setfill('0') << std::setw(8) << planeinfo.uTransform_;
+  ss << "|" << "0x" << std::setfill('0') << std::setw(8) << planeinfo.uDataSpace_;
+  ss << "|" << planeinfo.sLayerName_;
+  ss << std::endl;
+}
+
+std::shared_ptr<HwpqDisplayStatus> DrmHwcTwo::HwcDisplay::CollectPqDisplayStatus(){
+  std::shared_ptr<HwpqDisplayStatus> status = std::make_shared<HwpqDisplayStatus>();
+  //初始化平台信息
+  status->iPqZpos=-1;
+  status->uSocId_ = resource_manager_->getSocId();
+  status->iResolutionWidth_ = ctx_.rel_xres;
+  status->iResolutionHeight_ = ctx_.rel_yres;
+
+  int client_layer_zpos = -1;
+  bool use_client_composite = false;
+  bool use_video_client_composite = false;
+  bool use_heavy_composite = false;//是否有梯形、畸变等操作
+  HwpqDisplayStatus::PlaneInfo fb_layer_info;//FbTarget的图层信息；
+  //需要使用到index，使用for(;;)
+  for (auto &drmlayer : drm_hwc_layers_) {
+    // //查找对应的hwclayer
+    // auto map_hwc2layer = layers_.find(drm_hwc_layer.uId_);
+    // if(map_hwc2layer == layers_.end()){
+    //   HWC2_ALOGE("Could not found hwc layer %s", sLayerName_.c_str());
+    //   continue;
+    // }
+    // DrmHwcTwo::HwcLayer & hwclayer = map_hwc2layer->second;
+
+    if (!drmlayer.bMatch_) {
+      //GPU合成图层
+      use_client_composite = true;
+      if(drmlayer.bYuv_){
+        use_video_client_composite = true;
+      }
+      fb_layer_info.vecComposeInfo_.emplace_back();
+      PopulatePqLayerBufferInfo(&drmlayer,fb_layer_info.vecComposeInfo_.back());
+    }else{
+      //HWC合成图层，TODO：后续增加RKCV/RGA合成判断
+      //获取win_type和zpos
+      uint64_t win_type = drmlayer.uWinType_;
+      int zpos = drmlayer.iDrmZpos_;
+      HwpqDisplayStatus::PlaneInfo* layer_info;
+      if(drmlayer.bFbTarget_){
+        PopulatePqLayerInfo(drmlayer,fb_layer_info);
+        layer_info = &fb_layer_info;
+        client_layer_zpos = zpos;
+      }else{
+        HwpqDisplayStatus::PlaneInfo layer_info_;
+        PopulatePqLayerInfo(drmlayer,layer_info_);
+        status->mapPlaneInfo_.emplace(zpos,layer_info_);
+        layer_info = &(status->mapPlaneInfo_.at(zpos));
+      }
+      if(gIsRK3576()){
+        if(win_type == PLANE_RK3576_CLUSTER0_WIN0){
+          status->iPqZpos = zpos;
+        }
+      }
+    }
+  }
+  auto setPqLayerType = [&status](HwpqDisplayStatus::PlaneInfo::PQ_LayerType type){
+    if(status->mapPlaneInfo_.count(status->iPqZpos)){
+      status->mapPlaneInfo_.at(status->iPqZpos).iLayerType_ = type;
+    }
+  };
+  if(use_client_composite){
+    HWC2_ALOGD_IF_DEBUG("HWPQ_UI: client_layer_zpos:%d,status->iPqZpos:%d",client_layer_zpos,status->iPqZpos);
+    status->mapPlaneInfo_[client_layer_zpos] = fb_layer_info;
+    if(use_video_client_composite){
+      setPqLayerType(HwpqDisplayStatus::PlaneInfo::PQ_LayerType::PQ_LAYER_TYPE_VIDEO_WITH_UI);
+    }else{
+      setPqLayerType(HwpqDisplayStatus::PlaneInfo::PQ_LayerType::PQ_LAYER_TYPE_UI);
+    }
+  }else{
+    setPqLayerType(HwpqDisplayStatus::PlaneInfo::PQ_LayerType::PQ_LAYER_TYPE_VIDEO);
+  }
+  if(LogLevel(DBG_DEBUG)){
+    std::stringstream ss;
+    for(auto &plane_info_map:status->mapPlaneInfo_){
+      auto &plane_info = plane_info_map.second;
+      ss << std::endl << "|Zpos|  VopDstRect(l,t,r,b)   |  VopSrcRect(l,t,r,b)   |  Fourcc  | Transform| Dataspace| Name" << std::endl;
+      dumpPqPlaneInfo(plane_info,ss);
+      ss << std::endl << "|    |    intRect(l,t,r,b)    |    srcRect(l,t,r,b)    |  Fourcc  | Transform| Dataspace| Name" << std::endl;
+      for(auto &buf_info:plane_info.vecComposeInfo_){
+        dumpPqBufInfo(buf_info,ss);
+      }
+    }
+    HWC2_ALOGD_IF_DEBUG("HWPQ_UI: %s",ss.str().c_str());
+  }
+
+  return status;
+}
+
 #endif
 
 #ifdef USE_LIBPQ_HWPQ
@@ -5068,6 +5280,21 @@ int DrmHwcTwo::HwcLayer::DoHwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_dr
         src.iMetaDataFd_ = -1;
         src.iMetaDataSize_ = 0;
         src.iMetaDataOffset_ = 0;
+
+        if(ctx->hwpq_meta_offset > 0){
+          src.iMetaDataFd_ = ctx->hwpq_meta_fd;
+          src.iMetaDataSize_ = ctx->hwpq_meta_size;
+          src.iMetaDataOffset_ = ctx->hwpq_meta_offset;
+          HWC2_ALOGD_IF_DEBUG("Pq metadata:fd=%d offset=%" PRIi64,src.iMetaDataFd_,
+                              src.iMetaDataOffset_);
+        }
+
+        if(ctx->pq_display_status){
+          src.mDisplayStatus_ = ctx->pq_display_status;
+        }
+
+        src.iRotation_ = drmHwcLayer->transform;
+        src.mIsFbcdFormat_ = drmHwcLayer->bAfbcd_||drmHwcLayer->bRfbcd_;
 
         // 2. Alloc Dst HwPqReg
         HwPqImageInfo dst;

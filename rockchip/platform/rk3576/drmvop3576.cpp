@@ -1248,6 +1248,7 @@ int Vop3576::MatchPlane(std::vector<DrmCompositionPlane> *composition_planes,
                           //Find the match plane for layer,it will be commit.
                           composition_planes->emplace_back(type, (*iter_plane), crtc, (*iter_layer)->iDrmZpos_);
                           (*iter_layer)->bMatch_ = true;
+                          (*iter_layer)->uWinType_ = (*iter_plane)->win_type();
                           (*iter_plane)->set_use(true);
                           composition_planes->back().set_zpos(zpos);
                           combine_layer_count++;
@@ -2047,6 +2048,10 @@ int Vop3576::RunHwPqVideoMode(
                               src.iMetaDataOffset_, src.iMetaDataSize_);
         }
       }
+
+      src.iRotation_ = drmLayer->transform;
+      src.mIsFbcdFormat_ = drmLayer->bAfbcd_||drmLayer->bRfbcd_;
+
 
       src.mCrop_.iLeft_  = (int)drmLayer->source_crop.left;
       src.mCrop_.iTop_   = (int)drmLayer->source_crop.top;

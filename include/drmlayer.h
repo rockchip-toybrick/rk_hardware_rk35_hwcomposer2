@@ -257,6 +257,7 @@ struct DrmHwcLayer {
   bool bMatch_;
   bool bUse_;
   bool bMix_;
+  uint64_t uWinType_;
 
   bool bGlesCompose_=false;
 
