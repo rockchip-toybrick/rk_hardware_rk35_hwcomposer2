@@ -413,6 +413,7 @@ struct PqBufferInfo{
     PqBufferInfo lastHwPqBufInfo;  
     sp<AcquireFence> lastHwPqAcquireFence = NULL;
     bool lastHwPqUseNewBuffer = false;
+    std::shared_ptr<HwpqDisplayStatus> CollectPqDisplayStatus(std::vector<DrmHwcLayer*> &drm_hwc_layers_);
 #endif
 #ifdef USE_LIBSR
   // SR
