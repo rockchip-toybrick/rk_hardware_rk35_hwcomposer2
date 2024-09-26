@@ -1891,7 +1891,9 @@ int Vop3576::TryRgaOverlayPolicy(
                                                     dst_buffer->GetGemHandle(),
                                                     DRM_MODE_ROTATE_0);
           rga_layer_ready = true;
-          drmLayer->iBestPlaneType = PLANE_RK3576_ALL_ESMART_MASK;
+          if(!ctx.state.bEnableHwPqVideoMode_){
+            drmLayer->iBestPlaneType = PLANE_RK3576_ALL_ESMART_MASK;
+          }
           drmLayer->pRgaBuffer_ = dst_buffer;
           drmLayer->bUseRga_ = true;
           break;
@@ -1928,7 +1930,9 @@ int Vop3576::TryRgaOverlayPolicy(
                                                     DRM_MODE_ROTATE_0);
           use_laster_rga_layer = true;
           drmLayer->bUseRga_ = true;
-          drmLayer->iBestPlaneType = PLANE_RK3576_ALL_ESMART_MASK;
+          if(!ctx.state.bEnableHwPqVideoMode_){
+            drmLayer->iBestPlaneType = PLANE_RK3576_ALL_ESMART_MASK;
+          }
           drmLayer->pRgaBuffer_ = dst_buffer;
           break;
         }
@@ -2091,6 +2095,7 @@ static void dumpPqPlaneInfo(const HwpqDisplayStatus::PlaneInfo & planeinfo, std:
   ss << "|" << "0x" << std::setfill('0') << std::setw(8) << std::hex << planeinfo.uFourccFormat_;
   ss << "|" << "0x" << std::setfill('0') << std::setw(8) << planeinfo.uTransform_;
   ss << "|" << "0x" << std::setfill('0') << std::setw(8) << planeinfo.uDataSpace_;
+  ss << "|" << std::setw(8) << planeinfo.iLayerType_;
   ss << "|" << planeinfo.sLayerName_;
   ss << std::endl;
 }
@@ -2105,6 +2110,7 @@ std::shared_ptr<HwpqDisplayStatus> Vop3576::CollectPqDisplayStatus(std::vector<D
 
   int client_layer_zpos = -1;
   bool use_client_composite = false;
+  bool use_video_transform = false;
   bool use_video_client_composite = false;
   bool use_heavy_composite = false;//是否有梯形、畸变等操作
   HwpqDisplayStatus::PlaneInfo fb_layer_info;//FbTarget的图层信息；
@@ -2144,6 +2150,9 @@ std::shared_ptr<HwpqDisplayStatus> Vop3576::CollectPqDisplayStatus(std::vector<D
       if(gIsRK3576()){
         if(win_type == PLANE_RK3576_CLUSTER0_WIN0){
           status->iPqZpos = zpos;
+          if(drmlayer->bUseRga_){
+            use_video_transform = true;
+          }
         }
       }
     }
@@ -2162,13 +2171,17 @@ std::shared_ptr<HwpqDisplayStatus> Vop3576::CollectPqDisplayStatus(std::vector<D
       setPqLayerType(HwpqDisplayStatus::PlaneInfo::PQ_LayerType::PQ_LAYER_TYPE_UI);
     }
   }else{
-    setPqLayerType(HwpqDisplayStatus::PlaneInfo::PQ_LayerType::PQ_LAYER_TYPE_VIDEO);
+    if(use_video_transform){
+      setPqLayerType(HwpqDisplayStatus::PlaneInfo::PQ_LayerType::PQ_LAYER_TYPE_VIDEO_TRANSFORM);
+    }else{
+      setPqLayerType(HwpqDisplayStatus::PlaneInfo::PQ_LayerType::PQ_LAYER_TYPE_VIDEO);
+    }
   }
   if(LogLevel(DBG_DEBUG)){
     std::stringstream ss;
     for(auto &plane_info_map:status->mapPlaneInfo_){
       auto &plane_info = plane_info_map.second;
-      ss << std::endl << "|Zpos|  VopDstRect(l,t,r,b)   |  VopSrcRect(l,t,r,b)   |  Fourcc  | Transform| Dataspace| Name" << std::endl;
+      ss << std::endl << "|Zpos|  VopDstRect(l,t,r,b)   |  VopSrcRect(l,t,r,b)   |  Fourcc  | Transform| Dataspace|  Type  | Name" << std::endl;
       dumpPqPlaneInfo(plane_info,ss);
       ss << std::endl << "|    |    intRect(l,t,r,b)    |    srcRect(l,t,r,b)    |  Fourcc  | Transform| Dataspace| Name" << std::endl;
       for(auto &buf_info:plane_info.vecComposeInfo_){
@@ -2204,6 +2217,7 @@ int Vop3576::RunHwPqVideoMode(
   }
 
   std::shared_ptr<DrmBuffer> dst_buffer;
+  bool isHwPqAsPostProcess = false;
 
   ssize_t layer_index = -1;
   //查找是否有适合HWPQ的图层（vp0+Cluster0-Win0）
@@ -2226,24 +2240,51 @@ int Vop3576::RunHwPqVideoMode(
     return -1;
   }
 
-  std::shared_ptr<HwpqDisplayStatus> displaystatus = CollectPqDisplayStatus(layers);
-
   if(drmLayer->bYuv_){
 
     if(!lastHwPqBufInfo.match(drmLayer)){
+      if(drmLayer->bUseRga_){
+        isHwPqAsPostProcess = true;
+      }
       // 1. Fill buffer Info
       HwPqImageInfo src;
-      src.mBufferInfo_.iFd_     = drmLayer->iFd_;
-      src.mBufferInfo_.iWidth_  = drmLayer->iWidth_;
-      src.mBufferInfo_.iHeight_ = drmLayer->iHeight_;
-      src.mBufferInfo_.iFormat_ = drmLayer->iFormat_;
-      src.mBufferInfo_.iStride_ = drmLayer->iStride_;
-      src.mBufferInfo_.iHeightStride_ = drmLayer->iHeightStride_;
-      src.mBufferInfo_.uBufferId_ = drmLayer->uBufferId_;
-      src.mBufferInfo_.uDataSpace_ = (uint64_t)drmLayer->eDataSpace_;
 
-      src.mIsFbcdFormat_ = drmLayer->bAfbcd_ || drmLayer->bRfbcd_;
+      if(isHwPqAsPostProcess){
+        src.mBufferInfo_.iFd_     = drmLayer->storeLayerInfo_.iFd_;
+        src.mBufferInfo_.iWidth_  = drmLayer->storeLayerInfo_.iWidth_;
+        src.mBufferInfo_.iHeight_ = drmLayer->storeLayerInfo_.iHeight_;
+        src.mBufferInfo_.iFormat_ = drmLayer->storeLayerInfo_.iFormat_;
+        src.mBufferInfo_.iStride_ = drmLayer->storeLayerInfo_.iStride_;
+        src.mBufferInfo_.iHeightStride_ = drmLayer->storeLayerInfo_.iHeightStride_;
+        src.mBufferInfo_.uBufferId_ = drmLayer->storeLayerInfo_.uBufferId_;
+        src.mBufferInfo_.uDataSpace_ = (uint64_t)drmLayer->storeLayerInfo_.eDataSpace_;
 
+        src.iRotation_ = drmLayer->storeLayerInfo_.transform;
+        src.mIsFbcdFormat_ = drmLayer->storeLayerInfo_.bAfbcd_ || drmLayer->storeLayerInfo_.bRfbcd_;
+
+        src.mCrop_.iLeft_  = (int)drmLayer->storeLayerInfo_.source_crop.left;
+        src.mCrop_.iTop_   = (int)drmLayer->storeLayerInfo_.source_crop.top;
+        src.mCrop_.iRight_ = (int)drmLayer->storeLayerInfo_.source_crop.right;
+        src.mCrop_.iBottom_= (int)drmLayer->storeLayerInfo_.source_crop.bottom;
+      }else{
+        src.mBufferInfo_.iFd_     = drmLayer->iFd_;
+        src.mBufferInfo_.iWidth_  = drmLayer->iWidth_;
+        src.mBufferInfo_.iHeight_ = drmLayer->iHeight_;
+        src.mBufferInfo_.iFormat_ = drmLayer->iFormat_;
+        src.mBufferInfo_.iStride_ = drmLayer->iStride_;
+        src.mBufferInfo_.iHeightStride_ = drmLayer->iHeightStride_;
+        src.mBufferInfo_.uBufferId_ = drmLayer->uBufferId_;
+        src.mBufferInfo_.uDataSpace_ = (uint64_t)drmLayer->eDataSpace_;
+
+        src.iRotation_ = drmLayer->transform;
+        src.mIsFbcdFormat_ = drmLayer->bAfbcd_ || drmLayer->bRfbcd_;
+
+        src.mCrop_.iLeft_  = (int)drmLayer->source_crop.left;
+        src.mCrop_.iTop_   = (int)drmLayer->source_crop.top;
+        src.mCrop_.iRight_ = (int)drmLayer->source_crop.right;
+        src.mCrop_.iBottom_= (int)drmLayer->source_crop.bottom;
+      }
+      //Get and set MetaData
       src.iMetaDataFd_ = -1;
       src.iMetaDataSize_ = 0;
       src.iMetaDataOffset_ = 0;
@@ -2261,15 +2302,8 @@ int Vop3576::RunHwPqVideoMode(
         }
       }
 
-      src.iRotation_ = drmLayer->transform;
-      src.mIsFbcdFormat_ = drmLayer->bAfbcd_||drmLayer->bRfbcd_;
-
+      std::shared_ptr<HwpqDisplayStatus> displaystatus = CollectPqDisplayStatus(layers);
       src.mDisplayStatus_ = displaystatus;
-
-      src.mCrop_.iLeft_  = (int)drmLayer->source_crop.left;
-      src.mCrop_.iTop_   = (int)drmLayer->source_crop.top;
-      src.mCrop_.iRight_ = (int)drmLayer->source_crop.right;
-      src.mCrop_.iBottom_= (int)drmLayer->source_crop.bottom;
 
       // 2. Alloc Dst buffer
       if(drmLayer->hwPqReg_ == NULL){
@@ -2403,7 +2437,16 @@ int Vop3576::RunHwPqVideoMode(
       }
 
       // 6. Update Layer info
-      drmLayer->acquire_fence = sp<AcquireFence>(new AcquireFence(output_fence));
+      if(isHwPqAsPostProcess){
+        drmLayer->hwPqRegAcquireFence_ = sp<AcquireFence>(new AcquireFence(output_fence));
+        if(dst_buffer != NULL){
+          dst_buffer->SetFinishFence(dup(output_fence));
+          hwPqBufferQueue_->QueueBuffer(dst_buffer);
+          dst_buffer = NULL;
+        }
+      }else{
+        drmLayer->acquire_fence = sp<AcquireFence>(new AcquireFence(output_fence));
+      }
 
       lastHwPqBufInfo.set(drmLayer);
       lastHwPqReg_ = drmLayer->hwPqReg_;

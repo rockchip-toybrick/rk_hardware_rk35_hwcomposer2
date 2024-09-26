@@ -1049,6 +1049,8 @@ void DrmHwcLayer::UpdateAndStoreInfoFromDrmBuffer(buffer_handle_t handle,
   storeLayerInfo_.uGemHandle_   = uGemHandle_;
   storeLayerInfo_.uByteStridePlanes_   = uByteStridePlanes_;
   storeLayerInfo_.eDataSpace_   = eDataSpace_;
+  storeLayerInfo_.bAfbcd_   = bAfbcd_;
+  storeLayerInfo_.bRfbcd_   = bRfbcd_;
   sf_handle      = handle;
   iFd_           = fd;
   iFormat_       = format;

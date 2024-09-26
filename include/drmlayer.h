@@ -186,6 +186,8 @@ struct DrmLayerInfoStore{
   android_dataspace_t eDataSpace_;
   std::string sLayerName_;
   std::vector<uint32_t> uByteStridePlanes_;
+  bool bAfbcd_;
+  bool bRfbcd_;
 };
 
 struct DrmHwcLayer {
@@ -300,6 +302,7 @@ struct DrmHwcLayer {
   bool bCheckPqScale = false;
   float fPqHScale = 0;
   float fPqVScale = 0;
+  sp<AcquireFence> hwPqRegAcquireFence_ = AcquireFence::NO_FENCE;
 #endif
 
   DrmLayerInfoStore storeLayerInfo_;

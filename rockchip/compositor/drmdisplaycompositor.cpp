@@ -802,7 +802,11 @@ int DrmDisplayCompositor::CollectHwPqInfo() {
       if(current_sideband2_.enable_ == true && current_sideband2_.buffer_!=NULL && current_sideband2_.buffer_->HasHwPqRegs())
         request_mode_set_.hwpq_regs_ = current_sideband2_.buffer_->GetHwPqRegs();
     }else{
-      request_mode_set_.hwpq_regs_ = layer.hwPqReg_;
+      if(layer.hwPqRegAcquireFence_->wait(100)==0){
+        request_mode_set_.hwpq_regs_ = layer.hwPqReg_;
+      }else{
+        HWC2_ALOGE("Wait Hwpq AcquireFence 100ms Failed");
+      }
     }
     if(request_mode_set_.hwpq_regs_){
       hwpq_plane = plane;
