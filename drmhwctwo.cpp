@@ -5272,6 +5272,8 @@ int DrmHwcTwo::HwcLayer::DoHwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_dr
         src.mBufferInfo_.uBufferId_ = drmHwcLayer->uBufferId_;
         src.mBufferInfo_.uDataSpace_ = (uint64_t)drmHwcLayer->eDataSpace_;
 
+        src.mIsFbcdFormat_ = drmHwcLayer->bAfbcd_ || drmHwcLayer->bRfbcd_;
+
         src.mCrop_.iLeft_  = (int)drmHwcLayer->source_crop.left;
         src.mCrop_.iTop_   = (int)drmHwcLayer->source_crop.top;
         src.mCrop_.iRight_ = (int)drmHwcLayer->source_crop.right;

@@ -2017,10 +2017,6 @@ int Vop3576::RunHwPqVideoMode(
   if(drmLayer->bYuv_){
 
     if(!lastHwPqBufInfo.match(drmLayer)){
-      if(drmLayer->bAfbcd_ || drmLayer->bRfbcd_){
-        HWC2_ALOGD_IF_DEBUG("HwPq do not support Fbc layer:%s", drmLayer->sLayerName_.c_str());
-        return -1;
-      }
       // 1. Fill buffer Info
       HwPqImageInfo src;
       src.mBufferInfo_.iFd_     = drmLayer->iFd_;
@@ -2031,6 +2027,8 @@ int Vop3576::RunHwPqVideoMode(
       src.mBufferInfo_.iHeightStride_ = drmLayer->iHeightStride_;
       src.mBufferInfo_.uBufferId_ = drmLayer->uBufferId_;
       src.mBufferInfo_.uDataSpace_ = (uint64_t)drmLayer->eDataSpace_;
+
+      src.mIsFbcdFormat_ = drmLayer->bAfbcd_ || drmLayer->bRfbcd_;
 
       src.iMetaDataFd_ = -1;
       src.iMetaDataSize_ = 0;
