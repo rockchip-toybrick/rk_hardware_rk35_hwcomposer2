@@ -1444,6 +1444,24 @@ int DrmConnector::GetSpiltModeId() const {
   return (display_ + DRM_CONNECTOR_SPILT_MODE_MASK);
 }
 
+void DrmConnector::ResetSpiltMode(){
+  bHorizontalSpilt_ = false;
+  bSpiltPrimary_ = false;
+  bCropSpilt_ = false;
+  FbWidth_ = 0;
+  FbHeight_ = 0;
+  SrcX_ = 0;
+  SrcY_ = 0;
+  SrcW_ = 0;
+  SrcH_ = 0;
+}
+
+void DrmConnector::GetSpiltModes(bool &HorizontalSpilt,bool &SpiltPrimary, bool &CropSpilt){
+  HorizontalSpilt = bHorizontalSpilt_;
+  SpiltPrimary = bSpiltPrimary_;
+  CropSpilt = bCropSpilt_;
+}
+
 bool DrmConnector::isHorizontalSpilt() const {
   return bHorizontalSpilt_;
 }
@@ -1496,6 +1514,10 @@ int DrmConnector::getCropInfo(int32_t *srcX, int32_t *srcY, int32_t *srcW, int32
   *srcW = SrcW_;
   *srcH = SrcH_;
   return 0;
+}
+
+int DrmConnector::getCropSpiltTransform(){
+  return iCropSpiltTransform;
 }
 
 //检查格式是否支持
@@ -1670,9 +1692,4 @@ uint8_t* DrmConnector::MakeFakeEDID(){
 
   return buffer;
 }
-
-int DrmConnector::getCropSpiltTransform(){
-  return iCropSpiltTransform;
-}
-
 }  // namespace android

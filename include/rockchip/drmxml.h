@@ -38,6 +38,10 @@
 #define _DRM_XML_H_
 
 #define DRM_XML_PATH_NAME "vendor.hwc.env_xml_path"
+#define DRM_XML_PATH_SYS_NAME "persist.sys.hwc.env_xml_path"
+#define DRM_XML_PATH_VENDOR_NAME "persist.vendor.hwc.env_xml_path"
+#define DRM_XML_SYS_UPDATE "sys.hwc.display_pipeline_timeline"
+#define DRM_XML_VENDOR_UPDATE "vendor.hwc.display_pipeline_timeline"
 
 enum DrmDisplayMode {
   DRM_DISPLAY_MODE_NORMAL = 0,
@@ -46,34 +50,37 @@ enum DrmDisplayMode {
 };
 
 struct DrmXmlVersion{
-  int Major;
-  int Minor;
-  int PatchLevel;
+  int Major = -1;
+  int Minor = -1;
+  int PatchLevel = -1;
 };
 
 // ConnectorInfoXml
 struct ConnectorInfoXml{
   char Type[20];
-  int32_t TypeId;
-  int32_t SrcX;
-  int32_t SrcY;
-  int32_t SrcW;
-  int32_t SrcH;
-  int32_t DstX;
-  int32_t DstY;
-  int32_t DstW;
-  int32_t DstH;
-  int32_t Transform;
+  int32_t TypeId = -1;
+  int32_t SrcX = -1;
+  int32_t SrcY = -1;
+  int32_t SrcW = -1;
+  int32_t SrcH = -1;
+  int32_t DstX = -1;
+  int32_t DstY = -1;
+  int32_t DstW = -1;
+  int32_t DstH = -1;
+  int32_t Transform = -1;
+  int32_t Primary = -1;
+  int32_t Extend = -1;
 };
 
 // DisplayMode
 struct DisplayModeXml{
   DrmXmlVersion Version;
-  bool Valid;
-  int32_t Mode;
-  int32_t FbWidth;
-  int32_t FbHeight;
-  int32_t ConnectorCnt;
+  bool Enable = false;
+  bool Valid = false;
+  int32_t Mode = -1;
+  int32_t FbWidth = -1;
+  int32_t FbHeight = -1;
+  int32_t ConnectorCnt = 0;
   ConnectorInfoXml ConnectorInfo[10];
 };
 

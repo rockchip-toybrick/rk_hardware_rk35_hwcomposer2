@@ -44,6 +44,12 @@ namespace android {
     } \
   }
 
+enum DrmPipelineChangeMask {
+  DRM_PIPELINE_NO_CHANGE         = 0 << 0,
+  DRM_PIPELINE_PRIMARY_CHANGE    = 1 << 0,
+  DRM_PIPELINE_SPLIT_MODE_CHANGE = 1 << 1,
+};
+
 class DrmDevice {
  public:
   DrmDevice();
@@ -108,6 +114,8 @@ class DrmDevice {
     event_listener_.FlipHotplugEventForInit();
   }
 
+  int UpdateDisplayStructure();
+
   // RK support
   type_name_define(encoder_type);
   type_name_define(connector_status);
@@ -162,13 +170,28 @@ class DrmDevice {
 
   std::map<int, int> GetDisplays() { return displays_;}
   int UpdatePrimaryInfo();
+  int UpdateSpiltModeInfo();
+  int GetDisplayPipelineChange(uint64_t* output_change_mask);
+
+  bool IsCheckDisplayPipeline(int timeline){
+    if(display_pipeline_timeline_ != timeline){
+      display_pipeline_timeline_ = timeline;
+      return true;
+    }else{
+      return false;
+    }
+  }
 
  private:
   void init_white_modes(void);
   int InitEnvFromXml();
-  int UpdateInfoFromXml();
+  int CheckEnvXmlChange(struct DisplayModeXml* last,
+                        struct DisplayModeXml* current,
+                        uint64_t* out_change_mask);
+  int UpdateSpiltInfoFromXml();
   void UpdateDrmInfoFromKernel();
   void ConfigurePossibleDisplays();
+  void ConfigurePossibleDisplaysFromXml();
   int TryEncoderForDisplay(int display, DrmEncoder *enc);
   int GetProperty(uint32_t obj_id, uint32_t obj_type, const char *prop_name,
                   DrmProperty *property);
@@ -218,6 +241,7 @@ class DrmDevice {
   bool enable_changed_;
   int hotplug_timeline;
   int prop_timeline_;
+  int display_pipeline_timeline_;
   int commit_mirror_display_id_=-1;
 
   std::vector<std::unique_ptr<DrmConnector>> connectors_;
@@ -236,6 +260,9 @@ class DrmDevice {
   std::map<int, int> displays_;
   std::vector<DrmMode> white_modes_;
   struct DisplayModeXml DmXml_;
+
+  char primary_name[PROPERTY_VALUE_MAX];
+  char extend_name[PROPERTY_VALUE_MAX];
 
   mutable std::recursive_mutex mRecursiveMutex;
 };

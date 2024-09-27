@@ -102,6 +102,7 @@ typedef enum tagComposeMode{
    HWC_RGA_OVERLAY_POLICY,
    HWC_SR_OVERLAY_POLICY,
    HWC_ACCELERATE_POLICY,
+   HWC_SPILT_MODE_POLICY,
    HWC_3D_POLICY,
    HWC_DEBUG_POLICY,
 }ComposeMode;
@@ -204,6 +205,9 @@ typedef struct StateContext{
   int iVopPerformanceFactor;
 
   bool bNeedReservedCluster0ForHWPQ;
+  // CropSpilt mode
+  bool bIsCropSpilt_;
+  bool bIsCropSpiltPrimary_;
 } StaCtx;
 
 typedef struct DrmVop2Context{
@@ -335,6 +339,9 @@ struct PqBufferInfo{
                         std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                         std::vector<PlaneGroup *> &plane_groups);
   int TryMixPolicy(std::vector<DrmCompositionPlane> *composition,
+                        std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
+                        std::vector<PlaneGroup *> &plane_groups);
+  int TrySpiltPolicy(std::vector<DrmCompositionPlane> *composition,
                         std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                         std::vector<PlaneGroup *> &plane_groups);
   int TryGLESPolicy(std::vector<DrmCompositionPlane> *composition,

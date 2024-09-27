@@ -162,9 +162,19 @@ bool DrmDevice::mode_verify(const DrmMode &m) {
 }
 
 int DrmDevice::InitEnvFromXml(){
-
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
   char xml_path[PROPERTY_VALUE_MAX];
-  property_get(DRM_XML_PATH_NAME, xml_path, "/vendor/etc/HwComposerEnv.xml");
+  // 优先检查 persist.sys.hwc.env_xml_path 属性，该属性应用有权限可以直接设置
+  property_get(DRM_XML_PATH_SYS_NAME, xml_path, "UnSet");
+  // 优先检查 persist.sys.hwc.env_xml_path 属性，该属性应用有权限可以直接设置
+  if(!strncmp(xml_path, "UnSet", sizeof("UnSet"))){
+    property_get(DRM_XML_PATH_VENDOR_NAME, xml_path, "UnSet");
+  }
+  // 若 persist.sys.hwc.env_xml_path 属性 UnSet,则向下检查 vendor.hwc.env_xml_path 属性
+  // 主要目的是为了向旧版本兼容
+  if(!strncmp(xml_path, "UnSet", sizeof("UnSet"))){
+    property_get(DRM_XML_PATH_NAME, xml_path, "/vendor/etc/HwComposerEnv.xml");
+  }
 
   tinyxml2::XMLDocument doc;
   int ret = doc.LoadFile(xml_path);
@@ -182,6 +192,7 @@ int DrmDevice::InitEnvFromXml(){
     return -1;
   }
 
+  // 初始化
   memset(&DmXml_, 0x0, sizeof(DmXml_));
 
   const char* verison = "1.1.1";
@@ -191,10 +202,25 @@ int DrmDevice::InitEnvFromXml(){
     return -1;
   }
 
+  bool enable = false;
+  ret = HwComposerEnv->QueryBoolAttribute("Enable", &enable);
+  if (ret) {
+    HWC2_ALOGW("Can't find %s Enable info. ret=%d", xml_path, ret);
+    return -1;
+  }
+
+  if(enable){
+    DmXml_.Enable = enable;
+    HWC2_ALOGI("Load %s success. Version=%s Enable=%s", xml_path, verison, enable ? "true" : "false");
+  }else{
+    DmXml_.Enable = enable;
+    HWC2_ALOGI("Load %s success. Version=%s Enable=%s skip init.", xml_path, verison, enable ? "true" : "false");
+    return 0;
+  }
+
   sscanf(verison, "%d.%d.%d", &DmXml_.Version.Major,
                               &DmXml_.Version.Minor,
                               &DmXml_.Version.PatchLevel);
-
 
   tinyxml2::XMLElement* pDisplayMode = HwComposerEnv->FirstChildElement("DsiplayMode");
   if (!pDisplayMode){
@@ -205,18 +231,18 @@ int DrmDevice::InitEnvFromXml(){
   pDisplayMode->QueryIntAttribute( "Mode", &DmXml_.Mode);
   pDisplayMode->QueryIntAttribute( "FbWidth", &DmXml_.FbWidth);
   pDisplayMode->QueryIntAttribute( "FbHeight", &DmXml_.FbHeight);
-  pDisplayMode->QueryIntAttribute( "ConnectorCnt", &DmXml_.ConnectorCnt);
-  HWC2_ALOGI("Version=%d.%d.%d Mode=%d FbWidth=%d FbHeight=%d ConnectorCnt=%d",
+
+  HWC2_ALOGI("Version=%d.%d.%d Mode=%d FbWidth=%d FbHeight=%d",
               DmXml_.Version.Major, DmXml_.Version.Minor, DmXml_.Version.PatchLevel,
-              DmXml_.Mode, DmXml_.FbWidth, DmXml_.FbHeight, DmXml_.ConnectorCnt);
+              DmXml_.Mode, DmXml_.FbWidth, DmXml_.FbHeight);
 
   tinyxml2::XMLElement* pConnector = pDisplayMode->FirstChildElement("Connector");
   if (!pConnector){
     HWC2_ALOGE("Can't %s:Connector fail.", xml_path);
     return -1;
   }
+  int iConnectorCnt = 0;
   while (pConnector) {
-    static int iConnectorCnt = 0;
 
     #define PARSE_INT(x) \
     tinyxml2::XMLElement* _##x = pConnector->FirstChildElement(#x); \
@@ -238,12 +264,6 @@ int DrmDevice::InitEnvFromXml(){
            _##x->GetText(), \
            sizeof(DmXml_.ConnectorInfo[iConnectorCnt].x));
 
-    #define PARSE_OPT_INT(x) \
-    tinyxml2::XMLElement* _##x = pConnector->FirstChildElement(#x); \
-    if (_##x) { \
-      DmXml_.ConnectorInfo[iConnectorCnt].x = atoi(_##x->GetText());\
-    }
-
     PARSE_STR(Type);
     PARSE_INT(TypeId);
     PARSE_INT(SrcX);
@@ -254,10 +274,11 @@ int DrmDevice::InitEnvFromXml(){
     PARSE_INT(DstY);
     PARSE_INT(DstW);
     PARSE_INT(DstH);
-    DmXml_.ConnectorInfo[iConnectorCnt].Transform = 0;
-    PARSE_OPT_INT(Transform);
+    PARSE_INT(Transform);
+    PARSE_INT(Primary);
+    PARSE_INT(Extend);
 
-    HWC2_ALOGI("Connector[%d] type=%s-%d [%d,%d,%d,%d]=>[%d,%d,%d,%d] Transform =%d",
+    HWC2_ALOGI("Connector[%d] type=%s-%d [%d,%d,%d,%d]=>[%d,%d,%d,%d] Transform =%d Primary=%d Extend=%d.",
                 iConnectorCnt,
                 DmXml_.ConnectorInfo[iConnectorCnt].Type,
                 DmXml_.ConnectorInfo[iConnectorCnt].TypeId,
@@ -269,63 +290,152 @@ int DrmDevice::InitEnvFromXml(){
                 DmXml_.ConnectorInfo[iConnectorCnt].DstY,
                 DmXml_.ConnectorInfo[iConnectorCnt].DstW,
                 DmXml_.ConnectorInfo[iConnectorCnt].DstH,
-                DmXml_.ConnectorInfo[iConnectorCnt].Transform);
+                DmXml_.ConnectorInfo[iConnectorCnt].Transform,
+                DmXml_.ConnectorInfo[iConnectorCnt].Primary,
+                DmXml_.ConnectorInfo[iConnectorCnt].Extend);
     iConnectorCnt++;
     pConnector = pConnector->NextSiblingElement();
   }
 
+  DmXml_.ConnectorCnt = iConnectorCnt;
   DmXml_.Valid = true;
   return 0;
 }
+int DrmDevice::CheckEnvXmlChange(struct DisplayModeXml* last,
+                                 struct DisplayModeXml* current,
+                                 uint64_t* out_change_mask){
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
 
-int DrmDevice::UpdateInfoFromXml(){
-  if(!DmXml_.Valid){
-    HWC2_ALOGW("DmXml_.Valid = %d, ", DmXml_.Valid);
-    return -1;
-  }
-
-  if(DmXml_.Mode == DRM_DISPLAY_MODE_NORMAL){
-    HWC2_ALOGI("DmXml_.Mode = %d ", DmXml_.Mode);
+  if((last->Enable != current->Enable) ||
+     (last->Valid != current->Valid)){
+    *out_change_mask |= (DRM_PIPELINE_PRIMARY_CHANGE | DRM_PIPELINE_SPLIT_MODE_CHANGE);
     return 0;
   }
 
-  for(int i = 0; i <  DmXml_.ConnectorCnt; i++){
+  if(last->Mode != current->Mode ||
+     last->FbWidth != current->FbWidth ||
+     last->FbHeight != current->FbHeight ||
+     last->ConnectorCnt != current->ConnectorCnt){
+    *out_change_mask |= DRM_PIPELINE_SPLIT_MODE_CHANGE;
+  }
+
+  if(last->ConnectorCnt > 0 || current->ConnectorCnt > 0){
+    for(auto &current_info : current->ConnectorInfo){
+      bool find_conn_info = false;
+      for(auto &last_info : last->ConnectorInfo){
+        if(strncmp(last_info.Type, current_info.Type, sizeof(last_info.Type)) != 0 ||
+          last_info.TypeId != current_info.TypeId){
+          continue;
+        }
+        find_conn_info = true;
+        if(last_info.Primary != current_info.Primary ||
+          last_info.Extend != current_info.Extend){
+            *out_change_mask |= DRM_PIPELINE_PRIMARY_CHANGE;
+        }
+
+        if(last_info.SrcX != current_info.SrcX ||
+           last_info.SrcY != current_info.SrcY ||
+           last_info.SrcW != current_info.SrcW ||
+           last_info.DstX != current_info.DstX ||
+           last_info.DstY != current_info.DstY ||
+           last_info.DstW != current_info.DstW ||
+           last_info.DstH != current_info.DstH ||
+           last_info.Transform != current_info.Transform){
+          *out_change_mask |= DRM_PIPELINE_SPLIT_MODE_CHANGE;
+        }
+      }
+      // 未在last中找到对应配置，则认为新增display
+      if(find_conn_info == false){
+        *out_change_mask |= (DRM_PIPELINE_PRIMARY_CHANGE | DRM_PIPELINE_SPLIT_MODE_CHANGE);
+      }
+    }
+  }
+
+  return 0;
+}
+
+
+
+int DrmDevice::UpdateSpiltInfoFromXml(){
+  if(!DmXml_.Enable){
+    HWC2_ALOGI("DmXml_.Enable = %d, ", DmXml_.Enable);
     for(auto &conn : connectors_) {
-      const char *conn_name = connector_type_str(conn->type());
-      if(!strncmp(conn_name, DmXml_.ConnectorInfo[i].Type, strlen(conn_name)) &&
-          DmXml_.ConnectorInfo[i].TypeId == conn->type_id()){
-        if(DmXml_.Mode == DRM_DISPLAY_MODE_SPLICE){
-          static bool spilt_main_connector = false;
-          if(!spilt_main_connector){
-            spilt_main_connector = true;
-            conn->setCropSpiltPrimary();
-          }
-          if(conn->setCropSpilt(DmXml_.FbWidth,
-                                DmXml_.FbHeight,
-                                DmXml_.ConnectorInfo[i].SrcX,
-                                DmXml_.ConnectorInfo[i].SrcY,
-                                DmXml_.ConnectorInfo[i].SrcW,
-                                DmXml_.ConnectorInfo[i].SrcH,
-                                DmXml_.ConnectorInfo[i].Transform)){
-            HWC2_ALOGW("%s-%d enter CropSpilt Mode fail.",
-                        connector_type_str(conn->type()), conn->type_id());
-          }else{
-            HWC2_ALOGI("%s-%d enter %s CropSpilt Mode.",
-                        connector_type_str(conn->type()), conn->type_id(),
-                        conn->IsSpiltPrimary() ? "Primary" : "External");
-          }
-        }else if(DmXml_.Mode == DRM_DISPLAY_MODE_HORIZONTAL_SPILT){
-          if(conn->setHorizontalSpilt()){
-            HWC2_ALOGW("%s-%d enter HorizontalSpilt Mode fail.",
-                        connector_type_str(conn->type()), conn->type_id());
-          }else{
-            HWC2_ALOGI("%s-%d enter HorizontalSpilt Mode.",
-                        connector_type_str(conn->type()), conn->type_id());
+      conn->ResetSpiltMode();
+    }
+    return 0;
+  }
+
+  if(!DmXml_.Valid){
+    HWC2_ALOGW("DmXml_.Valid = %d, ", DmXml_.Valid);
+    for(auto &conn : connectors_) {
+      conn->ResetSpiltMode();
+    }
+    return -1;
+  }
+
+  bool spilt_main_connector = false;
+  for(auto &conn : connectors_) {
+    conn->ResetSpiltMode();
+  }
+
+  HWC2_ALOGI("DmXml_.Mode = %d ", DmXml_.Mode);
+  if(DmXml_.Mode != DRM_DISPLAY_MODE_NORMAL){
+    for(int i = 0; i <  DmXml_.ConnectorCnt; i++){
+      for(auto &conn : connectors_) {
+        const char *conn_name = connector_type_str(conn->type());
+        if(!strncmp(conn_name, DmXml_.ConnectorInfo[i].Type, strlen(conn_name)) &&
+           DmXml_.ConnectorInfo[i].TypeId == conn->type_id()){
+          if(DmXml_.Mode == DRM_DISPLAY_MODE_SPLICE){
+            if(conn->setCropSpilt(DmXml_.FbWidth,
+                                  DmXml_.FbHeight,
+                                  DmXml_.ConnectorInfo[i].SrcX,
+                                  DmXml_.ConnectorInfo[i].SrcY,
+                                  DmXml_.ConnectorInfo[i].SrcW,
+                                  DmXml_.ConnectorInfo[i].SrcH,
+                                  DmXml_.ConnectorInfo[i].Transform)){
+              HWC2_ALOGW("SpiltMode: %s-%d enter CropSpilt Mode fail.",
+                          connector_type_str(conn->type()), conn->type_id());
+            }else{
+              HWC2_ALOGI("SpiltMode: %s-%d enter %s CropSpilt Mode.",
+                          connector_type_str(conn->type()), conn->type_id(),
+                          conn->IsSpiltPrimary() ? "Primary" : "External");
+            }
+          }else if(DmXml_.Mode == DRM_DISPLAY_MODE_HORIZONTAL_SPILT){
+            if(conn->setHorizontalSpilt()){
+              HWC2_ALOGW("SpiltMode: %s-%d enter HorizontalSpilt Mode fail.",
+                          connector_type_str(conn->type()), conn->type_id());
+            }else{
+              HWC2_ALOGI("SpiltMode: %s-%d enter HorizontalSpilt Mode.",
+                          connector_type_str(conn->type()), conn->type_id());
+            }
           }
         }
       }
     }
   }
+  //寻找主屏（Display0），如果主屏参与拼接，则将主屏设置为拼接主屏
+  for(auto &conn : connectors_) {
+    if(conn->isCropSpilt() && conn->display()==0){
+      spilt_main_connector = true;
+      conn->setCropSpiltPrimary();
+      HWC2_ALOGI("SpiltMode: Use %s-%d as CropSpilt primary display.",
+                 connector_type_str(conn->type()), conn->type_id());
+      break;
+    }
+  }
+  //如果主屏不参与拼接，指定其中一个拼接屏幕作为拼接主屏
+  if(!spilt_main_connector){
+    for(auto &conn : connectors_) {
+      if(conn->isCropSpilt()){
+        spilt_main_connector = true;
+        conn->setCropSpiltPrimary();
+        HWC2_ALOGI("SpiltMode: Use %s-%d as CropSpilt primary display.",
+                  connector_type_str(conn->type()), conn->type_id());
+        break;
+      }
+    }
+  }
+
   return 0;
 }
 
@@ -571,12 +681,12 @@ std::tuple<int, int> DrmDevice::Init(int num_displays) {
       connectors_.emplace_back(std::move(conn));
   }
 
-  // Spicling Mode
-  if(UpdateInfoFromXml()){
-    HWC2_ALOGW("UpdateInfoFromXml fail, non-fatal error, check for ok.");
+  // HwcXml 配置优先级高于系统属性，若存在，则优先使用 xml 文件配置
+  if(DmXml_.Enable && DmXml_.Valid){
+    ConfigurePossibleDisplaysFromXml();
+  }else{
+    ConfigurePossibleDisplays();
   }
-
-  ConfigurePossibleDisplays();
 
   DrmConnector *primary = NULL;
   if(isRK3528(soc_id_)){
@@ -669,6 +779,10 @@ std::tuple<int, int> DrmDevice::Init(int num_displays) {
   }
 
   // SpiltMode
+  if(UpdateSpiltInfoFromXml()){
+    HWC2_ALOGW("UpdateSpiltInfoFromXml fail, non-fatal error, check for ok.");
+  }
+
   for (auto &conn : connectors_) {
     if(conn->isHorizontalSpilt()){
       HWC2_ALOGI("%s enable isHorizontalSpilt, to create SpiltModeDisplay id=0x%x",conn->unique_name(),conn->GetSpiltModeId());
@@ -830,6 +944,67 @@ std::tuple<int, int> DrmDevice::Init(int num_displays) {
 
   return std::make_tuple(ret, displays_.size());
 }
+
+int DrmDevice::GetDisplayPipelineChange(uint64_t* output_change_mask) {
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
+
+  struct DisplayModeXml last_dm_xml = DmXml_;
+  int ret = InitEnvFromXml();
+  if(ret){
+    HWC2_ALOGW("DisplayPipeChange: InitEnvFromXml fail, please check xml file.");
+    return -1;
+  }
+
+  // 检查 xml 更新前后的更新
+  uint64_t xml_change_mask = DRM_PIPELINE_NO_CHANGE;
+  ret = CheckEnvXmlChange(&last_dm_xml, &DmXml_, &xml_change_mask);
+  if(ret){
+    HWC2_ALOGW("DisplayPipeChange: CheckEnvXmlChange fail, change_mask=%" PRIx64 " ret=%d",
+                xml_change_mask, ret);
+    return -1;
+
+  }
+
+  // 如果存在 XML 存在更新
+  if(xml_change_mask != DRM_PIPELINE_NO_CHANGE){
+    *output_change_mask = xml_change_mask;
+    return 0;
+  // 若不存在有效XML配置，则仅检查 Primary/Extend 属性是否更新
+  }else{
+    char primary_name_tmp[PROPERTY_VALUE_MAX];
+    char extend_name_tmp[PROPERTY_VALUE_MAX];
+    int primary_length = property_get("vendor.hwc.device.primary", primary_name_tmp, NULL);
+    int extend_length = property_get("vendor.hwc.device.extend", extend_name_tmp, NULL);
+    // 属性有更新，则设置 PrimaryChange mask
+    if(strncmp(primary_name_tmp, primary_name, sizeof(primary_name_tmp)) != 0 ||
+       strncmp(extend_name_tmp, extend_name, sizeof(extend_name_tmp)) != 0){
+      *output_change_mask = DRM_PIPELINE_PRIMARY_CHANGE;
+      return 0;
+    }
+  }
+  return 0;
+}
+
+
+int DrmDevice::UpdateSpiltModeInfo() {
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
+  // Spicling Mode
+  if(UpdateSpiltInfoFromXml()){
+    HWC2_ALOGW("SpiltMode: UpdateSpiltInfoFromXml fail, CropSpilt status will not change, please check xml file.");
+    return -1;
+  }
+
+  // SpiltMode
+  for (auto &conn : connectors_) {
+    if(conn->isHorizontalSpilt()){
+      HWC2_ALOGI("%s enable isHorizontalSpilt, to create SpiltModeDisplay id=0x%x",conn->unique_name(),conn->GetSpiltModeId());
+      int spilt_display_id = conn->GetSpiltModeId();
+      displays_[spilt_display_id] = spilt_display_id;
+    }
+  }
+  return 0;
+}
+
 
 bool DrmDevice::HandlesDisplay(int display) const {
   return displays_.find(display) != displays_.end();
@@ -1067,8 +1242,6 @@ int DrmDevice::GetConnectorProperty(const DrmConnector &connector,
 
 // RK surport
 void DrmDevice::ConfigurePossibleDisplays(){
-  char primary_name[PROPERTY_VALUE_MAX];
-  char extend_name[PROPERTY_VALUE_MAX];
   int primary_length, extend_length;
   int default_display_possible = 0;
   std::string conn_name;
@@ -1127,6 +1300,56 @@ void DrmDevice::ConfigurePossibleDisplays(){
   }
   return;
 }
+
+// RK surport
+void DrmDevice::ConfigurePossibleDisplaysFromXml(){
+  if(!DmXml_.Enable){
+    HWC2_ALOGI("DmXml_.Enable = %d, ", DmXml_.Enable);
+    return;
+  }
+
+  if(!DmXml_.Valid){
+    HWC2_ALOGW("DmXml_.Valid = %d, ", DmXml_.Valid);
+    return;
+  }
+
+  // 根据 build-in 规则 display 对屏幕赋初值
+  for (auto &conn : connectors_) {
+    /*
+     * build_in connector default only support on primary display
+     */
+    if (conn->internal())
+      conn->set_possible_displays(HWC_DISPLAY_PRIMARY_BIT);
+    else
+      conn->set_possible_displays(HWC_DISPLAY_EXTERNAL_BIT);
+  }
+
+
+  // 根据 xml 配置修改 display 主副屏幕属性
+  for (auto &conn : connectors_) {
+    for(int i = 0; i <  DmXml_.ConnectorCnt; i++){
+      for(auto &conn : connectors_) {
+        const char *conn_name = connector_type_str(conn->type());
+        if(!strncmp(conn_name, DmXml_.ConnectorInfo[i].Type, strlen(conn_name)) &&
+           DmXml_.ConnectorInfo[i].TypeId == conn->type_id()){
+          if(DmXml_.ConnectorInfo[i].Primary > 0){
+            conn->set_priority(DmXml_.ConnectorInfo[i].Primary);
+            conn->set_possible_displays(HWC_DISPLAY_PRIMARY_BIT);
+            HWC2_ALOGI("%s-%d is PrimaryType priority = %d", conn_name, conn->type_id(), DmXml_.ConnectorInfo[i].Primary);
+          }else if(DmXml_.ConnectorInfo[i].Extend > 0){
+            conn->set_priority(DmXml_.ConnectorInfo[i].Extend);
+            conn->set_possible_displays(HWC_DISPLAY_EXTERNAL_BIT);
+            HWC2_ALOGI("%s-%d is ExtendType priority = %d", conn_name, conn->type_id(), DmXml_.ConnectorInfo[i].Extend);
+          }else{
+            HWC2_ALOGW("%s-%d can't find Primary/Extend config, skip.", conn_name, conn->type_id());
+          }
+        }
+      }
+    }
+  }
+  return;
+}
+
 
 void DrmDevice::UpdateDrmInfoFromKernel(){
   std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
@@ -3342,7 +3565,13 @@ int DrmDevice::SetScreenInfo(unsigned int connector_type,
 
 
 int DrmDevice::UpdatePrimaryInfo(){
-  ConfigurePossibleDisplays();
+  // HwcXml 配置优先级高于系统属性，若存在，则优先使用 xml 文件配置
+  if(DmXml_.Enable && DmXml_.Valid){
+    ConfigurePossibleDisplaysFromXml();
+  }else{
+    ConfigurePossibleDisplays();
+  }
+
   DrmConnector *primary = NULL;
   bool found_primary = false;
   if(isRK3528(soc_id_)){

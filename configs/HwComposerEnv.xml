@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- HwComposerEnv module xml -->
-<HwComposerEnv Version="1.1.1" >
+<HwComposerEnv Version="1.2.0" Enable="0">
   <!--
     DsiplayMode:
-      Mode: 0=None 1=Slicing 2=Presentation
+      Mode: Normal=0 SplitMode=1 Presentation=2
       FbWidth: Framebuffer Width
-      FbHeight: Framebuffer Width
+      FbHeight: Framebuffer Height
       ConnectorCnt: display count
 
-      Example 1 - Slicing-6x1 1920x1080:
+      Example 1 - SplitMode-6x1 1920x1080:
       x-offset:   0           3840        5760        7680
       y-offset:
           0   -   + - - - - - + - - - - - + - - - - - + - - - - - +     -
@@ -19,7 +19,7 @@
                                                                              - ConnectorCnt = 4
 
 
-      Example 2 - Slicing-3x2 1920x1080:
+      Example 2 - SplitMode-3x2 1920x1080:
       x-offset:   0           3840
       y-offset:
          0  -     + - - - - - + - - - - - +
@@ -31,10 +31,10 @@
                   |   3840    |   1920    |          - FbWidth = 5760
                                                      - ConnectorCnt = 4
   -->
-  <DsiplayMode Mode="0" FbWidth="11520" FbHeight="1080" ConnectorCnt="4">
+  <DsiplayMode Mode="0" FbWidth="11520" FbHeight="1080">
     <Connector>
       <!--
-        Example 1 - Slicing-6x1 1920x1080:
+        Example 1 - SplitMode-6x1 1920x1080:
         Type-TypeId can be obtained through the following process:
           adb shell modetest -c > modetest-connector.log
             Tips:
@@ -92,7 +92,9 @@
       <DstY>0</DstY>    <!-- unuse , reserved -->
       <DstW>0</DstW>    <!-- unuse , reserved -->
       <DstH>0</DstH>    <!-- unuse , reserved -->
-      <Transform>0</Transform>     <!-- Screen Transform -->
+      <Transform>0</Transform>  <!-- Screen Transform -->
+      <Primary>0</Primary>      <!-- " >0 " Is Primary, value is priority, The smaller the value, the higher the priority. -->
+      <Extend>0</Extend>        <!-- " >0 " Is Extend,  value is priority, The smaller the value, the higher the priority. -->
     </Connector>
     <Connector>
       <Type>HDMI-A</Type>
@@ -105,7 +107,9 @@
       <DstY>0</DstY>    <!-- unuse , reserved-->
       <DstW>0</DstW>    <!-- unuse , reserved-->
       <DstH>0</DstH>    <!-- unuse , reserved-->
-      <Transform>0</Transform>     <!-- Screen Transform -->
+      <Transform>0</Transform>  <!-- Screen Transform -->
+      <Primary>0</Primary>      <!-- " >0 " Is Primary, value is priority, The smaller the value, the higher the priority. -->
+      <Extend>0</Extend>        <!-- " >0 " Is Extend,  value is priority, The smaller the value, the higher the priority. -->
     </Connector>
     <Connector>
       <Type>HDMI-A</Type>
@@ -118,7 +122,9 @@
       <DstY>0</DstY>    <!-- unuse , reserved-->
       <DstW>0</DstW>    <!-- unuse , reserved-->
       <DstH>0</DstH>    <!-- unuse , reserved-->
-      <Transform>0</Transform>     <!-- Screen Transform -->
+      <Transform>0</Transform>   <!-- Screen Transform -->
+      <Primary>0</Primary>       <!-- " >0 " Is Primary, value is priority, The smaller the value, the higher the priority. -->
+      <Extend>0</Extend>         <!-- " >0 " Is Extend,  value is priority, The smaller the value, the higher the priority. -->
     </Connector>
     <Connector>
       <Type>DP</Type>
@@ -131,7 +137,9 @@
       <DstY>0</DstY>    <!-- unuse , reserved-->
       <DstW>0</DstW>    <!-- unuse , reserved-->
       <DstH>0</DstH>    <!-- unuse , reserved-->
-      <Transform>0</Transform>     <!-- Screen Transform -->
+      <Transform>0</Transform>   <!-- Screen Transform -->
+      <Primary>0</Primary>       <!-- " >0 " Is Primary, value is priority, The smaller the value, the higher the priority. -->
+      <Extend>0</Extend>         <!-- " >0 " Is Extend,  value is priority, The smaller the value, the higher the priority. -->
     </Connector>
   </DsiplayMode>
 </HwComposerEnv>

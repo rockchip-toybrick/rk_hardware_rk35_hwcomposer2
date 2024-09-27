@@ -80,6 +80,7 @@ typedef enum tagComposeMode{
    HWC_MIX_POLICY,
    HWC_GLES_POLICY,
    HWC_RGA_OVERLAY_POLICY,
+   HWC_SPILT_MODE_POLICY,
    HWC_3D_POLICY,
    HWC_DEBUG_POLICY
 }ComposeMode;
@@ -143,6 +144,10 @@ typedef struct StateContext{
   // Soc id
   int iSocId=0;
   std::set<ComposeMode> setHwcPolicy;
+
+  // CropSpilt mode
+  bool bIsCropSpilt_;
+  bool bIsCropSpiltPrimary_;
 } StaCtx;
 
 typedef struct DrmVop2Context{
@@ -154,8 +159,8 @@ typedef struct DrmVop2Context{
  public:
   Vop3399()
     : rgaBufferQueue_((std::make_shared<DrmBufferQueue>()))
-  { 
-    Init(); 
+  {
+    Init();
   }
   void Init();
   bool SupportPlatform(uint32_t soc_id);
@@ -189,6 +194,10 @@ typedef struct DrmVop2Context{
   int TryMixPolicy(std::vector<DrmCompositionPlane> *composition,
                         std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                         std::vector<PlaneGroup *> &plane_groups);
+  int TrySpiltPolicy(std::vector<DrmCompositionPlane> *composition,
+                        std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
+                        std::vector<PlaneGroup *> &plane_groups);
+
   int TryGLESPolicy(std::vector<DrmCompositionPlane> *composition,
                         std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                         std::vector<PlaneGroup *> &plane_groups);

@@ -366,6 +366,13 @@ int Vop356x::TryHwcPolicy(
   // Init context
   InitContext(layers,plane_groups,crtc,gles_policy);
 
+  // 拼接模式策略
+  if(ctx.state.setHwcPolicy.count(HWC_SPILT_MODE_POLICY)){
+    ret = TrySpiltPolicy(composition,layers,crtc,plane_groups);
+    if(!ret)
+      return 0;
+  }
+
 #ifdef USE_LIBSR
   // Try to match rga policy
   if(ctx.state.setHwcPolicy.count(HWC_SR_OVERLAY_POLICY)){
@@ -1660,6 +1667,405 @@ int Vop356x::TryMixSkipPolicy(
   return ret;
 }
 
+int Vop356x::TrySpiltPolicy(
+    std::vector<DrmCompositionPlane> *composition,
+    std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
+    std::vector<PlaneGroup *> &plane_groups) {
+  ALOGD_IF(LogLevel(DBG_DEBUG), "%s:line=%d",__FUNCTION__,__LINE__);
+  int ret = 0;
+  // 拼接屏幕前处理，主要是拼接主屏的旋转角度需要设置到DrmLayer中：
+  for(auto &drmLayer : layers){
+    if(ctx.state.bIsCropSpiltPrimary_){
+      if(drmLayer->bFbTarget_ && drmLayer->iFd_ > 0){
+          DrmDevice *drm = crtc->getDrmDevice();
+          DrmConnector *conn = drm->GetConnectorForDisplay(crtc->display());
+          if(conn && conn->state() == DRM_MODE_CONNECTED){
+          int32_t transform = conn->getCropSpiltTransform();
+          switch(transform){
+            case static_cast<int32_t>(HWC2::Transform::None):
+              drmLayer->SetTransform(HWC2::Transform::None);
+              break;
+            case static_cast<int32_t>(HWC2::Transform::FlipH):
+              drmLayer->SetTransform(HWC2::Transform::FlipH);
+              break;
+            case static_cast<int32_t>(HWC2::Transform::FlipV):
+              drmLayer->SetTransform(HWC2::Transform::FlipV);
+              break;
+            case static_cast<int32_t>(HWC2::Transform::Rotate90):
+              drmLayer->SetTransform(HWC2::Transform::Rotate90);
+              break;
+            case static_cast<int32_t>(HWC2::Transform::Rotate180):
+              drmLayer->SetTransform(HWC2::Transform::Rotate180);
+              break;
+            case static_cast<int32_t>(HWC2::Transform::Rotate270):
+              drmLayer->SetTransform(HWC2::Transform::Rotate270);
+              break;
+            case static_cast<int32_t>(HWC2::Transform::FlipHRotate90):
+              drmLayer->SetTransform(HWC2::Transform::FlipHRotate90);
+              break;
+            case static_cast<int32_t>(HWC2::Transform::FlipVRotate90):
+              drmLayer->SetTransform(HWC2::Transform::FlipVRotate90);
+              break;
+            default:
+              HWC2_ALOGW("SpiltMode: invalid transform=%d", transform);
+              drmLayer->SetTransform(HWC2::Transform::None);
+              break;
+          }
+        }
+      }
+    }
+  }
+
+  // 如果是拼接主屏则直接使用GPU合成策略，若失败，尝试使用RGA旋转后再进行GPU合成策略匹配
+  if(ctx.state.bIsCropSpiltPrimary_){
+    ret = TryGLESPolicy(composition,layers,crtc,plane_groups);
+    if(!ret)
+      return 0;
+    else{
+      ALOGD_IF(LogLevel(DBG_DEBUG),"Match TryGLESPolicy fail, try to match other policy.");
+    }
+  }else{// 非拼接主屏尝试使用Overlay策略，若失败，使用RGA策略后再进行Overlay策略匹配
+    ret = TryOverlayPolicy(composition,layers,crtc,plane_groups);
+    if(!ret)
+      return 0;
+    else{
+      ALOGD_IF(LogLevel(DBG_DEBUG),"Match overlay policy fail, try to match other policy.");
+    }
+  }
+
+  std::vector<DrmHwcLayer*> tmp_layers;
+  ResetLayer(layers);
+  ResetPlaneGroups(plane_groups);
+
+  bool rga_layer_ready = false;
+  bool use_laster_rga_layer = false;
+  std::shared_ptr<DrmBuffer> dst_buffer;
+  static uint64_t last_buffer_id = 0;
+  int releaseFence = -1;
+  rga_buffer_t src;
+  rga_buffer_t dst;
+  rga_buffer_t pat;
+  im_rect src_rect;
+  im_rect dst_rect;
+  im_rect pat_rect;
+  memset(&src, 0, sizeof(rga_buffer_t));
+  memset(&dst, 0, sizeof(rga_buffer_t));
+  memset(&pat, 0, sizeof(rga_buffer_t));
+  memset(&src_rect, 0, sizeof(im_rect));
+  memset(&dst_rect, 0, sizeof(im_rect));
+  memset(&pat_rect, 0, sizeof(im_rect));
+  int usage = 0;
+
+  for(auto &drmLayer : layers){
+    // 若是拼接主屏，则仅处理FbTarget图层
+    if(ctx.state.bIsCropSpiltPrimary_){
+      if(drmLayer->bFbTarget_ == false){
+        continue;
+      }
+    }
+    if(last_buffer_id != drmLayer->uBufferId_){
+      // TODO: afbc 暂时不支持 crop 裁剪，目前会出现RGA输出花屏问题
+      // 2023/08/24 删除这部分限制, 最新版本可能已经支持
+      // if(drmLayer->bAfbcd_){
+      //   int crop_w =  (int)(drmLayer->source_crop.right - drmLayer->source_crop.left);
+      //   if(crop_w != drmLayer->iStride_){
+      //     HWC2_ALOGD_IF_DEBUG("RGA can't handle crop_w=%d stride=%d afbc yuv layer.",
+      //                crop_w, drmLayer->iStride_);
+      //     continue;
+      //   }
+      // }
+
+      // 超出 RGA 缩放8倍的场景，执行两级缩放，RGA缩放后再由VOP缩放
+      bool rga_scale_max = false;
+      // RGA 有缩放倍数限制
+      if((drmLayer->fHScaleMul_ < (1.0/16.0)  ||
+          drmLayer->fHScaleMul_ > 16.0        ||
+          drmLayer->fVScaleMul_ < (1.0/16.0)  ||
+          drmLayer->fVScaleMul_ > 16.0)){
+          rga_scale_max = true;
+      }
+
+      dst_buffer = rgaBufferQueue_->DequeueDrmBuffer(ctx.state.iDisplayWidth_,
+                                                     ctx.state.iDisplayHeight_,
+                                                     HAL_PIXEL_FORMAT_RGB_888,
+                                                     MALI_GRALLOC_USAGE_NO_AFBC,
+                                                     "SpiltModeView");
+
+      if(dst_buffer == NULL){
+        HWC2_ALOGD_IF_DEBUG("DequeueDrmBuffer fail!, skip this policy.");
+        continue;
+      }
+
+      // 获取 rga src hanlde
+      rga_buffer_handle_t src_handle = 0;
+      if(drmLayer->pBufferInfo_ != NULL){
+        src_handle = drmLayer->pBufferInfo_->rgaHandle_.GetRgaHandle(drmLayer->sLayerName_.c_str(),
+                                                                      drmLayer->iFd_,
+                                                                      drmLayer->iSize_,
+                                                                      drmLayer->uBufferId_);
+      }
+
+      if(src_handle == 0){
+        HWC2_ALOGE("%s import src fail, w=%d, h=%d format=0x%x",
+                    drmLayer->sLayerName_.c_str(),
+                    drmLayer->iWidth_,
+                    drmLayer->iHeight_,
+                    drmLayer->iFormat_);
+        continue;
+      }
+
+      int src_format = drmLayer->iFormat_;
+      int src_stride = drmLayer->iStride_;
+      src = wrapbuffer_handle(src_handle,
+                              drmLayer->iWidth_,
+                              drmLayer->iHeight_,
+                              src_format,
+                              src_stride,
+                              drmLayer->iHeightStride_);
+
+      // AFBC format
+      if(drmLayer->bAfbcd_)
+        src.rd_mode = IM_FBC_MODE;
+
+      // Set src rect info
+      src_rect.x = ALIGN_DOWN((int)drmLayer->source_crop.left,2);
+      src_rect.y = ALIGN_DOWN((int)drmLayer->source_crop.top,2);
+      src_rect.width  = ALIGN_DOWN((int)(drmLayer->source_crop.right  - drmLayer->source_crop.left),2);
+      src_rect.height = ALIGN_DOWN((int)(drmLayer->source_crop.bottom - drmLayer->source_crop.top),2);
+
+      // 获取 rga dst hanlde
+      rga_buffer_handle_t dst_handle = dst_buffer->GetRgaHandle();
+      if(dst_handle == 0){
+        HWC2_ALOGE("%s import dst fail, w=%d, h=%d format=0x%x",
+                    dst_buffer->GetName().c_str(),
+                    dst_buffer->GetWidth(),
+                    dst_buffer->GetHeight(),
+                    dst_buffer->GetFormat());
+        continue;
+      }
+
+      dst = wrapbuffer_handle(dst_handle,
+                              dst_buffer->GetWidth(),
+                              dst_buffer->GetHeight(),
+                              dst_buffer->GetFormat(),
+                              dst_buffer->GetStride(),
+                              dst_buffer->GetHeightStride());
+
+      // 若缩放倍数超出RGA最大缩小倍数，则进行二次缩放，倍率设置为8
+      if(rga_scale_max){
+        int scale_max_rate = 8;
+
+        // Set dst rect info
+        dst_rect.x = 0;
+        dst_rect.y = 0;
+        int src_w_rotated,src_h_rotated;
+        if((drmLayer->transform & DRM_MODE_ROTATE_90)  == DRM_MODE_ROTATE_90 ||
+            (drmLayer->transform & DRM_MODE_ROTATE_270) == DRM_MODE_ROTATE_270){
+          src_w_rotated = (int)(drmLayer->source_crop.bottom - drmLayer->source_crop.top);
+          src_h_rotated = (int)(drmLayer->source_crop.right - drmLayer->source_crop.left);
+        }else{
+          src_w_rotated = (int)(drmLayer->source_crop.right - drmLayer->source_crop.left);
+          src_h_rotated = (int)(drmLayer->source_crop.bottom - drmLayer->source_crop.top);
+        }
+        //判断当前是缩小还是放大
+        if(drmLayer->fHScaleMul_ > scale_max_rate){
+          dst_rect.width  = ALIGN_DOWN(src_w_rotated / scale_max_rate,2);
+        }else if(drmLayer->fHScaleMul_< 1.0/scale_max_rate){
+          dst_rect.width  = ALIGN_DOWN(src_w_rotated * scale_max_rate,2);
+        }
+        if(drmLayer->fVScaleMul_ > scale_max_rate){
+          dst_rect.height = ALIGN_DOWN(src_h_rotated / scale_max_rate,2);
+        }else if(drmLayer->fVScaleMul_< 1.0/scale_max_rate){
+          dst_rect.height = ALIGN_DOWN(src_h_rotated * scale_max_rate,2);
+        }
+      }else{
+        // Set dst rect info
+        dst_rect.x = 0;
+        dst_rect.y = 0;
+        dst_rect.width  = ALIGN_DOWN((int)(drmLayer->display_frame.right  - drmLayer->display_frame.left),2);
+        dst_rect.height = ALIGN_DOWN((int)(drmLayer->display_frame.bottom - drmLayer->display_frame.top),2);
+      }
+
+      // 处理旋转
+      switch(drmLayer->transform){
+      case DRM_MODE_ROTATE_0:
+        usage = 0;
+        break;
+      case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_X:
+        usage = IM_HAL_TRANSFORM_FLIP_H;
+        break;
+      case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_Y:
+        usage = IM_HAL_TRANSFORM_FLIP_V;
+        break;
+      case DRM_MODE_ROTATE_90:
+        usage = IM_HAL_TRANSFORM_ROT_90;
+        break;
+      case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_X | DRM_MODE_REFLECT_Y:
+        usage = IM_HAL_TRANSFORM_ROT_180;
+        break;
+      case DRM_MODE_ROTATE_270:
+        usage = IM_HAL_TRANSFORM_ROT_270;
+        break;
+      // RGA2/RGA3的 flip + rotate 场景，硬件内部处理是先 rotate 再 flip
+      // 而 Android 请求的是先 flip 再 rotate，故此请求需要做转换
+      // Android请求 flip-v + rotate-90  等价于 rotate-90 + flip-h
+      case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_Y | DRM_MODE_ROTATE_90 :
+        usage = IM_HAL_TRANSFORM_ROT_90 | IM_HAL_TRANSFORM_FLIP_H ;
+        break;
+      // Android请求 flip-h + rotate-90  等价于 rotate-90 + flip-v
+      case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_X | DRM_MODE_ROTATE_90:
+        usage = IM_HAL_TRANSFORM_ROT_90 | IM_HAL_TRANSFORM_FLIP_V;
+        break;
+      default:
+        usage = 0;
+        ALOGE_IF(LogLevel(DBG_DEBUG),"Unknow sf transform 0x%x", drmLayer->transform);
+      }
+
+      IM_STATUS im_state;
+      // Call Im2d 格式转换
+      im_state = imcheck_composite(src, dst, pat, src_rect, dst_rect, pat_rect, usage);
+      if(im_state != IM_STATUS_NOERROR){
+        HWC2_ALOGE("call im2d scale fail, %s",imStrError(im_state));
+        break;
+      }
+
+      hwc_frect_t source_crop;
+      source_crop.left   = dst_rect.x;
+      source_crop.top    = dst_rect.y;
+      source_crop.right  = dst_rect.x + dst_rect.width;
+      source_crop.bottom = dst_rect.y + dst_rect.height;
+      drmLayer->UpdateAndStoreInfoFromDrmBuffer(dst_buffer->GetHandle(),
+                                                dst_buffer->GetFd(),
+                                                dst_buffer->GetFormat(),
+                                                dst_buffer->GetWidth(),
+                                                dst_buffer->GetHeight(),
+                                                dst_buffer->GetStride(),
+                                                dst_buffer->GetHeightStride(),
+                                                dst_buffer->GetByteStride(),
+                                                dst_buffer->GetSize(),
+                                                dst_buffer->GetUsage(),
+                                                dst_buffer->GetFourccFormat(),
+                                                dst_buffer->GetModifier(),
+                                                dst_buffer->GetByteStridePlanes(),
+                                                dst_buffer->GetName(),
+                                                source_crop,
+                                                dst_buffer->GetBufferId(),
+                                                dst_buffer->GetGemHandle(),
+                                                DRM_MODE_ROTATE_0);
+      rga_layer_ready = true;
+      drmLayer->pRgaBuffer_ = dst_buffer;
+      drmLayer->bUseRga_ = true;
+      break;
+    }else{
+      dst_buffer = rgaBufferQueue_->BackDrmBuffer();
+
+      if(dst_buffer == NULL){
+        HWC2_ALOGD_IF_DEBUG("DequeueDrmBuffer fail!, skip this policy.");
+        break;
+      }
+
+      hwc_frect_t source_crop;
+      source_crop.left  = 0;
+      source_crop.top   = 0;
+      source_crop.right =   ALIGN_DOWN((int)(drmLayer->display_frame.right  - drmLayer->display_frame.left),2);
+      source_crop.bottom  = ALIGN_DOWN((int)(drmLayer->display_frame.bottom - drmLayer->display_frame.top),2);
+      drmLayer->UpdateAndStoreInfoFromDrmBuffer(dst_buffer->GetHandle(),
+                                                dst_buffer->GetFd(),
+                                                dst_buffer->GetFormat(),
+                                                dst_buffer->GetWidth(),
+                                                dst_buffer->GetHeight(),
+                                                dst_buffer->GetStride(),
+                                                dst_buffer->GetHeightStride(),
+                                                dst_buffer->GetByteStride(),
+                                                dst_buffer->GetSize(),
+                                                dst_buffer->GetUsage(),
+                                                dst_buffer->GetFourccFormat(),
+                                                dst_buffer->GetModifier(),
+                                                dst_buffer->GetByteStridePlanes(),
+                                                dst_buffer->GetName(),
+                                                source_crop,
+                                                dst_buffer->GetBufferId(),
+                                                dst_buffer->GetGemHandle(),
+                                                DRM_MODE_ROTATE_0);
+      use_laster_rga_layer = true;
+      drmLayer->bUseRga_ = true;
+      drmLayer->pRgaBuffer_ = dst_buffer;
+      break;
+    }
+  }
+  if(rga_layer_ready){
+    ALOGD_IF(LogLevel(DBG_DEBUG), "%s:line=%d rga layer ready, to matchPlanes",__FUNCTION__,__LINE__);
+    int ret = 0;
+    if(ctx.state.bIsCropSpiltPrimary_){
+      ret = TryGLESPolicy(composition,layers,crtc,plane_groups);
+    }else{
+      ret = TryOverlayPolicy(composition,layers,crtc,plane_groups);
+    }
+    if(!ret){ // Match sucess, to call im2d interface
+      for(auto &drmLayer : layers){
+        if(drmLayer->bUseRga_){
+          im_opt_t imOpt;
+          memset(&imOpt, 0x00, sizeof(im_opt_t));
+          // imOpt.core = IM_SCHEDULER_RGA3_CORE0 | IM_SCHEDULER_RGA3_CORE1;
+          if(drmLayer->acquire_fence->isValid()){
+            if(drmLayer->acquire_fence->wait(500)){
+              HWC2_ALOGE("Wait AcquireFence 500ms failed! Info: size=%d act=%d signal=%d err=%d ,LayerName=%s ",
+                                drmLayer->acquire_fence->getSize(),
+                                drmLayer->acquire_fence->getActiveCount(),
+                                drmLayer->acquire_fence->getSignaledCount(),
+                                drmLayer->acquire_fence->getErrorCount(),
+                                drmLayer->sLayerName_.c_str());
+            }
+          }
+          IM_STATUS im_state = improcess(src, dst, pat, src_rect, dst_rect, pat_rect, 0, &releaseFence, &imOpt, usage);
+          if(im_state != IM_STATUS_SUCCESS){
+            HWC2_ALOGE("call im2d scale fail, %s",imStrError(im_state));
+            rgaBufferQueue_->QueueBuffer(dst_buffer);
+            drmLayer->ResetInfoFromStore();
+            drmLayer->bUseRga_ = false;
+            ret = -1;
+            break;
+          }
+          dst_buffer->SetFinishFence(dup(releaseFence));
+          drmLayer->pRgaBuffer_ = dst_buffer;
+          drmLayer->acquire_fence = sp<AcquireFence>(new AcquireFence(releaseFence));
+          rgaBufferQueue_->QueueBuffer(dst_buffer);
+          last_buffer_id = drmLayer->uBufferId_;
+          return ret;
+        }
+      }
+      ResetLayerFromTmp(layers,tmp_layers);
+      return ret;
+    }else{ // Match fail, skip rga policy
+      HWC2_ALOGD_IF_DEBUG(" MatchPlanes fail! reset DrmHwcLayer.");
+      for(auto &drmLayer : layers){
+        if(drmLayer->bUseRga_){
+          rgaBufferQueue_->QueueBuffer(dst_buffer);
+          drmLayer->ResetInfoFromStore();
+          drmLayer->bUseRga_ = false;
+        }
+      }
+      ResetLayerFromTmp(layers,tmp_layers);
+      return -1;
+    }
+  }else if(use_laster_rga_layer){
+    ALOGD_IF(LogLevel(DBG_DEBUG), "%s:line=%d rga layer ready, to matchPlanes",__FUNCTION__,__LINE__);
+    int ret = -1;
+    if(ctx.state.bIsCropSpiltPrimary_){
+      ret = TryGLESPolicy(composition,layers,crtc,plane_groups);
+    }else{
+      ret = TryOverlayPolicy(composition,layers,crtc,plane_groups);
+    }
+    if(!ret){ // Match sucess, to call im2d interface
+      HWC2_ALOGD_IF_DEBUG("Use last rga layer.");
+      return ret;
+    }
+  }
+  HWC2_ALOGD_IF_DEBUG("fail!, No layer use RGA policy.");
+  ResetLayerFromTmp(layers,tmp_layers);
+  return -1;
+}
+
 #ifdef USE_LIBSR
 int Vop356x::TrySvepPolicy(
     std::vector<DrmCompositionPlane> *composition,
@@ -2464,9 +2870,10 @@ int Vop356x::TryGLESPolicy(
     }
   }
   int ret = MatchBestPlanes(composition,fb_target,crtc,plane_groups);
-  if(!ret)
+  if(!ret){
+    ResetLayerFromTmp(layers,fb_target);
     return ret;
-  else{
+  }else{
     ResetLayerFromTmp(layers,fb_target);
     return -1;
   }
@@ -2862,6 +3269,10 @@ void Vop356x::InitStateContext(
   DrmConnector *conn = drm->GetConnectorForDisplay(crtc->display());
 
   if(conn && conn->state() == DRM_MODE_CONNECTED){
+    // 更新 SpiltMode 信息
+    ctx.state.bIsCropSpilt_ = conn->isCropSpilt();
+    ctx.state.bIsCropSpiltPrimary_ = conn->IsSpiltPrimary();
+
     DrmMode mode = conn->current_mode();
     // Story Display Mode
     ctx.state.iDisplayWidth_ = mode.h_display();
@@ -3098,6 +3509,11 @@ int Vop356x::InitContext(
   InitSupportContext(plane_groups,crtc);
   InitStateContext(layers,plane_groups,crtc);
 
+  // 拼接屏幕使用RGA策略
+  if(ctx.state.bIsCropSpilt_){
+    ctx.state.setHwcPolicy.insert(HWC_SPILT_MODE_POLICY);
+  }
+
   //force go into GPU
   int iMode = hwc_get_int_property("vendor.hwc.compose_policy","0");
 
@@ -3109,7 +3525,8 @@ int Vop356x::InitContext(
       ctx.state.setHwcPolicy.insert(HWC_ACCELERATE_POLICY);
     }
 
-    ALOGD_IF(LogLevel(DBG_DEBUG),"Force use GLES compose, iMode=%d, gles_policy=%d, soc_id=%x",iMode,gles_policy,ctx.state.iSocId);
+    ALOGD_IF(LogLevel(DBG_DEBUG),"Force use GLES compose, iMode=%d, gles_policy=%d SpiltPrimary=%d, soc_id=%x",
+             iMode, gles_policy, ctx.state.bIsCropSpiltPrimary_, ctx.state.iSocId);
     return 0;
   }
 

@@ -601,10 +601,8 @@ class DrmHwcTwo : public hwc2_device_t {
       return mSvepFps_;
     }
 
-    int DoSvep(bool validate, DrmHwcLayer *drmHwcLayer);
     int DoSwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_drm_display_t* ctx);
     int DoHwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_drm_display_t* ctx);
-    int DoFbTransform(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_drm_display_t* ctx);
 
     // Layer hooks
     HWC2::Error SetCursorPosition(int32_t x, int32_t y);
@@ -646,7 +644,7 @@ class DrmHwcTwo : public hwc2_device_t {
 
     // Slot cache
     bool bUseSlotCache = false;
-    uint32_t uCacheSlot = -1;
+    uint32_t uCacheSlot = 0;
 
     std::map<uint64_t, std::shared_ptr<LayerInfoCache>> bufferInfoMap_;
     std::string layer_name_;
@@ -799,9 +797,11 @@ class DrmHwcTwo : public hwc2_device_t {
         return layers_;
     }
     bool has_layer(hwc2_layer_t layer) {
+      std::unique_lock<std::recursive_mutex> lock(mDisplayMutex_);
       return layers_.count(layer) > 0;
     }
     HwcLayer &get_layer(hwc2_layer_t layer) {
+      std::unique_lock<std::recursive_mutex> lock(mDisplayMutex_);
       return layers_.at(layer);
     }
 
@@ -836,8 +836,11 @@ class DrmHwcTwo : public hwc2_device_t {
    int EntreStaticScreen(uint64_t refresh, int refresh_cnt);
    int InvalidateControl(uint64_t refresh, int refresh_cnt);
    int isVirtual() { return type_ == HWC2::DisplayType::Virtual;}
-
-   int ResetDisplay();
+   //in dynamic cropspilt mode, skip screenshot layer to prevent flickering.
+   void SetSkipScreenShot();
+   HWC2::Error GetOrCreateDummyLayer();
+   HWC2::Error DestoryDummyLayer();
+   HWC2::Error CheckCropSpiltStatus();
 #ifdef USE_LIBEBOOK
    int isEBook() { return ebook_framebuffer_width > 0;}
 #endif
@@ -845,6 +848,10 @@ class DrmHwcTwo : public hwc2_device_t {
 #ifdef USE_LIBPQ_HWPQ
    int CollectInfoForHwPqUIMode();
 #endif
+    int ResetDisplay();
+    int DisconnectDisplay();
+    int ConnectDisplay();
+    hwc2_layer_t GetSplitDummyLayer(){ return uCropSpiltDummyLayer_;}
 
    private:
     HWC2::Error ValidatePlanes();
@@ -854,6 +861,8 @@ class DrmHwcTwo : public hwc2_device_t {
     int ImportBuffers();
     void AddFenceToRetireFence(int fd);
     int DoMirrorDisplay(int32_t *retire_fence);
+    bool CheckForSkipScreenShot();
+    void CheckForSpiltModeTimeline();
 
     ResourceManager *resource_manager_;
     DrmDevice *drm_;
@@ -878,10 +887,13 @@ class DrmHwcTwo : public hwc2_device_t {
     HwcLayer client_layer_;
     // WriteBack 需要使用
     HwcLayer output_layer_;
+    // 拼接模式创建的 dummy layer
+    hwc2_layer_t uCropSpiltDummyLayer_;
     std::set<uint64_t> mHasResetBufferId_;
 
     int32_t color_mode_;
     bool init_success_;
+    bool force_disconneted_ = false;
     bool validate_success_;
     bool present_finish_;
     hwc2_drm_display_t ctx_;
@@ -901,10 +913,11 @@ class DrmHwcTwo : public hwc2_device_t {
     bool bLastSvepState_;
     bool bVrrDisplay_;
     bool bActiveModeChange_;
+    bool bValidateSpiltPrimary_ = false;
+    bool bValidateCropSpilt = false;
 
     bool bUseWriteBack_;
     int iLastTunnelId_=0;
-    hwc2_layer_t uCropSpiltDummyLayer_ = 0;
 
 #ifdef USE_LIBEBOOK
     // EBook
@@ -923,6 +936,7 @@ class DrmHwcTwo : public hwc2_device_t {
     int ebook_framebuffer_mmheight = 0;
     bool force_full_once_ = false;
 #endif
+    mutable std::recursive_mutex mDisplayMutex_;
   };
 
   enum PLUG_EVENT_TYPE{
@@ -949,7 +963,7 @@ class DrmHwcTwo : public hwc2_device_t {
     UNKNOW_EVENT = 0,
     DISPLAY_MODE_UPDATE_EVENT,
     HOTPLUG_EVENT,
-    PRIMARY_UPDATE_EVENT,
+    DISPLAY_PIPELINE_UPDATE_EVENT,
   };
 
   struct DrmEvent{
@@ -968,14 +982,18 @@ class DrmHwcTwo : public hwc2_device_t {
 
   protected:
     void Routine() override;
-    // 异步上报热插拔事件
+    // 发送热插拔事件
     int SendLocalHotplugEvent(DrmEvent event);
-    // 异步上报分辨率更新事件
+    // 发送分辨率更新事件
     int SendDisplayModeUpdateEvent(DrmEvent event);
-    // DrmHwc2 完全初始化
-    int UpdatePrimaryEvent(DrmEvent event);
+    // 处理显示管道更新时间
+    int HaneleDisplayPipelineUpdateEvent();
 
   private:
+    // 主屏切换事件处理流程
+    int HandlePrimaryChange();
+    // 拼接屏幕切换事件处理流程
+    int HandleSpiltModeChange();
     DrmHwcTwo *hwc2_;
     std::queue<DrmEvent> mPendingEvent_;
   };
@@ -1066,6 +1084,46 @@ class DrmHwcTwo : public hwc2_device_t {
 #ifdef USE_LIBEBOOK
   int EBookDisplayId_;
 #endif
+};
+
+// 析构执行器，会析构的时候执行对应的函数或者成员函数，方便在函数return的时候执行
+// 用法示例：  DestructExecutor<DrmHwcTwo::HwcDisplay> check_spilt_timeline(this,&HwcDisplay::CheckForSpiltModeTimeline);
+// 此实例析构的时候会执行 this->CheckForSpiltModeTimeline();
+template <typename T>
+class DestructExecutor {
+  enum ExecType {
+    EXE_NONE = 0,
+    EXE_CLASS,
+    EXE_ARGUMENT,
+  };
+
+ public:
+  DestructExecutor(void (*func)(T *), T *args)
+      : func_(func), args_(args), exec_type_(EXE_ARGUMENT) {}
+  DestructExecutor(T *object, void (T::*func)())
+      : obj_func_(func), obj_(object), exec_type_(EXE_CLASS) {}
+  ~DestructExecutor() {
+    switch (exec_type_) {
+      case EXE_ARGUMENT:
+        if (func_) func_(args_);
+        return;
+      case EXE_CLASS:
+        if (obj_func_!=nullptr && obj_) (obj_->*obj_func_)();
+        return;
+      default:
+        return;
+    }
+  }
+
+ private:
+
+  void (*func_)(T *) = nullptr;
+  T *args_ = nullptr;
+
+  void (T::*obj_func_)() = nullptr;
+  T *obj_ = nullptr;
+
+  ExecType exec_type_ = EXE_NONE;
 };
 }  // namespace android
 #endif // DRM_HWC_TWO_H

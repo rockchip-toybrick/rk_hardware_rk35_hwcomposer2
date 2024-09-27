@@ -69,7 +69,8 @@ typedef enum tagComposeMode{
    HWC_SR_OVERLAY_POLICY,
    HWC_3D_POLICY,
    HWC_DEBUG_POLICY,
-   HWC_ACCELERATE_POLICY
+   HWC_ACCELERATE_POLICY,
+   HWC_SPILT_MODE_POLICY,
 }ComposeMode;
 
 typedef struct RequestContext{
@@ -154,6 +155,10 @@ typedef struct StateContext{
   // resolution mode
   int iDisplayWidth_;
   int iDisplayHeight_;
+
+  // CropSpilt mode
+  bool bIsCropSpilt_;
+  bool bIsCropSpiltPrimary_;
 } StaCtx;
 typedef enum tagHwcSvepMode{
   HWC2_SR_NONE = 0,
@@ -182,6 +187,7 @@ struct SvepXml{
 };
  public:
   Vop356x()
+  : rgaBufferQueue_((std::make_shared<DrmBufferQueue>()))
 #if (defined USE_LIBSR)
     :
 #ifdef USE_LIBSR
@@ -238,6 +244,9 @@ struct SvepXml{
                         std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                         std::vector<PlaneGroup *> &plane_groups);
   int TryGLESPolicy(std::vector<DrmCompositionPlane> *composition,
+                        std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
+                        std::vector<PlaneGroup *> &plane_groups);
+  int TrySpiltPolicy(std::vector<DrmCompositionPlane> *composition,
                         std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                         std::vector<PlaneGroup *> &plane_groups);
   int MatchPlanes(std::vector<DrmCompositionPlane> *composition,
@@ -305,6 +314,7 @@ struct SvepXml{
   void PrepareLayers(std::vector<DrmHwcLayer*> &layers);
  private:
   Vop2Ctx ctx;
+  std::shared_ptr<DrmBufferQueue> rgaBufferQueue_;
 #ifdef USE_LIBSR
   // SR
   std::shared_ptr<SvepSr> svep_sr_;

@@ -78,11 +78,11 @@ static inline long __currentTime(){
     return static_cast<long>(tp.tv_sec) * 1000000 + tp.tv_usec;
 }
 #define ALOGD_HWC2_DRM_LAYER_INFO(log_level, drmHwcLayers) \
-    if(LogLevel(log_level)){ \
+    if(1){ \
       String8 output; \
       for(auto &drmHwcLayer : drmHwcLayers) {\
         drmHwcLayer.DumpInfo(output); \
-        ALOGD_IF(LogLevel(log_level),"%s",output.c_str()); \
+        HWC2_ALOGI("%s",output.c_str()); \
         output.clear(); \
       }\
     }
@@ -445,6 +445,7 @@ int DrmHwcTwo::HwcDisplay::ClearDisplay() {
 
 int DrmHwcTwo::HwcDisplay::ResetDisplay(){
   init_success_ = false;
+  // 等待一段时间，display处理完当前帧
   usleep(50*1000);
   if(compositor_ != NULL){
     compositor_->ClearDisplay();
@@ -452,6 +453,22 @@ int DrmHwcTwo::HwcDisplay::ResetDisplay(){
   HWC2_ALOGI("display-id=%" PRIu64,handle_);
   return 0;
 };
+
+
+int DrmHwcTwo::HwcDisplay::DisconnectDisplay(){
+  force_disconneted_ = true;
+  // 等待一段时间，display处理完当前帧
+  usleep(50*1000);
+  if(compositor_ != NULL){
+    compositor_->ClearDisplay();
+  }
+  HWC2_ALOGI("display-id=%" PRIu64,handle_);
+  return 0;
+}
+int DrmHwcTwo::HwcDisplay::ConnectDisplay(){
+  force_disconneted_ = false;
+  return 0;
+}
 
 int DrmHwcTwo::HwcDisplay::ActiveModeChange(bool change) {
   HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64,handle_);
@@ -596,8 +613,12 @@ HWC2::Error DrmHwcTwo::HwcDisplay::Init() {
     return error;
   }
 
-  init_success_ = true;
+  // 非主屏的拼接屏幕需要创建 DummyLayer
+  if(connector_->isCropSpilt() && !connector_->IsSpiltPrimary()){
+    GetOrCreateDummyLayer();
+  }
 
+  init_success_ = true;
   return HWC2::Error::None;
 }
 
@@ -616,6 +637,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::InitVirtual() {
   }
 
   init_success_ = true;
+  force_disconneted_ = false;
   frame_no_ = 0;
   wb_frame_no_ = 0;
   return HWC2::Error::None;
@@ -667,6 +689,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::InitEBook() {
   }
 
   init_success_ = true;
+  force_disconneted_ = false;
   frame_no_ = 0;
   wb_frame_no_ = 0;
   return HWC2::Error::None;
@@ -773,7 +796,6 @@ HWC2::Error DrmHwcTwo::HwcDisplay::CheckStateAndReinit(bool clear_layer) {
   }
 
   init_success_ = true;
-
   return HWC2::Error::None;
 }
 
@@ -876,15 +898,17 @@ HWC2::Error DrmHwcTwo::HwcDisplay::AcceptDisplayChanges() {
 }
 
 HWC2::Error DrmHwcTwo::HwcDisplay::CreateLayer(hwc2_layer_t *layer) {
+  std::unique_lock<std::recursive_mutex> lock(mDisplayMutex_);
   layers_.emplace(static_cast<hwc2_layer_t>(layer_idx_), HwcLayer(layer_idx_, drm_));
   *layer = static_cast<hwc2_layer_t>(layer_idx_);
   ++layer_idx_;
-  HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ", layer-id=%" PRIu64,handle_,*layer);
+  HWC2_ALOGI("display-id=%" PRIu64 ", layer-id=%" PRIu64,handle_,*layer);
   return HWC2::Error::None;
 }
 
 HWC2::Error DrmHwcTwo::HwcDisplay::DestroyLayer(hwc2_layer_t layer) {
-  HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ", layer-id=%" PRIu64,handle_,layer);
+  std::unique_lock<std::recursive_mutex> lock(mDisplayMutex_);
+  HWC2_ALOGI("display-id=%" PRIu64 ", layer-id=%" PRIu64,handle_,layer);
   auto map_layer = layers_.find(layer);
   if (map_layer != layers_.end()){
     map_layer->second.clear();
@@ -934,7 +958,6 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetActiveConfig(hwc2_config_t *config) {
                                 .right = srcX + srcW + 0.0f,
                                 .bottom = srcY + srcH + 0.0f};
     client_layer_.SetLayerSourceCrop(source_crop);
-
   }else{
     // Setup the client layer's dimensions
     hwc_rect_t display_frame = {.left = 0,
@@ -1638,6 +1661,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::InitDrmHwcLayer() {
 #endif
 
   ALOGD_HWC2_DRM_LAYER_INFO((DBG_INFO),drm_hwc_layers_);
+  HWC2_ALOGI("rk-debug layers_,size = %zu drm_hwc_layers_.size()=%zu", layers_.size(), drm_hwc_layers_.size());
 
   return HWC2::Error::None;
 }
@@ -1684,8 +1708,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidatePlanes() {
   std::tie(ret,
            composition_planes_) = planner_->TryHwcPolicy(layers, plane_groups, crtc_,
                                                          static_screen_opt_ ||
-                                                         force_gles_ ||
-                                                         connector_->isCropSpilt());
+                                                         force_gles_);
   if (ret){
     ALOGE("First, GLES policy fail ret=%d", ret);
     return HWC2::Error::BadConfig;
@@ -1815,7 +1838,7 @@ int DrmHwcTwo::HwcDisplay::ImportBuffers() {
       if(drm_hwc_layer.bUseMemc_)
         continue;
 #endif
-      // 如果是超分处理后的图层，已经更新了GemHandle参数，则不再获取GemHandle
+      // 如果是RGA处理后的图层，已经更新了GemHandle参数，则不再获取GemHandle
       if(drm_hwc_layer.bUseRga_)
         continue;
 
@@ -1851,6 +1874,10 @@ int DrmHwcTwo::HwcDisplay::ImportBuffers() {
   if(use_client_layer){
     for (auto &drm_hwc_layer : drm_hwc_layers_) {
       if(drm_hwc_layer.bFbTarget_){
+        // 如果是RGA处理后的图层，已经更新了GemHandle参数，则不再获取GemHandle
+        if(drm_hwc_layer.bUseRga_)
+          continue;
+
         uint32_t client_id = 0;
         client_layer_.PopulateFB(client_id, &drm_hwc_layer, &ctx_, frame_no_, false);
         ret = client_layer_.initOrGetGemhanleFromCache(&drm_hwc_layer);
@@ -1858,66 +1885,6 @@ int DrmHwcTwo::HwcDisplay::ImportBuffers() {
           ALOGE("Failed to get_gemhanle client_layer, ret=%d", ret);
           return ret;
         }
-
-        if(connector_->isCropSpilt()){
-          int32_t transform = connector_->getCropSpiltTransform();
-          std::vector<PlaneGroup *> all_plane_groups = drm_->GetPlaneGroups();
-          bool IsSupportAfbc = false;
-          if(gIsRK356x()){
-            for(auto &plane_group : all_plane_groups){
-              if(plane_group->acquire(1 << crtc_->pipe(), handle_) && plane_group->win_type & DRM_PLANE_TYPE_ALL_CLUSTER_MASK){
-                IsSupportAfbc = true;
-                break;
-              }
-            }
-          }else if(gIsRK3588()){
-            for(auto &plane_group : all_plane_groups){
-              if(plane_group->acquire(1 << crtc_->pipe(), handle_) && plane_group->win_type & PLANE_RK3588_ALL_CLUSTER_MASK){
-                IsSupportAfbc = true;
-                break;
-              }
-            }
-          }else if(gIsRK3576()){
-            if(transform==0){
-              //3576 Afbc 不支持旋转，如果有旋转认为不支持Afbc
-              for(auto &plane_group : all_plane_groups){
-                if(plane_group->acquire(1 << crtc_->pipe(), handle_) && plane_group->win_type & PLANE_RK3576_ALL_CLUSTER_MASK){
-                  IsSupportAfbc = true;
-                  break;
-                }
-              }
-            }
-          }
-
-          drm_hwc_layer.SetTransform(static_cast<HWC2::Transform>(transform));
-          if(IsSupportAfbc && drm_hwc_layer.bAfbcd_){
-            HWC2_ALOGD_IF_DEBUG("CropSpilt: display %d use vop transform",(int)handle_);
-          }else if(drm_hwc_layer.bAfbcd_){
-            if(gIsRK356x()){
-              HWC2_ALOGD_IF_DEBUG("CropSpilt: display %d RK356x no Afbc layer do not support transform",(int)handle_);
-              drm_hwc_layer.SetTransform(static_cast<HWC2::Transform>(0));
-            }else{
-              HWC2_ALOGD_IF_DEBUG("CropSpilt: display %d use RGA transform",(int)handle_);
-              ret = client_layer_.DoFbTransform(true, &drm_hwc_layer, &ctx_);
-              if(ret){
-                HWC2_ALOGE("CropSpilt: ClientLayer DoFbTransform fail, Please check config file HwComposerEnv.xml, ret = %d", ret);
-                drm_hwc_layer.SetTransform(static_cast<HWC2::Transform>(0));
-              }
-            }
-          }else{
-            if(transform != 0){
-              HWC2_ALOGD_IF_DEBUG("CropSpilt: display %d use RGA transform",(int)handle_);
-              ret = client_layer_.DoFbTransform(true, &drm_hwc_layer, &ctx_);
-              if(ret){
-                HWC2_ALOGE("CropSpilt: ClientLayer DoFbTransform fail, Please check config file HwComposerEnv.xml, ret = %d", ret);
-                drm_hwc_layer.SetTransform(static_cast<HWC2::Transform>(0));
-              }
-            }else{
-              HWC2_ALOGD_IF_DEBUG("CropSpilt: display %d no Afbc use VOP transform",(int)handle_);
-            }
-          }
-        }
-
 #ifdef USE_LIBPQ
 #ifdef USE_LIBPQ_HWPQ
         if(gIsRK3576()){
@@ -2334,6 +2301,26 @@ HWC2::Error DrmHwcTwo::HwcDisplay::PresentEBookDisplay(int32_t *retire_fence) {
 }
 #endif
 
+void DrmHwcTwo::HwcDisplay::CheckForSpiltModeTimeline(){
+  int pipeline_timeline = property_get_int32(DRM_XML_SYS_UPDATE, -1);
+  //Only Primary display check for cropspilt mode update
+  if(handle_ == 0 && pipeline_timeline > 0 && drm_->IsCheckDisplayPipeline(pipeline_timeline)){
+    DrmEvent event;
+    event.type = DISPLAY_PIPELINE_UPDATE_EVENT;
+    g_ctx->eventWorker_.SendDrmEvent(event);
+    return;
+  }
+
+  pipeline_timeline = property_get_int32(DRM_XML_VENDOR_UPDATE, -1);
+  //Only Primary display check for cropspilt mode update
+  if(handle_ == 0 && pipeline_timeline > 0 && drm_->IsCheckDisplayPipeline(pipeline_timeline)){
+    DrmEvent event;
+    event.type = DISPLAY_PIPELINE_UPDATE_EVENT;
+    g_ctx->eventWorker_.SendDrmEvent(event);
+    return;
+  }
+}
+
 HWC2::Error DrmHwcTwo::HwcDisplay::PresentDisplay(int32_t *retire_fence) {
   ATRACE_CALL();
 
@@ -2345,7 +2332,18 @@ HWC2::Error DrmHwcTwo::HwcDisplay::PresentDisplay(int32_t *retire_fence) {
     return PresentEBookDisplay(retire_fence);
   }
 #endif
+
+  DestructExecutor<DrmHwcTwo::HwcDisplay> check_spilt_timeline(this,&HwcDisplay::CheckForSpiltModeTimeline);
+
   int32_t merge_retire_fence = -1;
+
+  // 强制断开的屏幕不处理任何逻辑
+  if(force_disconneted_){
+    HWC2_ALOGD_IF_ERR("force_disconneted_=%d skip.",force_disconneted_);
+    *retire_fence = merge_retire_fence;
+    return HWC2::Error::None;
+  }
+
   // 拼接主屏需要遍历其他拼接子屏幕
   if(connector_->IsSpiltPrimary()){
     DoMirrorDisplay(&merge_retire_fence);
@@ -2425,19 +2423,6 @@ HWC2::Error DrmHwcTwo::HwcDisplay::PresentDisplay(int32_t *retire_fence) {
     g_ctx->eventWorker_.SendDrmEvent(event);
     ActiveModeChange(false);
   }
-
-
-    char value[PROPERTY_VALUE_MAX];
-    property_get("vendor.hwc.debug", value, "0");
-    if(atoi(value) > 0){
-      DrmEvent event;
-      event.type = PRIMARY_UPDATE_EVENT;
-      event.display_id = (int)handle_;
-      event.connection = DRM_MODE_CONNECTED;
-      g_ctx->eventWorker_.SendDrmEvent(event);
-      property_set("vendor.hwc.debug", "0");
-    }
-
   return HWC2::Error::None;
 }
 
@@ -2498,7 +2483,6 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetActiveConfig(hwc2_config_t config) {
                                  .right = srcX + srcW + 0.0f,
                                  .bottom = srcY + srcH + 0.0f};
       client_layer_.SetLayerSourceCrop(source_crop);
-
     }else{
       if(bVrrDisplay_){
         // VRR
@@ -2999,6 +2983,9 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateDisplay(uint32_t *num_types,
   ATRACE_CALL();
   HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ,handle_);
 
+  // Enable/disable debug log
+  UpdateLogLevel();
+
   // 虚拟屏
   if(isVirtual()){
     return ValidateVirtualDisplay(num_types, num_requests);;
@@ -3011,24 +2998,26 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateDisplay(uint32_t *num_types,
   }
 #endif
 
-  if(LogLevel(DBG_DEBUG))
-    DumpDisplayLayersInfo();
+  DumpDisplayLayersInfo();
 
-  if(!init_success_){
-    HWC2_ALOGD_IF_ERR("init_success_=%d skip.",init_success_);
+if(!init_success_ || force_disconneted_){
+    HWC2_ALOGD_IF_ERR("init_success_=%d force_disconneted_=%d skip.",init_success_, force_disconneted_);
     if(connector_->IsSpiltPrimary()){
       for (std::pair<const hwc2_layer_t, DrmHwcTwo::HwcLayer> &l : layers_){
           l.second.set_validated_type(HWC2::Composition::Client);
+          //num_types 应该为发生改变的图层，不仅仅是Client图层
+          if(l.second.type_changed()){
+            ++*num_types;
+          }
       }
     }else{
       for (std::pair<const hwc2_layer_t, DrmHwcTwo::HwcLayer> &l : layers_){
           l.second.set_validated_type(l.second.sf_type());
       }
     }
-    return HWC2::Error::None;
+    validate_success_ = false;
+    return *num_types ? HWC2::Error::HasChanges : HWC2::Error::None;
   }
-  // Enable/disable debug log
-  UpdateLogLevel();
   UpdateBCSH();
   UpdateHdmiOutputFormat();
   UpdateOverscan();
@@ -4368,6 +4357,54 @@ int DrmHwcTwo::HwcDisplay::DoMirrorDisplay(int32_t *retire_fence){
     return 0;
   }
 
+  // 拼接主屏获取到实际的ClientBuffer后需要重新调用 TryHwcPolicy 执行策略匹配
+  int ret = 0;
+  std::vector<DrmHwcLayer *> layers;
+  layers.reserve(drm_hwc_layers_.size());
+  for(size_t i = 0; i < drm_hwc_layers_.size(); ++i){
+      layers.push_back(&drm_hwc_layers_[i]);
+  }
+
+  for (auto &drm_hwc_layer : drm_hwc_layers_) {
+    if(drm_hwc_layer.bFbTarget_){
+      uint32_t client_id = 0;
+      client_layer_.PopulateFB(client_id, &drm_hwc_layer, &ctx_, frame_no_, false);
+      ret = client_layer_.initOrGetGemhanleFromCache(&drm_hwc_layer);
+      if (ret) {
+        ALOGE("Failed to get_gemhanle client_layer, ret=%d", ret);
+        return ret;
+      }
+    }
+  }
+
+  std::vector<PlaneGroup *> plane_groups;
+  DrmDevice *drm = crtc_->getDrmDevice();
+  plane_groups.clear();
+  std::vector<PlaneGroup *> all_plane_groups = drm->GetPlaneGroups();
+  for(auto &plane_group : all_plane_groups){
+    if(plane_group->acquire(1 << crtc_->pipe(), handle_)){
+      // RK3576平台动态迁移功能，如果需要disable的图层则不进行策略匹配
+      if(plane_group->is_will_disable() == false){
+        plane_groups.push_back(plane_group);
+      }else{
+        HWC2_ALOGD_IF_DEBUG("%s will disable, display-id(%" PRIi64 "->%" PRIi64 ") crtc_mask(0x%" PRIx32 " -> 0x%" PRIx32 ")",
+            plane_group->planes[0]->name(),
+            plane_group->possible_display_, plane_group->next_possible_display_,
+            plane_group->current_crtc_, plane_group->next_crtc_);
+        continue;
+      }
+    }
+  }
+
+  std::tie(ret,
+          composition_planes_) = planner_->TryHwcPolicy(layers, plane_groups, crtc_,
+                                                        static_screen_opt_ ||
+                                                        force_gles_);
+  if (ret){
+    ALOGE("First, GLES policy fail ret=%d", ret);
+    return -1;
+  }
+
   int32_t merge_rt_fence = -1;
   int32_t display_cnt = 1;
   for (auto &conn : drm_->connectors()) {
@@ -4375,50 +4412,21 @@ int DrmHwcTwo::HwcDisplay::DoMirrorDisplay(int32_t *retire_fence){
       continue;
     }
     int display_id = conn->display();
+    // 非拼接屏幕需要将主屏幕ClientBuffer作为一般Buffer传入
     if(!conn->IsSpiltPrimary()){
       auto &display = resource_manager_->GetHwc2()->displays_.at(display_id);
       if (conn->state() == DRM_MODE_CONNECTED) {
-        if(display.has_layer(uCropSpiltDummyLayer_)){
-        }else{
-          display.CreateLayer(&uCropSpiltDummyLayer_);
-        }
-
-        // Clear Unused Layers
-        std::vector<hwc2_layer_t> layer_to_clear;
-        for(auto &map_layer : display.get_layers()){
-          if(map_layer.first!=uCropSpiltDummyLayer_){
-            map_layer.second.clear();
-            layer_to_clear.push_back(map_layer.first);
-          }
-        }
-        for(auto l:layer_to_clear)
-          display.get_layers().erase(l);
-
-        HwcLayer &layer = display.get_layer(uCropSpiltDummyLayer_);
-        hwc_rect_t frame = {0,0,1920,1080};
-        layer.SetLayerDisplayFrame(frame);
-        hwc_frect_t crop = {0.0, 0.0, 1920.0, 1080.0};
-        layer.SetLayerSourceCrop(crop);
-        layer.SetLayerZOrder(0);
-        layer.SetLayerBlendMode(HWC2_BLEND_MODE_NONE);
-        layer.SetLayerPlaneAlpha(1.0);
-        layer.SetLayerCompositionType(HWC2_COMPOSITION_DEVICE);
-        // layer.SetLayerBuffer(NULL,-1);
-        layer.SetLayerTransform(0);
-        uint32_t num_types;
-        uint32_t num_requests;
-        display.ValidateDisplay(&num_types,&num_requests);
-        // display.GetChangedCompositionTypes();
-        // display.GetDisplayRequests();
-        display.AcceptDisplayChanges();
-        hwc_region_t damage;
-        display.SetClientTarget(client_layer_.buffer(),
-                                dup(client_layer_.acquire_fence()->getFd()),
-                                0,
-                                damage);
-        int32_t rt_fence;
-        display.PresentDisplay(&rt_fence);
-        if(merge_rt_fence > 0){
+        if(display.GetSplitDummyLayer() > 0 && display.has_layer(display.GetSplitDummyLayer())){
+          // 获取SpiltLayer并设置拼接屏幕的BufferHandle
+          HwcLayer &spilt_layer = display.get_layer(display.GetSplitDummyLayer());
+          spilt_layer.SetLayerBuffer(client_layer_.buffer(), dup(client_layer_.acquire_fence()->getFd()));
+          uint32_t num_types;
+          uint32_t num_requests;
+          display.ValidateDisplay(&num_types,&num_requests);
+          display.AcceptDisplayChanges();
+          int32_t rt_fence = -1;
+          display.PresentDisplay(&rt_fence);
+          if(merge_rt_fence > 0){
             char acBuf[32];
             sprintf(acBuf,"RTD%" PRIu64 "M-FN%d-%d", handle_, frame_no_, display_cnt++);
             sp<ReleaseFence> rt = sp<ReleaseFence>(new ReleaseFence(rt_fence, acBuf));
@@ -4433,14 +4441,75 @@ int DrmHwcTwo::HwcDisplay::DoMirrorDisplay(int32_t *retire_fence){
                           drm_->connector_type_str(conn->type()),
                           conn->type_id());
             }
-        }else{
-          merge_rt_fence = rt_fence;
+          }else{
+            merge_rt_fence = rt_fence;
+          }
         }
       }
     }
   }
   *retire_fence = merge_rt_fence;
   return 0;
+}
+
+HWC2::Error DrmHwcTwo::HwcDisplay::GetOrCreateDummyLayer(){
+  std::unique_lock<std::recursive_mutex> lock(mDisplayMutex_);
+  if(uCropSpiltDummyLayer_ > 0 && has_layer(uCropSpiltDummyLayer_)){
+    return HWC2::Error::None;
+  }else{
+    CreateLayer(&uCropSpiltDummyLayer_);
+    HwcLayer &dummy_layer = get_layer(uCropSpiltDummyLayer_);
+    // 设置 frame 信息
+    hwc_rect_t frame = {0,0,ctx_.framebuffer_width,ctx_.framebuffer_height};
+    dummy_layer.SetLayerDisplayFrame(frame);
+    // 设置 crop信息
+    int32_t srcX = 0, srcY = 0, srcW = 0, srcH = 0;
+    connector_->getCropInfo(&srcX, &srcY, &srcW, &srcH);
+    hwc_frect_t crop = {
+      static_cast<float>(srcX),
+      static_cast<float>(srcY),
+      static_cast<float>(srcX+srcW),
+      static_cast<float>(srcY+srcH)
+    };
+    dummy_layer.SetLayerSourceCrop(crop);
+    dummy_layer.SetLayerZOrder(0);
+    dummy_layer.SetLayerBlendMode(HWC2_BLEND_MODE_NONE);
+    dummy_layer.SetLayerPlaneAlpha(1.0);
+    dummy_layer.SetLayerCompositionType(HWC2_COMPOSITION_DEVICE);
+    // 设置旋转信息
+    int32_t transform = connector_->getCropSpiltTransform();
+    switch(transform){
+      case static_cast<int32_t>(HWC2::Transform::None):
+      case static_cast<int32_t>(HWC2::Transform::FlipH):
+      case static_cast<int32_t>(HWC2::Transform::FlipV):
+      case static_cast<int32_t>(HWC2::Transform::Rotate90):
+      case static_cast<int32_t>(HWC2::Transform::Rotate180):
+      case static_cast<int32_t>(HWC2::Transform::Rotate270):
+      case static_cast<int32_t>(HWC2::Transform::FlipHRotate90):
+      case static_cast<int32_t>(HWC2::Transform::FlipVRotate90):
+        break;
+      default:
+        HWC2_ALOGW("SpiltMode: invalid transform=%d", transform);
+        transform = 0;
+        break;
+    }
+    dummy_layer.SetLayerTransform(transform);
+    HWC2_ALOGI("SpiltMode: display=%" PRIu64" Create dummylayer = %" PRIu64 " crop=[%f,%f,%f,%f] frame=[%d,%d,%d,%d] transform=%s",
+               handle_, uCropSpiltDummyLayer_, crop.left, crop.top, crop.right, crop.bottom, frame.left, frame.top, frame.right, frame.bottom, getTransformName(static_cast<hwc_transform_t>(transform)));
+    return HWC2::Error::None;
+  }
+}
+
+HWC2::Error DrmHwcTwo::HwcDisplay::DestoryDummyLayer(){
+  std::unique_lock<std::recursive_mutex> lock(mDisplayMutex_);
+  if(uCropSpiltDummyLayer_ > 0 && has_layer(uCropSpiltDummyLayer_)){
+    HWC2_ALOGI("SpiltMode: display=%" PRIu64" Destory dummylayer = %" PRIu64, handle_, uCropSpiltDummyLayer_);
+    auto ret = DestroyLayer(uCropSpiltDummyLayer_);
+    uCropSpiltDummyLayer_ = 0;
+    return ret;
+  }else{
+    return HWC2::Error::None;
+  }
 }
 
 HWC2::Error DrmHwcTwo::HwcLayer::SetLayerBlendMode(int32_t mode) {
@@ -4467,6 +4536,16 @@ HWC2::Error DrmHwcTwo::HwcLayer::SetLayerBuffer(buffer_handle_t buffer,
   //      sf_type_ == HWC2::Composition::SolidColor)
   //    return HWC2::Error::None;
   if (mCurrentState.sf_type_ == HWC2::Composition::Sideband){
+    return HWC2::Error::None;
+  }
+
+  // 动态切换刷新率过程中SurfaceFlinger会出现 SetLayerBuffer target=null的情况
+  // 为了避免错误日志打印，故暂时对这种情况进行规避；
+  if(buffer == NULL){
+    HWC2_ALOGW("Buffer is NULL, skip SetLayerBuffer");
+    if(acquire_fence > 0){
+      close(acquire_fence);
+    }
     return HWC2::Error::None;
   }
 
@@ -4525,7 +4604,7 @@ HWC2::Error DrmHwcTwo::HwcLayer::SetLayerBuffer(buffer_handle_t buffer,
   }
   acquire_fence_ = sp<AcquireFence>(new AcquireFence(acquire_fence));
   bUseSlotCache = false;
-  uCacheSlot = -1;
+  uCacheSlot = 0;
   return HWC2::Error::None;
 }
 
@@ -4761,7 +4840,7 @@ void DrmHwcTwo::HwcLayer::PopulateNormalLayer(DrmHwcLayer *drmHwcLayer,
     // Commit mirror function
     drmHwcLayer->SetDisplayFrameMirror(mCurrentState.display_frame_);
 
-    if(buffer_){
+    if(buffer_ && pBufferInfo_!=NULL){
       drmHwcLayer->sf_handle  = buffer_;
       drmHwcLayer->uBufferId_ = pBufferInfo_->uBufferId_;
       // 利用 dup dma-buffer-fd 来增加对 dma-buffer 的引用计数
@@ -4941,7 +5020,7 @@ void DrmHwcTwo::HwcLayer::PopulateFB(hwc2_layer_t layer_id, DrmHwcLayer *drmHwcL
   drmHwcLayer->SetSourceCrop(mCurrentState.source_crop_);
   drmHwcLayer->SetTransform(mCurrentState.transform_);
 
-  if(buffer_ && !validate){
+  if(buffer_ && !validate && pBufferInfo_!=NULL){
     // 利用 dup dma-buffer-fd 来增加对 dma-buffer 的引用计数
     // 避免 dma-buffer 被提前释放
     drmHwcLayer->uBufferId_ = pBufferInfo_->uBufferId_;
@@ -4957,11 +5036,12 @@ void DrmHwcTwo::HwcLayer::PopulateFB(hwc2_layer_t layer_id, DrmHwcLayer *drmHwcL
     drmHwcLayer->uFourccFormat_   = pBufferInfo_->uFourccFormat_;
     drmHwcLayer->uModifier_       = pBufferInfo_->uModifier_;
     drmHwcLayer->sLayerName_      = pBufferInfo_->sLayerName_;
+    drmHwcLayer->pBufferInfo_     = pBufferInfo_;
   }else{
     drmHwcLayer->iFd_     = -1;
-    drmHwcLayer->iWidth_  = -1;
-    drmHwcLayer->iHeight_ = -1;
-    drmHwcLayer->iStride_ = -1;
+    drmHwcLayer->iWidth_  = (mCurrentState.source_crop_.right - mCurrentState.source_crop_.left);
+    drmHwcLayer->iHeight_ = (mCurrentState.source_crop_.bottom - mCurrentState.source_crop_.top);
+    drmHwcLayer->iStride_ = (mCurrentState.source_crop_.right - mCurrentState.source_crop_.left);
     // 由于 validate 没有实际的handle, 故此处的size通过crop信息预估,格式为 RGBA
     drmHwcLayer->iSize_   = (mCurrentState.source_crop_.right - mCurrentState.source_crop_.left) *
                             (mCurrentState.source_crop_.bottom - mCurrentState.source_crop_.top) * 4;
@@ -4972,12 +5052,12 @@ void DrmHwcTwo::HwcLayer::PopulateFB(hwc2_layer_t layer_id, DrmHwcLayer *drmHwcL
     drmHwcLayer->uModifier_ = 0;
     drmHwcLayer->uGemHandle_      = 0;
     drmHwcLayer->sLayerName_ = std::string("FramebufferSurface");
+    drmHwcLayer->pBufferInfo_     = NULL;
   }
 
   drmHwcLayer->Init();
   return;
 }
-
 
 #ifdef USE_LIBPQ
 int DrmHwcTwo::HwcLayer::DoSwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_drm_display_t* ctx){
@@ -5394,250 +5474,6 @@ int DrmHwcTwo::HwcLayer::DoHwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_dr
 }
 #endif
 
-int DrmHwcTwo::HwcLayer::DoFbTransform(bool validate, DrmHwcLayer *drmLayer, hwc2_drm_display_t* ctx){
-  rga_buffer_t src;
-  rga_buffer_t dst;
-  rga_buffer_t pat;
-  im_rect src_rect;
-  im_rect dst_rect;
-  im_rect pat_rect;
-  memset(&src, 0, sizeof(rga_buffer_t));
-  memset(&dst, 0, sizeof(rga_buffer_t));
-  memset(&pat, 0, sizeof(rga_buffer_t));
-  memset(&src_rect, 0, sizeof(im_rect));
-  memset(&dst_rect, 0, sizeof(im_rect));
-  memset(&pat_rect, 0, sizeof(im_rect));
-
-  if(FbTfBufferQueue_ == NULL){
-    FbTfBufferQueue_ = std::make_shared<DrmBufferQueue>();
-  }
-
-  if(gIsRK3588() && drmLayer->iWidth_ > 8176){
-    HWC2_ALOGE("CropSpilt: RGA3 can't handle iWidth_=%d layer, rga max is 8176.", drmLayer->iWidth_);
-    return -1;
-  }else if(drmLayer->iWidth_ > 8192){
-    HWC2_ALOGE("CropSpilt: RGA2 can't handle iWidth_=%d layer, rga max is 8192.", drmLayer->iWidth_);
-    return -1;
-  }
-
-  // RGA 有缩放倍数限制
-  if(gIsRK3588() &&  (drmLayer->fHScaleMul_ < 0.125 ||
-                      drmLayer->fHScaleMul_ > 8.0   ||
-                      drmLayer->fVScaleMul_ < 0.125 ||
-                      drmLayer->fVScaleMul_ > 8.0)){
-      HWC2_ALOGE("CropSpilt: RGA3 can't handle fHScaleMul_=%f fVScaleMul_=%f layer, scale range:[0.125,8]", drmLayer->fHScaleMul_, drmLayer->fVScaleMul_);
-      return -1;
-  }else if((drmLayer->fHScaleMul_ < 1.0/16.0 ||
-            drmLayer->fHScaleMul_ > 16.0     ||
-            drmLayer->fVScaleMul_ < 1.0/16.0 ||
-            drmLayer->fVScaleMul_ > 16.0)){
-      HWC2_ALOGE("CropSpilt: RGA2 can't handle fHScaleMul_=%f fVScaleMul_=%f layer, scale range:[0.0625,16]", drmLayer->fHScaleMul_, drmLayer->fVScaleMul_);
-      return -1;
-  }
-
-  // 4. Alloc Dst buffer
-  std::shared_ptr<DrmBuffer> dst_buffer;
-  dst_buffer = FbTfBufferQueue_->DequeueDrmBuffer(ctx->rel_xres,
-                                                  ctx->rel_yres,
-                                                  HAL_PIXEL_FORMAT_RGBA_8888,
-                                                  RK_GRALLOC_USAGE_STRIDE_ALIGN_64 |
-                                                  RK_GRALLOC_USAGE_WITHIN_4G |
-                                                  MALI_GRALLOC_USAGE_NO_AFBC,
-                                                  "PP-FB-target");
-
-  if(dst_buffer == NULL){
-    HWC2_ALOGE("CropSpilt: DequeueDrmBuffer fail!, skip FbTransform.");
-    return -1;
-  }
-
-
-  // Set src buffer info
-  src.fd      = drmLayer->iFd_;
-  src.width   = drmLayer->iWidth_;
-  src.height  = drmLayer->iHeight_;
-  src.hstride = drmLayer->iHeightStride_;
-  src.format  = drmLayer->iFormat_;
-
-  // RGA 的特殊修改，需要通过 wstride
-  if(drmLayer->uFourccFormat_ == DRM_FORMAT_NV15)
-    src.wstride = drmLayer->iByteStride_;
-  else
-    src.wstride = drmLayer->iStride_;
-
-  if(drmLayer->iFormat_ == HAL_PIXEL_FORMAT_YUV420_8BIT_I){
-    src.format = HAL_PIXEL_FORMAT_YCrCb_NV12;
-  }else if(drmLayer->iFormat_ == HAL_PIXEL_FORMAT_YUV420_10BIT_I){
-    src.format = HAL_PIXEL_FORMAT_YCrCb_NV12_10;
-  }
-
-  // Set src rect info
-  src_rect.x = (int)drmLayer->source_crop.left;
-  src_rect.y = (int)drmLayer->source_crop.top;
-  src_rect.width  = (int)(drmLayer->source_crop.right  - drmLayer->source_crop.left);
-  src_rect.height = (int)(drmLayer->source_crop.bottom - drmLayer->source_crop.top);
-
-  // AFBC format
-  if(drmLayer->bAfbcd_){
-    if(gIsRK3588()){
-      if((src_rect.width%16)==0 && (src_rect.height%16)==0){
-        src.rd_mode = IM_FBC_MODE;
-      }else{
-        HWC2_ALOGE("CropSpilt: AFBC width = %d, height=%d not aligned to 16, "
-                   "Please set vendor.gralloc.no_afbc_for_fb_target_layer=1", src_rect.width, src_rect.height);
-        FbTfBufferQueue_->QueueBuffer(dst_buffer);
-        return -1;
-      }
-    }else if(gIsRK3576()){
-      if((src_rect.width%32)==0 && (src_rect.height%8)==0){
-        src.rd_mode = IM_AFBC32x8_MODE;
-      }else{
-        HWC2_ALOGE("CropSpilt: AFBC width = %d, height=%d not aligned to (32,8), "
-                   "Please set vendor.gralloc.no_afbc_for_fb_target_layer=1", src_rect.width, src_rect.height);
-        FbTfBufferQueue_->QueueBuffer(dst_buffer);
-        return -1;
-      }
-    }else{
-      HWC2_ALOGE("CropSpilt: RGA do not support Afbc, Please set vendor.gralloc.no_afbc_for_fb_target_layer=1");
-      FbTfBufferQueue_->QueueBuffer(dst_buffer);
-      return -1;
-    }
-  }
-
-  // Set dst buffer info
-  dst.fd      = dst_buffer->GetFd();
-  dst.width   = dst_buffer->GetWidth();
-  dst.height  = dst_buffer->GetHeight();
-  // RGA 的特殊修改，需要通过 wstride
-  if(dst_buffer->GetFourccFormat() == DRM_FORMAT_NV15)
-    dst.wstride = dst_buffer->GetByteStride();
-  else
-    dst.wstride = dst_buffer->GetStride();
-
-  dst.hstride = dst_buffer->GetHeightStride();
-  dst.format  = dst_buffer->GetFormat();
-
-  // Set dst rect info
-  dst_rect.x = 0;
-  dst_rect.y = 0;
-  dst_rect.width  = (int)(drmLayer->display_frame.right  - drmLayer->display_frame.left);
-  dst_rect.height = (int)(drmLayer->display_frame.bottom - drmLayer->display_frame.top);
-
-  int usage;
-  // 处理旋转
-  switch(drmLayer->transform){
-  case DRM_MODE_ROTATE_0:
-    usage = 0;
-    break;
-  case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_X:
-    usage = IM_HAL_TRANSFORM_FLIP_H;
-    break;
-  case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_Y:
-    usage = IM_HAL_TRANSFORM_FLIP_V;
-    break;
-  case DRM_MODE_ROTATE_90:
-    usage = IM_HAL_TRANSFORM_ROT_90;
-    break;
-  case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_X | DRM_MODE_REFLECT_Y:
-    usage = IM_HAL_TRANSFORM_ROT_180;
-    break;
-  case DRM_MODE_ROTATE_270:
-    usage = IM_HAL_TRANSFORM_ROT_270;
-    break;
-  // RGA2/RGA3的 flip + rotate 场景，硬件内部处理是先 rotate 再 flip
-  // 而 Android 请求的是先 flip 再 rotate，故此请求需要做转换
-  // Android请求 flip-v + rotate-90  等价于 rotate-90 + flip-h
-  case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_Y | DRM_MODE_ROTATE_90 :
-    usage = IM_HAL_TRANSFORM_ROT_90 | IM_HAL_TRANSFORM_FLIP_H ;
-    break;
-  // Android请求 flip-h + rotate-90  等价于 rotate-90 + flip-v
-  case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_X | DRM_MODE_ROTATE_90:
-    usage = IM_HAL_TRANSFORM_ROT_90 | IM_HAL_TRANSFORM_FLIP_V;
-    break;
-  default:
-    HWC2_ALOGE("CropSpilt: Unknown transform 0x%x", drmLayer->transform);
-    FbTfBufferQueue_->QueueBuffer(dst_buffer);
-    return -1;
-  }
-
-  IM_STATUS im_state;
-  // Call Im2d 格式转换
-  im_state = imcheck_composite(src, dst, pat, src_rect, dst_rect, pat_rect, usage | IM_ASYNC);
-  if(im_state != IM_STATUS_NOERROR){
-    HWC2_ALOGE("CropSpilt: call imcheck_composite fail, %s",imStrError(im_state));
-    FbTfBufferQueue_->QueueBuffer(dst_buffer);
-    return -1;
-  }
-
-  hwc_frect_t source_crop;
-  source_crop.left   = dst_rect.x;
-  source_crop.top    = dst_rect.y;
-  source_crop.right  = dst_rect.x + dst_rect.width;
-  source_crop.bottom = dst_rect.y + dst_rect.height;
-  drmLayer->UpdateAndStoreInfoFromDrmBuffer(dst_buffer->GetHandle(),
-                                            dst_buffer->GetFd(),
-                                            dst_buffer->GetFormat(),
-                                            dst_buffer->GetWidth(),
-                                            dst_buffer->GetHeight(),
-                                            dst_buffer->GetStride(),
-                                            dst_buffer->GetHeightStride(),
-                                            dst_buffer->GetByteStride(),
-                                            dst_buffer->GetSize(),
-                                            dst_buffer->GetUsage(),
-                                            dst_buffer->GetFourccFormat(),
-                                            dst_buffer->GetModifier(),
-                                            dst_buffer->GetByteStridePlanes(),
-                                            dst_buffer->GetName(),
-                                            source_crop,
-                                            dst_buffer->GetBufferId(),
-                                            dst_buffer->GetGemHandle(),
-                                            DRM_MODE_ROTATE_0);
-  drmLayer->iBestPlaneType = PLANE_RK3588_ALL_ESMART_MASK;
-  drmLayer->pRgaBuffer_ = dst_buffer;
-  drmLayer->bUseRga_ = true;
-
-
-
-  int acquire_fence = -1;
-  if(drmLayer->acquire_fence->isValid()){
-    if(drmLayer->acquire_fence->wait(1500))
-      HWC2_ALOGE("Wait Fence 1500ms Failed");
-  }
-  int output_fence = -1;
-
-  im_opt_t imOpt;
-  memset(&imOpt, 0x00, sizeof(im_opt_t));
-  if(gIsRK3588())
-    imOpt.core = IM_SCHEDULER_RGA3_CORE0 | IM_SCHEDULER_RGA3_CORE1;
-  else
-    imOpt.core = IM_SCHEDULER_DEFAULT;
-
-  im_state = improcess(src, dst, pat, src_rect, dst_rect, pat_rect, acquire_fence, &output_fence, &imOpt, usage | IM_ASYNC);
-  if(im_state != IM_STATUS_SUCCESS){
-    HWC2_ALOGE("call im2d scale fail, %s",imStrError(im_state));
-    FbTfBufferQueue_->QueueBuffer(dst_buffer);
-    drmLayer->ResetInfoFromStore();
-    drmLayer->bUseRga_ = false;
-    return -1;
-  }
-  dst_buffer->SetFinishFence(dup(output_fence));
-  drmLayer->pRgaBuffer_ = dst_buffer;
-  drmLayer->acquire_fence = sp<AcquireFence>(new AcquireFence(output_fence));
-  FbTfBufferQueue_->QueueBuffer(dst_buffer);
-
-
-  char value[PROPERTY_VALUE_MAX];
-  property_get("vendor.dump", value, "false");
-  if(!strcmp(value, "true")){
-    drmLayer->acquire_fence->wait();
-    dst_buffer->DumpData();
-  }
-
-  drmLayer->uFourccFormat_ = DRM_FORMAT_ABGR8888;
-
-  drmLayer->Init();
-  return 0;
-}
-
 void DrmHwcTwo::HwcLayer::DumpLayerInfo(String8 &output) {
 
   output.appendFormat( " %04" PRIu32 " | %03" PRIu32 " | %9s | %9s | %-18.18" PRIxPTR " |"
@@ -5753,6 +5589,8 @@ void DrmHwcTwo::HandleDisplayHotplug(hwc2_display_t displayid, int state) {
   else{
     mHasRegisterDisplay_.erase(displayid);
   }
+  // 休眠200ms,等待上层处理
+  usleep(100*1000);
 }
 
 void DrmHwcTwo::HandleInitialHotplugState(DrmDevice *drmDevice) {
@@ -6246,19 +6084,63 @@ int DrmHwcTwo::EventWorker::SendLocalHotplugEvent(DrmEvent event){
   return 0;
 }
 
-int DrmHwcTwo::EventWorker::UpdatePrimaryEvent(DrmEvent event){
-
-  // 将所有屏幕设置为不送显模式
-  for(auto &map : hwc2_->displays_){
-    map.second.ResetDisplay();
-  }
+int DrmHwcTwo::EventWorker::HaneleDisplayPipelineUpdateEvent(){
 
   ResourceManager* rm = ResourceManager::getInstance();
 
   int primary_id = 0;
   DrmDevice* drm = rm->GetDrmDevice(primary_id);
   if(drm == NULL){
-    HWC2_ALOGE("Failed to get DrmDevice for display %d", event.display_id);
+    HWC2_ALOGE("DisplayPipeChange : Failed to get DrmDevice");
+  }
+
+  // 检查display pipeline更新情况
+  uint64_t change_mask = 0;
+  if(drm->GetDisplayPipelineChange(&change_mask) == 0){
+    if(change_mask > 0){
+      // 将所有屏幕设置为断开模式并清黑屏幕
+      for(auto &map : hwc2_->displays_){
+        map.second.DisconnectDisplay();
+      }
+
+      if((change_mask & DRM_PIPELINE_PRIMARY_CHANGE) == DRM_PIPELINE_PRIMARY_CHANGE){
+        if(HandlePrimaryChange()){
+          HWC2_ALOGE("DisplayPipeChange : HandlePrimaryChange fail.");
+          return -1;
+        }
+      }
+
+      if((change_mask & DRM_PIPELINE_SPLIT_MODE_CHANGE) == DRM_PIPELINE_SPLIT_MODE_CHANGE){
+        if(HandleSpiltModeChange()){
+          HWC2_ALOGE("DisplayPipeChange : SpiltMode : HandleSpiltModeChange fail.");
+          return -1;
+        }
+      }
+
+      // 将所有屏幕设置为连接状态
+      for(auto &map : hwc2_->displays_){
+        map.second.ConnectDisplay();
+      }
+    }
+  }
+
+  HWC2_ALOGI("DisplayPipeChange : handle Success!");
+  return 0;
+}
+
+int DrmHwcTwo::EventWorker::HandlePrimaryChange(){
+
+  ResourceManager* rm = ResourceManager::getInstance();
+
+  int primary_id = 0;
+  DrmDevice* drm = rm->GetDrmDevice(primary_id);
+  if(drm == NULL){
+    HWC2_ALOGE("DisplayPipeChange: Failed to get DrmDevice");
+  }
+
+  // 将所有屏幕设置为断开模式并清黑屏幕
+  for(auto &map : hwc2_->displays_){
+    map.second.ResetDisplay();
   }
 
   // 删除所有状态是已连接的屏幕
@@ -6270,11 +6152,11 @@ int DrmHwcTwo::EventWorker::UpdatePrimaryEvent(DrmEvent event){
     // 释放当前display的 drm resource 资源
     int ret = drm->ReleaseDpyRes(display_id);
     if(ret){
-      HWC2_ALOGE("Failed to ReleaseDpyRes for display=%d %d\n", display_id, ret);
+      HWC2_ALOGE("DisplayPipeChange : Failed to ReleaseDpyRes for display=%d %d\n", display_id, ret);
       continue;
     }
 
-    HWC2_ALOGI("hwc_hotplug: Unplug for display_id=%d connector %u type=%s, type_id=%d \n",
+    HWC2_ALOGI("DisplayPipeChange : hwc_hotplug: Unplug for display_id=%d connector %u type=%s, type_id=%d \n",
               display_id,
               connector->id(),
               drm->connector_type_str(connector->type()),
@@ -6296,7 +6178,7 @@ int DrmHwcTwo::EventWorker::UpdatePrimaryEvent(DrmEvent event){
   for(auto &connector : drm->connectors()){
     if(connector->hotplug_state() == DRM_MODE_CONNECTED){
       int display_id = connector->display();
-      HWC2_ALOGI("hwc_hotplug: Plug for display_id=%d connector %u type=%s, type_id=%d \n",
+      HWC2_ALOGI("DisplayPipeChange : hwc_hotplug: Plug for display_id=%d connector %u type=%s, type_id=%d \n",
                 display_id,
                 connector->id(),
                 drm->connector_type_str(connector->type()),
@@ -6310,6 +6192,107 @@ int DrmHwcTwo::EventWorker::UpdatePrimaryEvent(DrmEvent event){
     primary.InvalidateControl(5,20);
   }
 
+  usleep(200*1000);
+  return 0;
+}
+
+int DrmHwcTwo::EventWorker::HandleSpiltModeChange() {
+
+  int32_t ret = 0;
+  ResourceManager* rm = ResourceManager::getInstance();
+  if(!rm){
+    HWC2_ALOGE("DisplayPipeChange : SpiltMode: Can not get ResourceManager");
+    return -1;
+  }
+
+  DrmDevice* drm = rm->GetDrmDevice(0);
+  if(!drm){
+    HWC2_ALOGE("DisplayPipeChange : SpiltMode: can not get drm device");
+    return -1;
+  }
+
+  // 更新SpiltMode配置信息
+  drm->UpdateSpiltModeInfo();
+
+  // 遍历所有 connector 检查存在xml前后更新的差异
+  for (auto &conn : drm->connectors()) {
+    ret = 0;
+
+    // 如果当前屏幕未连接，且不是拼接主屏幕（拼接主屏不连接也需要更新信息）
+    drmModeConnection cur_state = conn->hotplug_state();
+    if(cur_state != DRM_MODE_CONNECTED && !conn->IsSpiltPrimary()){
+      continue;
+    }
+
+    int display_id = conn->display();
+    auto &display = hwc2_->displays_.at(display_id);
+    // 所有屏幕都删除 SpiltDummyLayer
+    display.DestoryDummyLayer();
+
+    // 如果是拼接模式的屏幕
+    if(conn->isCropSpilt()){
+      if(conn->IsSpiltPrimary()){
+        if(display.CheckStateAndReinit(!hwc2_->IsHasRegisterDisplayId(display_id)) == HWC2::Error::None){
+          HWC2_ALOGI("DisplayPipeChange : SpiltMode : %s-%d IsSpiltPrimary, send hotplug to SF.",
+                    drm->connector_type_str(conn->type()),conn->type_id());
+          hwc2_->HandleDisplayHotplug(display_id, DRM_MODE_CONNECTED);
+        }else{
+          HWC2_ALOGE("DisplayPipeChange : SpiltMode : %s-%d IsSpiltPrimary CheckStateAndReinit fail, skip hotplug.",
+                    drm->connector_type_str(conn->type()),conn->type_id());
+        }
+      }else{
+        if(hwc2_->IsHasRegisterDisplayId(display_id)){
+          HWC2_ALOGI("DisplayPipeChange : SpiltMode: %s-%d isCropSpilt, send unplug to SF.",
+                    drm->connector_type_str(conn->type()),conn->type_id());
+          hwc2_->HandleDisplayHotplug(display_id, DRM_MODE_DISCONNECTED);
+        }
+        // 更新拼接屏幕的屏幕信息
+        display.ChosePreferredConfig();
+        // 只有拼接副屏创建 DummyLayer
+        display.GetOrCreateDummyLayer();
+      }
+    }else{
+      HWC2_ALOGI("DisplayPipeChange : SplitMode: %s-%d Exit CropSplit, send plug event to SF.",
+                  drm->connector_type_str(conn->type()),conn->type_id());
+      // 更新拼接屏幕的屏幕信息
+      display.ChosePreferredConfig();
+      if(display.CheckStateAndReinit(!hwc2_->IsHasRegisterDisplayId(display_id)) == HWC2::Error::None){
+        HWC2_ALOGI("DisplayPipeChange : SpiltMode : %s-%d Exit CropSplit,, send hotplug to SF.",
+                  drm->connector_type_str(conn->type()),conn->type_id());
+        hwc2_->HandleDisplayHotplug(display_id, cur_state);
+      }else{
+        HWC2_ALOGE("DisplayPipeChange : SpiltMode : %s-%d Exit CropSplit, CheckStateAndReinit fail, skip hotplug.",
+                  drm->connector_type_str(conn->type()),conn->type_id());
+      }
+      display.SyncPowerMode();
+    }
+
+    if(conn->isHorizontalSpilt()){
+      HWC2_ALOGI("DisplayPipeChange : SplitMode: %s-%d isHorizontalSpilt, send unplug to SF.",
+                  drm->connector_type_str(conn->type()),conn->type_id());
+      if(hwc2_->displays_.count(conn->GetSpiltModeId())==0){
+        hwc2_->CreateDisplay(conn->GetSpiltModeId(), HWC2::DisplayType::Physical);
+      }
+      display.ChosePreferredConfig();
+      if(display.CheckStateAndReinit(!hwc2_->IsHasRegisterDisplayId(display_id)) == HWC2::Error::None){
+        HWC2_ALOGI("DisplayPipeChange : SpiltMode : %s-%d isHorizontalSpilt,, send hotplug to SF.",
+                  drm->connector_type_str(conn->type()),conn->type_id());
+        hwc2_->HandleDisplayHotplug(display_id, cur_state);
+      }else{
+        HWC2_ALOGE("DisplayPipeChange : SpiltMode : %s-%d isHorizontalSpilt, CheckStateAndReinit fail, skip hotplug.",
+                  drm->connector_type_str(conn->type()),conn->type_id());
+      }
+    }else{
+      if(hwc2_->IsHasRegisterDisplayId(conn->GetSpiltModeId())){
+        hwc2_->HandleDisplayHotplug(conn->GetSpiltModeId(), DRM_MODE_DISCONNECTED);
+      }
+    }
+  }
+
+  auto &display = hwc2_->displays_.at(0);
+  display.InvalidateControl(30,120);
+
+  usleep(200*1000);
   return 0;
 }
 
@@ -6339,8 +6322,8 @@ void DrmHwcTwo::EventWorker::Routine() {
     case HOTPLUG_EVENT:
       ret = SendLocalHotplugEvent(event);
       break;
-    case PRIMARY_UPDATE_EVENT:
-      ret = UpdatePrimaryEvent(event);
+    case DISPLAY_PIPELINE_UPDATE_EVENT:
+      ret = HaneleDisplayPipelineUpdateEvent();
       break;
     default:
       ret = -1;
