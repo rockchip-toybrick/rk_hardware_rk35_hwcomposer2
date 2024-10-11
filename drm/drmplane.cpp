@@ -989,7 +989,9 @@ bool DrmPlane::is_support_format(uint32_t format, bool afbcd, bool rfbcd){
            format == DRM_FORMAT_BGR888    ||
            format == DRM_FORMAT_RGB888    ||
            format == DRM_FORMAT_XBGR2101010||
-           format == DRM_FORMAT_XRGB2101010)
+           format == DRM_FORMAT_XRGB2101010||
+           format == DRM_FORMAT_ABGR2101010||
+           format == DRM_FORMAT_ARGB2101010)
           return support_format_list.count(format);
         else
           return false;
