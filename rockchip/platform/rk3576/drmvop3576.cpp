@@ -2437,20 +2437,19 @@ int Vop3576::RunHwPqVideoMode(
       }
 
       // 6. Update Layer info
+      drmLayer->hwPqRegAcquireFence_ = sp<AcquireFence>(new AcquireFence(output_fence));
       if(isHwPqAsPostProcess){
-        drmLayer->hwPqRegAcquireFence_ = sp<AcquireFence>(new AcquireFence(output_fence));
+        //in Hwpq As PostProcess mode, only pq register is needed, release buffer now
         if(dst_buffer != NULL){
           dst_buffer->SetFinishFence(dup(output_fence));
           hwPqBufferQueue_->QueueBuffer(dst_buffer);
           dst_buffer = NULL;
         }
-      }else{
-        drmLayer->acquire_fence = sp<AcquireFence>(new AcquireFence(output_fence));
       }
 
       lastHwPqBufInfo.set(drmLayer);
       lastHwPqReg_ = drmLayer->hwPqReg_;
-      lastHwPqAcquireFence = drmLayer->acquire_fence;
+      lastHwPqAcquireFence = drmLayer->hwPqRegAcquireFence_;
 
       if(dst_buffer != NULL){
         lastHwPqUseNewBuffer = true;
@@ -2460,6 +2459,7 @@ int Vop3576::RunHwPqVideoMode(
 
         drmLayer->bUseHwpqScale_ = true;
         drmLayer->pPqBuffer_ = dst_buffer;
+        drmLayer->acquire_fence = sp<AcquireFence>(new AcquireFence(dup(output_fence)));
         hwc_frect_t source_crop;
         source_crop.left   = hwPqDstInfo_.mCrop_.iLeft_;
         source_crop.top    = hwPqDstInfo_.mCrop_.iTop_;

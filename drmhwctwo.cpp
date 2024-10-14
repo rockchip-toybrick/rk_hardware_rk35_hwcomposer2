@@ -5397,9 +5397,12 @@ int DrmHwcTwo::HwcLayer::DoHwPq(bool validate, DrmHwcLayer *drmHwcLayer, hwc2_dr
             bufferQueue_->QueueBuffer(dst_buffer);
           return ret;
         }
-        if(dst_buffer != NULL)
+        //HWPQ output_fence indicate hwpq register is ready, if not use VDPP upscale
+        drmHwcLayer->hwPqRegAcquireFence_ = sp<AcquireFence>(new AcquireFence(output_fence));
+        if(dst_buffer != NULL){
           dst_buffer->SetFinishFence(dup(output_fence));
-        drmHwcLayer->acquire_fence = sp<AcquireFence>(new AcquireFence(output_fence));
+          drmHwcLayer->acquire_fence = sp<AcquireFence>(new AcquireFence(dup(output_fence)));
+        }
 
         property_get("vendor.dump", value, "false");
         if(!strcmp(value, "true") && dst_buffer != NULL){
