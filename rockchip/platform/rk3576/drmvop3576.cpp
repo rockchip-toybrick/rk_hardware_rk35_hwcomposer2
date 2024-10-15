@@ -45,6 +45,7 @@
 #include <drm_fourcc.h>
 #include <log/log.h>
 #include <rockchip/utils/rgautils.h>
+#include "rockchip/utils/pqutils.h"
 #include "resources/resourcemanager.h"
 
 //XML prase
@@ -957,7 +958,7 @@ int Vop3576::MatchPlane(std::vector<DrmCompositionPlane> *composition_planes,
                   //reset is_match to false
                   (*iter_layer)->bMatch_ = false;
 
-                  if(ctx.state.bEnableHwPqVideoMode_ == true &&
+                  if(ctx.state.bCurrentHwPqMode_ == PqUtils::HWPQ_VIDEO_MODE &&
                      ctx.state.bMatchPlaneHasYuvLayer == true &&
                      (*iter)->win_type==PLANE_RK3576_CLUSTER0_WIN0 &&
                      (*iter_layer)->bYuv_!=true){
@@ -1157,7 +1158,8 @@ int Vop3576::MatchPlane(std::vector<DrmCompositionPlane> *composition_planes,
                               (*iter_plane)->is_support_scale((*iter_layer)->fVScaleMul_)){
                               bNeed = true;
                           }else{
-                            if((*iter_plane)->win_type() ==  PLANE_RK3576_CLUSTER0_WIN0 && crtc->get_port_id()==0 && ctx.state.bEnableHwPqVideoMode_){
+#ifdef USE_LIBPQ_HWPQ
+                            if((*iter_plane)->win_type() ==  PLANE_RK3576_CLUSTER0_WIN0 && crtc->get_port_id()==0 && ctx.state.bCurrentHwPqMode_ == PqUtils::HWPQ_VIDEO_MODE){
                               CheckHwPqDstScale((*iter_layer));
                               if((*iter_layer)->bCheckPqScale &&
                                  (*iter_plane)->is_support_scale((*iter_layer)->fPqHScale) &&
@@ -1180,6 +1182,13 @@ int Vop3576::MatchPlane(std::vector<DrmCompositionPlane> *composition_planes,
                                         (*iter_layer)->fVScaleMul_);
                               continue;
                             }
+#else
+                            ALOGD_IF(LogLevel(DBG_DEBUG),"%s cann't support scale factor(%f,%f)",
+                                      (*iter_plane)->name(),
+                                      (*iter_layer)->fHScaleMul_,
+                                      (*iter_layer)->fVScaleMul_);
+                            continue;
+#endif
                           }
 
                           // Scale 4K 120帧分辨率下
@@ -1426,22 +1435,43 @@ int Vop3576::MatchPlanes(
     }
   }
 #ifdef USE_LIBPQ_HWPQ
-  // Try to match hwpq policy
-  if(ctx.state.bEnableHwPqVideoMode_){
-    int ret = RunHwPqVideoMode(composition,layers,crtc,plane_groups);
-    if(!ret){
-      return 0;
-    }
-    else{
-      if(ctx.state.bMustRunHwPqVideoMode_){
-        HWC2_ALOGE("HWPQ: match need run HWPQ succeed, but it failed, MatchPlanes again!");
-        ctx.state.bEnableHwPqVideoMode_ = false;
-        return MatchPlanes(composition,layers,crtc,plane_groups);
+
+  if(ctx.state.bCurrentHwPqMode_ == PqUtils::HWPQ_VIDEO_MODE || ctx.state.bCurrentHwPqMode_ == PqUtils::HWPQ_UI_MODE) do{
+    ssize_t layer_index = -1;
+    //查找是否有适合HWPQ的图层（vp0+Cluster0-Win0）
+    for(auto &comp_plane:*composition){
+      if (comp_plane.crtc()->get_port_id()==0 &&
+          comp_plane.plane()->win_type()==PLANE_RK3576_CLUSTER0_WIN0){
+        std::vector<size_t> &source_layers = comp_plane.source_layers();
+        if(source_layers.size()==1)
+          layer_index=source_layers.front();
       }
-      HWC2_ALOGD_IF_DEBUG("Not use HwPq Video Mode.");
-      return 0;
     }
-  }
+    if(layer_index<0){
+      HWC2_ALOGD_IF_VERBOSE("Found no cluster0-win0 vp0 layer, skip hwpq policy");
+      break;
+    }
+    DrmHwcLayer *drmLayer = layers[layer_index];
+    //获取当前display
+    drmLayer->hwPqDisplayStatus = PqUtils::CollectPqDisplayStatus(ctx.state.vSfLayers_,{ctx.state.iDisplayWidth_, ctx.state.iDisplayHeight_, ResourceManager::getInstance()->getSocId()});
+
+    // Try to match hwpq policy
+    if(ctx.state.bCurrentHwPqMode_ == PqUtils::HWPQ_VIDEO_MODE){
+      int ret = RunHwPqVideoMode(drmLayer);
+      if(!ret){
+        break;
+      }else{
+        if(ctx.state.bMustRunHwPqVideoMode_){
+          HWC2_ALOGE("HWPQ: match need run HWPQ succeed, but it failed, MatchPlanes again!");
+          ctx.state.bCurrentHwPqMode_ = PqUtils::HWPQ_DISABLE;
+          ctx.state.bMustRunHwPqVideoMode_ = false;
+          return MatchPlanes(composition,layers,crtc,plane_groups);
+        }
+        HWC2_ALOGD_IF_DEBUG("Not use HwPq Video Mode.");
+        break;
+      }
+    }
+  }while(0);
 #endif
   if(ctx.state.iDisplayId == 0){
     bool is_accelerate_matched = false;
@@ -1891,7 +1921,7 @@ int Vop3576::TryRgaOverlayPolicy(
                                                     dst_buffer->GetGemHandle(),
                                                     DRM_MODE_ROTATE_0);
           rga_layer_ready = true;
-          if(!ctx.state.bEnableHwPqVideoMode_){
+          if(ctx.state.bCurrentHwPqMode_ == PqUtils::HWPQ_DISABLE){
             drmLayer->iBestPlaneType = PLANE_RK3576_ALL_ESMART_MASK;
           }
           drmLayer->pRgaBuffer_ = dst_buffer;
@@ -1930,7 +1960,7 @@ int Vop3576::TryRgaOverlayPolicy(
                                                     DRM_MODE_ROTATE_0);
           use_laster_rga_layer = true;
           drmLayer->bUseRga_ = true;
-          if(!ctx.state.bEnableHwPqVideoMode_){
+          if(ctx.state.bCurrentHwPqMode_ == PqUtils::HWPQ_DISABLE){
             drmLayer->iBestPlaneType = PLANE_RK3576_ALL_ESMART_MASK;
           }
           drmLayer->pRgaBuffer_ = dst_buffer;
@@ -2008,196 +2038,8 @@ int Vop3576::TryRgaOverlayPolicy(
   return -1;
 }
 #ifdef USE_LIBPQ_HWPQ
-static inline void PopulatePqLayerBufferInfo(DrmHwcLayer* layer, HwpqDisplayStatus::LayerBufferInfo &layerBufferInfo){
-  layerBufferInfo.srcRect_.iLeft_ = layer->source_crop.left;
-  layerBufferInfo.srcRect_.iRight_ = layer->source_crop.right;
-  layerBufferInfo.srcRect_.iTop_ = layer->source_crop.top;
-  layerBufferInfo.srcRect_.iBottom_ = layer->source_crop.bottom;
 
-  layerBufferInfo.intRect_.iLeft_ = layer->display_frame_sf.left;
-  layerBufferInfo.intRect_.iRight_ = layer->display_frame_sf.right;
-  layerBufferInfo.intRect_.iTop_ = layer->display_frame_sf.top;
-  layerBufferInfo.intRect_.iBottom_ = layer->display_frame_sf.bottom;
-
-  layerBufferInfo.uFourccFormat_ = layer->uFourccFormat_;
-  layerBufferInfo.iHalFormat_ = layer->iFormat_;
-
-  layerBufferInfo.uTransform_ = layer->transform;
-  layerBufferInfo.uDataSpace_ = layer->eDataSpace_;
-  layerBufferInfo.sLayerName_ = layer->sLayerName_;
-}
-
-static inline void PopulatePqLayerInfo(DrmHwcLayer *layer, HwpqDisplayStatus::PlaneInfo &layerInfo){
-  layerInfo.VopSrcRect_.iLeft_ = layer->source_crop.left;
-  layerInfo.VopSrcRect_.iRight_ = layer->source_crop.right;
-  layerInfo.VopSrcRect_.iTop_ = layer->source_crop.top;
-  layerInfo.VopSrcRect_.iBottom_ = layer->source_crop.bottom;
-
-  layerInfo.VopDstRect_.iLeft_ = layer->display_frame.left;
-  layerInfo.VopDstRect_.iRight_ = layer->display_frame.right;
-  layerInfo.VopDstRect_.iTop_ = layer->display_frame.top;
-  layerInfo.VopDstRect_.iBottom_ = layer->display_frame.bottom;
-
-  layerInfo.uFourccFormat_ = layer->uFourccFormat_;
-  layerInfo.iHalFormat_ = layer->iFormat_;
-  layerInfo.uModifier_ = layer->uModifier_;
-
-  layerInfo.uTransform_ = layer->transform;
-  layerInfo.uDataSpace_ = layer->eDataSpace_;
-  layerInfo.sLayerName_ = layer->sLayerName_;
-
-  HwpqDisplayStatus::PlaneInfo::PlaneType plane_type;
-  if(gIsRK3576()){
-    if(layer->uWinType_ & PLANE_RK3576_ALL_CLUSTER_MASK){
-      plane_type.type = HwpqDisplayStatus::PlaneInfo::PLANE_TYPE_CLUSTER;
-    }else if(layer->uWinType_ & PLANE_RK3576_ALL_ESMART_MASK){
-      plane_type.type = HwpqDisplayStatus::PlaneInfo::PLANE_TYPE_ESMART;
-    }
-  }
-  layerInfo.PlaneType_ = plane_type;
-  layerInfo.iZpos_ = layer->iDrmZpos_;
-}
-
-static void dumpPqBufInfo(const HwpqDisplayStatus::LayerBufferInfo & bufinfo, std::stringstream &ss){
-  ss << "|    |" << std::dec 
-    << std::setfill(' ') << std::setw(6) << bufinfo.intRect_.iLeft_ 
-    << std::setfill(' ') << std::setw(6) << bufinfo.intRect_.iTop_ 
-    << std::setfill(' ') << std::setw(6) << bufinfo.intRect_.iRight_ 
-    << std::setfill(' ') << std::setw(6) << bufinfo.intRect_.iBottom_;
-
-  ss << "|" 
-    << std::setfill(' ') << std::setw(6) << bufinfo.srcRect_.iLeft_ 
-    << std::setfill(' ') << std::setw(6) << bufinfo.srcRect_.iTop_ 
-    << std::setfill(' ') << std::setw(6) << bufinfo.srcRect_.iRight_ 
-    << std::setfill(' ') << std::setw(6) << bufinfo.srcRect_.iBottom_;
-
-  ss << "|" << "0x" << std::setfill('0') << std::setw(8) << std::hex << bufinfo.uFourccFormat_;
-  ss << "|" << "0x" << std::setfill('0') << std::setw(8) << bufinfo.uTransform_;
-  ss << "|" << "0x" << std::setfill('0') << std::setw(8) << bufinfo.uDataSpace_;
-  ss << "|" << bufinfo.sLayerName_;
-  ss << std::endl;
-}
-static void dumpPqPlaneInfo(const HwpqDisplayStatus::PlaneInfo & planeinfo, std::stringstream &ss){
-  ss << "|" << std::dec 
-    << std::setfill(' ') << std::setw(4) << planeinfo.iZpos_;
-  ss << "|" 
-    << std::setfill(' ') << std::setw(6) << planeinfo.VopDstRect_.iLeft_ 
-    << std::setfill(' ') << std::setw(6) << planeinfo.VopDstRect_.iTop_ 
-    << std::setfill(' ') << std::setw(6) << planeinfo.VopDstRect_.iRight_ 
-    << std::setfill(' ') << std::setw(6) << planeinfo.VopDstRect_.iBottom_;
-
-  ss << "|" 
-    << std::setfill(' ') << std::setw(6) << planeinfo.VopSrcRect_.iLeft_ 
-    << std::setfill(' ') << std::setw(6) << planeinfo.VopSrcRect_.iTop_ 
-    << std::setfill(' ') << std::setw(6) << planeinfo.VopSrcRect_.iRight_ 
-    << std::setfill(' ') << std::setw(6) << planeinfo.VopSrcRect_.iBottom_;
-
-  ss << "|" << "0x" << std::setfill('0') << std::setw(8) << std::hex << planeinfo.uFourccFormat_;
-  ss << "|" << "0x" << std::setfill('0') << std::setw(8) << planeinfo.uTransform_;
-  ss << "|" << "0x" << std::setfill('0') << std::setw(8) << planeinfo.uDataSpace_;
-  ss << "|" << std::setw(8) << planeinfo.iLayerType_;
-  ss << "|" << planeinfo.sLayerName_;
-  ss << std::endl;
-}
-
-std::shared_ptr<HwpqDisplayStatus> Vop3576::CollectPqDisplayStatus(std::vector<DrmHwcLayer*> &drm_hwc_layers_){
-  std::shared_ptr<HwpqDisplayStatus> status = std::make_shared<HwpqDisplayStatus>();
-  //初始化平台信息
-  status->iPqZpos=-1;
-  status->uSocId_ = ResourceManager::getInstance()->getSocId();
-  status->iResolutionWidth_ = ctx.state.iDisplayWidth_;
-  status->iResolutionHeight_ = ctx.state.iDisplayHeight_;
-
-  int client_layer_zpos = -1;
-  bool use_client_composite = false;
-  bool use_video_transform = false;
-  bool use_video_client_composite = false;
-  bool use_heavy_composite = false;//是否有梯形、畸变等操作
-  HwpqDisplayStatus::PlaneInfo fb_layer_info;//FbTarget的图层信息；
-  //需要使用到index，使用for(;;)
-  for (auto &drmlayer : drm_hwc_layers_) {
-    // //查找对应的hwclayer
-    // auto map_hwc2layer = layers_.find(drm_hwc_layer.uId_);
-    // if(map_hwc2layer == layers_.end()){
-    //   HWC2_ALOGE("Could not found hwc layer %s", sLayerName_.c_str());
-    //   continue;
-    // }
-    // DrmHwcTwo::HwcLayer & hwclayer = map_hwc2layer->second;
-    if (!drmlayer->bMatch_) {
-      //GPU合成图层
-      use_client_composite = true;
-      if(drmlayer->bYuv_){
-        use_video_client_composite = true;
-      }
-      fb_layer_info.vecComposeInfo_.emplace_back();
-      PopulatePqLayerBufferInfo(drmlayer,fb_layer_info.vecComposeInfo_.back());
-    }else{
-      //HWC合成图层，TODO：后续增加RKCV/RGA合成判断
-      //获取win_type和zpos
-      uint64_t win_type = drmlayer->uWinType_;
-      int zpos = drmlayer->iDrmZpos_;
-      HwpqDisplayStatus::PlaneInfo* layer_info;
-      if(drmlayer->bFbTarget_){
-        PopulatePqLayerInfo(drmlayer,fb_layer_info);
-        layer_info = &fb_layer_info;
-        client_layer_zpos = zpos;
-      }else{
-        HwpqDisplayStatus::PlaneInfo layer_info_;
-        PopulatePqLayerInfo(drmlayer,layer_info_);
-        status->mapPlaneInfo_.emplace(zpos,layer_info_);
-        layer_info = &(status->mapPlaneInfo_.at(zpos));
-      }
-      if(gIsRK3576()){
-        if(win_type == PLANE_RK3576_CLUSTER0_WIN0){
-          status->iPqZpos = zpos;
-          if(drmlayer->bUseRga_){
-            use_video_transform = true;
-          }
-        }
-      }
-    }
-  }
-  auto setPqLayerType = [&status](HwpqDisplayStatus::PlaneInfo::PQ_LayerType type){
-    if(status->mapPlaneInfo_.count(status->iPqZpos)){
-      status->mapPlaneInfo_.at(status->iPqZpos).iLayerType_ = type;
-    }
-  };
-  if(use_client_composite){
-    HWC2_ALOGD_IF_DEBUG("HWPQ_UI: client_layer_zpos:%d,status->iPqZpos:%d",client_layer_zpos,status->iPqZpos);
-    status->mapPlaneInfo_[client_layer_zpos] = fb_layer_info;
-    if(use_video_client_composite){
-      setPqLayerType(HwpqDisplayStatus::PlaneInfo::PQ_LayerType::PQ_LAYER_TYPE_VIDEO_WITH_UI);
-    }else{
-      setPqLayerType(HwpqDisplayStatus::PlaneInfo::PQ_LayerType::PQ_LAYER_TYPE_UI);
-    }
-  }else{
-    if(use_video_transform){
-      setPqLayerType(HwpqDisplayStatus::PlaneInfo::PQ_LayerType::PQ_LAYER_TYPE_VIDEO_TRANSFORM);
-    }else{
-      setPqLayerType(HwpqDisplayStatus::PlaneInfo::PQ_LayerType::PQ_LAYER_TYPE_VIDEO);
-    }
-  }
-  if(LogLevel(DBG_DEBUG)){
-    std::stringstream ss;
-    for(auto &plane_info_map:status->mapPlaneInfo_){
-      auto &plane_info = plane_info_map.second;
-      ss << std::endl << "|Zpos|  VopDstRect(l,t,r,b)   |  VopSrcRect(l,t,r,b)   |  Fourcc  | Transform| Dataspace|  Type  | Name" << std::endl;
-      dumpPqPlaneInfo(plane_info,ss);
-      ss << std::endl << "|    |    intRect(l,t,r,b)    |    srcRect(l,t,r,b)    |  Fourcc  | Transform| Dataspace| Name" << std::endl;
-      for(auto &buf_info:plane_info.vecComposeInfo_){
-        dumpPqBufInfo(buf_info,ss);
-      }
-    }
-    HWC2_ALOGD_IF_DEBUG("HWPQ_UI: %s",ss.str().c_str());
-  }
-
-  return status;
-}
-
-int Vop3576::RunHwPqVideoMode(
-    std::vector<DrmCompositionPlane> *composition,
-    std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
-    std::vector<PlaneGroup *> &plane_groups) {
+int Vop3576::RunHwPqVideoMode(DrmHwcLayer* drmLayer) {
   int ret = 0;
   // 0. Check if HwPq is Ready
   if(pq_ == NULL){
@@ -2218,27 +2060,6 @@ int Vop3576::RunHwPqVideoMode(
 
   std::shared_ptr<DrmBuffer> dst_buffer;
   bool isHwPqAsPostProcess = false;
-
-  ssize_t layer_index = -1;
-  //查找是否有适合HWPQ的图层（vp0+Cluster0-Win0）
-  for(auto &comp_plane:*composition){
-    if (comp_plane.crtc()->get_port_id()==0 &&
-        comp_plane.plane()->win_type()==PLANE_RK3576_CLUSTER0_WIN0){
-      std::vector<size_t> &source_layers = comp_plane.source_layers();
-      if(source_layers.size()==1)
-        layer_index=source_layers.front();
-    }
-  }
-  if(layer_index<0){
-    HWC2_ALOGD_IF_VERBOSE("Found no cluster0-win0 vp0 layer, skip hwpq policy");
-    return -1;
-  }
-  //目前只考虑对视频图层做HWPQ
-  DrmHwcLayer *drmLayer = layers[layer_index];
-  if(!drmLayer->bYuv_){
-    HWC2_ALOGD_IF_VERBOSE("Found cluster0-win0 vp0 layer is not video, skip hwpq policy");
-    return -1;
-  }
 
   if(drmLayer->bYuv_){
 
@@ -2302,8 +2123,7 @@ int Vop3576::RunHwPqVideoMode(
         }
       }
 
-      std::shared_ptr<HwpqDisplayStatus> displaystatus = CollectPqDisplayStatus(layers);
-      src.mDisplayStatus_ = displaystatus;
+      src.mDisplayStatus_ = drmLayer->hwPqDisplayStatus;
 
       // 2. Alloc Dst buffer
       if(drmLayer->hwPqReg_ == NULL){
@@ -2539,9 +2359,10 @@ int Vop3576::RunHwPqVideoMode(
       drmLayer->hwPqReg_=lastHwPqReg_;
       return 0;
     }
+  }else{
+    HWC2_ALOGD_IF_VERBOSE("Found cluster0-win0 vp0 layer is not video, skip hwpq policy");
+    return -1;
   }
-  HWC2_ALOGD_IF_DEBUG("fail!, No layer use HwPq policy.");
-  return -1;
 }
 #endif
 
@@ -4275,6 +4096,7 @@ void Vop3576::InitStateContext(
     std::vector<PlaneGroup *> &plane_groups,
     DrmCrtc *crtc){
   ctx.state.bRequireGLESMode = false;
+  ctx.state.bMustRunHwPqVideoMode_ = false;
 
   ctx.state.iVopMaxOverlay4KPlane = hwc_get_int_property("vendor.hwc.vop_max_overlay_4k_plane","0");
   ctx.state.bRgaPolicyEnable = hwc_get_int_property("vendor.hwc.enable_rga_policy","1") > 0;
@@ -4340,6 +4162,8 @@ void Vop3576::InitStateContext(
       break;
     }
   }
+  //Store pointer of layers for HWPQ display status collection.
+  ctx.state.vSfLayers_ = layers;
 }
 
 bool Vop3576::TryOverlay(){
@@ -4372,7 +4196,7 @@ void Vop3576::TryMix(){
     ctx.state.setHwcPolicy.insert(HWC_ACCELERATE_POLICY);
   }
 }
-#ifdef USE_LIBPQ
+#ifdef USE_LIBPQ_HWPQ
 int Vop3576::CheckHwPqDstScale(DrmHwcLayer* drmLayer) {
   if(drmLayer->bCheckPqScale){
     return 0;
@@ -4536,11 +4360,17 @@ int Vop3576::InitContext(
 
 #ifdef USE_LIBPQ
   //reset HwPq state
-  ctx.state.bEnableHwPqVideoMode_ = false;
+  ctx.state.bCurrentHwPqMode_ = PqUtils::HWPQ_DISABLE;
+
   int iPqMode = hwc_get_int_property("persist.vendor.tvinput.rkpq.mode","0");
-  // Match policy first
   HWC2_ALOGD_IF_DEBUG("%s=%d ","persist.vendor.tvinput.rkpq.mode", iPqMode);
-  if(iPqMode == 1){
+
+  if(iPqMode>=0 && iPqMode < PqUtils::HWPQ_MODE_MAX){
+    ctx.state.bCurrentHwPqMode_ = PqUtils::RkHwPqMode(iPqMode);
+  }
+
+  if(ctx.state.bCurrentHwPqMode_ == PqUtils::HWPQ_UI_MODE){
+  // Match policy first
   //   DrmDevice *drm = crtc->getDrmDevice();
   //   DrmConnector *conn = drm->GetConnectorForDisplay(crtc->display());
     ctx.state.setHwcPolicy.insert(HWC_GLES_POLICY);
@@ -4555,9 +4385,8 @@ int Vop3576::InitContext(
     return 0;
   }else{
 #ifdef USE_LIBPQ_HWPQ
-    if(ctx.support.bCanHwPq && iPqMode == 3 && ctx.request.iYuvCnt>0){
-      ctx.state.bEnableHwPqVideoMode_ = true;
-    }else{
+    if(!ctx.support.bCanHwPq || iPqMode != PqUtils::HWPQ_VIDEO_MODE || ctx.request.iYuvCnt<=0){
+      ctx.state.bCurrentHwPqMode_ = PqUtils::HWPQ_DISABLE;
       lastHwPqAcquireFence = NULL;
       lastHwPqBufInfo.clear();
       lastHwPqReg_ = NULL;

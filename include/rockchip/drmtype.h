@@ -288,7 +288,7 @@ typedef struct hwc2_drm_display {
   int64_t hwpq_meta_size;
 #endif
 #ifdef USE_LIBPQ
-  std::shared_ptr<android::HwpqDisplayStatus> pq_display_status;
+  bool use_pq_fb;
 #endif
 } hwc2_drm_display_t;
 

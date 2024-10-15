@@ -39,6 +39,8 @@
 #include "platform.h"
 #include "drmdevice.h"
 #include "drmbufferqueue.h"
+#include "rockchip/utils/pqutils.h"
+
 #ifdef USE_LIBPQ_HWPQ
 #include "Pq.h"
 #endif
@@ -195,8 +197,9 @@ typedef struct StateContext{
 
   bool bRequireGLESMode;
   bool bHDRVideoForceOverlay;
-  bool bEnableHwPqVideoMode_;
+  PqUtils::RkHwPqMode bCurrentHwPqMode_;
   bool bMustRunHwPqVideoMode_;
+  std::vector<DrmHwcLayer*> vSfLayers_;
 
   int iVopPerformanceFactor;
 
@@ -311,9 +314,7 @@ struct PqBufferInfo{
                         std::vector<PlaneGroup *> &plane_groups);
 #endif
 #ifdef USE_LIBPQ_HWPQ
-  int RunHwPqVideoMode(std::vector<DrmCompositionPlane> *composition,
-                      std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
-                      std::vector<PlaneGroup *> &plane_groups);
+  int RunHwPqVideoMode(DrmHwcLayer* drmLayer);
 #endif
   int TryGlesSidebandPolicy(std::vector<DrmCompositionPlane> *composition,
                         std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
@@ -416,7 +417,6 @@ struct PqBufferInfo{
     PqBufferInfo lastHwPqBufInfo;  
     sp<AcquireFence> lastHwPqAcquireFence = NULL;
     bool lastHwPqUseNewBuffer = false;
-    std::shared_ptr<HwpqDisplayStatus> CollectPqDisplayStatus(std::vector<DrmHwcLayer*> &drm_hwc_layers_);
     //For buffer check
     std::shared_ptr<Pq> pq_cs_ = NULL;
     int CheckHwPqDstScale(DrmHwcLayer* drmLayer);

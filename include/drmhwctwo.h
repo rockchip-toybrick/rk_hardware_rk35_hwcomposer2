@@ -843,9 +843,6 @@ class DrmHwcTwo : public hwc2_device_t {
 #ifdef USE_LIBPQ_HWPQ
    int CollectInfoForHwPqUIMode();
 #endif
-#ifdef USE_LIBPQ
-   std::shared_ptr<HwpqDisplayStatus> CollectPqDisplayStatus();
-#endif
 
    private:
     HWC2::Error ValidatePlanes();

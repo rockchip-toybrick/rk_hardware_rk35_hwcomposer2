@@ -296,6 +296,7 @@ struct DrmHwcLayer {
   std::shared_ptr<DrmBuffer> pPqBuffer_;
 
 #ifdef USE_LIBPQ_HWPQ
+  static std::list<std::shared_ptr<rk_hwpq_reg>> unused_hwPqReg_ptr;
   bool bUseHwpqScale_;
   std::shared_ptr<rk_hwpq_reg> hwPqReg_;
   //用于存放VDPP放大后的缩放倍率，bCheckPqScale=true时生效
@@ -303,6 +304,7 @@ struct DrmHwcLayer {
   float fPqHScale = 0;
   float fPqVScale = 0;
   sp<AcquireFence> hwPqRegAcquireFence_ = AcquireFence::NO_FENCE;
+  std::shared_ptr<HwpqDisplayStatus> hwPqDisplayStatus = NULL;
 #endif
 
   DrmLayerInfoStore storeLayerInfo_;
@@ -327,6 +329,14 @@ struct DrmHwcLayer {
 
   DrmLayerInfoStore storePreScaleInfo_;
   metadata_for_rkvdec_scaling_t mMetadata_;
+
+  ~DrmHwcLayer(){
+    #ifdef USE_LIBPQ_HWPQ
+    unused_hwPqReg_ptr.push_back(hwPqReg_);
+    unused_hwPqReg_ptr.size()>1024;
+    unused_hwPqReg_ptr.pop_front();
+    #endif
+  }
 
   int SwitchPreScaleBufferInfo();
   int ResetInfoFromPreScaleStore();
