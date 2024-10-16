@@ -874,15 +874,15 @@ int Vop3399::TryRgaOverlayPolicy(
           int src_hstride = drmLayer->iHeightStride_;
           int src_width = drmLayer->iWidth_;
           int src_height = drmLayer->iHeight_;
-          if(drmLayer->iSkipLine_>0){
-            src_stride *= drmLayer->iSkipLine_;
+          // if(drmLayer->iSkipLine_>0){
+          //   src_stride *= drmLayer->iSkipLine_;
 
-            src_hstride = drmLayer->iHeightStride_ / drmLayer->iSkipLine_;
-            src_hstride += src_hstride % 2;
+          //   src_hstride = drmLayer->iHeightStride_ / drmLayer->iSkipLine_;
+          //   src_hstride += src_hstride % 2;
 
-            src_height = drmLayer->iHeight_ / drmLayer->iSkipLine_;
-            src_height += src_height % 2;
-          }
+          //   src_height = drmLayer->iHeight_ / drmLayer->iSkipLine_;
+          //   src_height += src_height % 2;
+          // }
           src = wrapbuffer_handle(src_handle,
                                   src_width,
                                   src_height,
@@ -899,17 +899,17 @@ int Vop3399::TryRgaOverlayPolicy(
           src_rect.y = ALIGN_DOWN((int)drmLayer->source_crop.top,2);
           src_rect.width  = ALIGN_DOWN((int)(drmLayer->source_crop.right  - drmLayer->source_crop.left),2);
           src_rect.height = ALIGN_DOWN((int)(drmLayer->source_crop.bottom - drmLayer->source_crop.top),2);
-          if(drmLayer->iSkipLine_>0){
-            int src_h = drmLayer->source_crop.bottom-drmLayer->source_crop.top;
-            src_h /= drmLayer->iSkipLine_;
-            src_h += src_h%2;
-            int src_top = drmLayer->source_crop.top;
-            src_top /= drmLayer->iSkipLine_;
-            src_top -= src_top%2;
+          // if(drmLayer->iSkipLine_>0){
+          //   int crop_h = drmLayer->source_crop.bottom-drmLayer->source_crop.top;
+          //   crop_h /= drmLayer->iSkipLine_;
+          //   crop_h += crop_h%2;
+          //   int src_top = drmLayer->source_crop.top;
+          //   src_top /= drmLayer->iSkipLine_;
+          //   src_top -= src_top%2;
 
-            src_rect.y = src_top;
-            src_rect.height = src_h;
-          }
+          //   src_rect.y = src_top;
+          //   src_rect.height = crop_h;
+          // }
 
           // 获取 rga dst hanlde
           rga_buffer_handle_t dst_handle = dst_buffer->GetRgaHandle();
