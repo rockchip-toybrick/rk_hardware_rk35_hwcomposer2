@@ -54,4 +54,13 @@
 #define HAL_PIXEL_FORMAT_YUV444_10BIT_RFBC  0x205
 #endif
 
+static inline bool hwc_is_hal_rfbc_format(int format){
+    return (format == HAL_PIXEL_FORMAT_YUV420_8BIT_RFBC   ||
+            format == HAL_PIXEL_FORMAT_YUV420_10BIT_RFBC  ||
+            format == HAL_PIXEL_FORMAT_YUV422_8BIT_RFBC   ||
+            format == HAL_PIXEL_FORMAT_YUV422_10BIT_RFBC  ||
+            format == HAL_PIXEL_FORMAT_YUV444_8BIT_RFBC   ||
+            format == HAL_PIXEL_FORMAT_YUV444_10BIT_RFBC);
+}
+
 #endif

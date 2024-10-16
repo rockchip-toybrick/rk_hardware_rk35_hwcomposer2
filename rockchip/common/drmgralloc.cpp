@@ -679,6 +679,12 @@ uint64_t DrmGralloc::hwc_get_handle_format_modifier(buffer_handle_t hnd)
       }
     }
 
+#if (defined(RK3576)) && (PLATFORM_SDK_VERSION <= 28)
+    if(is_rfbc_format(internal_format)){
+      return DRM_FORMAT_MOD_ROCKCHIP_RFBC(ROCKCHIP_RFBC_BLOCK_SIZE_64x4);
+    }
+#endif
+
     return internal_format & MALI_GRALLOC_INTFMT_EXT_MASK;
 #endif
 }
@@ -832,6 +838,19 @@ uint32_t DrmGralloc::hwc_get_fourcc_from_hal_format(int hal_format, uint64_t mod
       return DRM_FORMAT_YUYV;
     // case HAL_PIXEL_FORMAT_Y210:           // MALI_GRALLOC_FORMAT_INTERNAL_Y210
     //   return DRM_FORMAT_Y210;
+    case HAL_PIXEL_FORMAT_YUV420_8BIT_RFBC :
+      return DRM_FORMAT_YUV420_8BIT;
+    case HAL_PIXEL_FORMAT_YUV420_10BIT_RFBC:
+      return DRM_FORMAT_YUV420_10BIT;
+    //VOP定义，与Gralloc拉齐
+    case HAL_PIXEL_FORMAT_YUV422_8BIT_RFBC :
+      return DRM_FORMAT_YUYV;
+    case HAL_PIXEL_FORMAT_YUV422_10BIT_RFBC:
+      return DRM_FORMAT_Y210;
+    case HAL_PIXEL_FORMAT_YUV444_8BIT_RFBC :
+      return DRM_FORMAT_VUY888;
+    case HAL_PIXEL_FORMAT_YUV444_10BIT_RFBC:
+      return DRM_FORMAT_VUY101010;
     default:
       ALOGE("Cannot convert hal format to drm format %u, use default format RGBA8888", hal_format);
       return HAL_PIXEL_FORMAT_BGRA_8888;

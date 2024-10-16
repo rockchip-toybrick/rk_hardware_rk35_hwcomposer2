@@ -40,6 +40,30 @@
 #define DRM_FORMAT_NV30		fourcc_code('N', 'V', '3', '0') /* non-subsampled Cr:Cb plane */
 #endif
 
+#ifndef DRM_FORMAT_YUV420_8BIT
+#define DRM_FORMAT_YUV420_8BIT	fourcc_code('Y', 'U', '0', '8')
+#endif
+
+#ifndef DRM_FORMAT_YUV420_10BIT
+#define DRM_FORMAT_YUV420_10BIT	fourcc_code('Y', 'U', '1', '0')
+#endif
+
+#ifndef DRM_FORMAT_YUYV
+#define DRM_FORMAT_YUYV		fourcc_code('Y', 'U', 'Y', 'V') /* [31:0] Cr0:Y1:Cb0:Y0 8:8:8:8 little endian */
+#endif
+
+#ifndef DRM_FORMAT_Y210
+#define DRM_FORMAT_Y210         fourcc_code('Y', '2', '1', '0') /* [63:0] Cr0:0:Y1:0:Cb0:0:Y0:0 10:6:10:6:10:6:10:6 little endian per 2 Y pixels */
+#endif
+
+#ifndef DRM_FORMAT_VUY888
+#define DRM_FORMAT_VUY888	fourcc_code('V', 'U', '2', '4') /* [23:0] Cr:Cb:Y 8:8:8 little endian */
+#endif
+
+#ifndef DRM_FORMAT_VUY101010
+#define DRM_FORMAT_VUY101010	fourcc_code('V', 'U', '3', '0') /* Y followed by U then V, 10:10:10. Non-linear modifier only */
+#endif
+
 #ifndef DRM_FORMAT_MOD_VENDOR_ROCKCHIP
 #define DRM_FORMAT_MOD_VENDOR_ROCKCHIP 0x0b
 #endif
