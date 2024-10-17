@@ -1843,14 +1843,7 @@ int Vop3588::TryRgaOverlayPolicy(
           }
 
           // RGA 特殊修改，需要调整传入的format
-          int src_format = 0;
-          if(drmLayer->iFormat_ == HAL_PIXEL_FORMAT_YUV420_8BIT_I){
-            src_format = HAL_PIXEL_FORMAT_YCrCb_NV12;
-          }else if(drmLayer->iFormat_ == HAL_PIXEL_FORMAT_YUV420_10BIT_I){
-            src_format = HAL_PIXEL_FORMAT_YCrCb_NV12_10;
-          }else{
-            src_format = drmLayer->iFormat_;
-          }
+          int src_format = hwc_rga_utils::UnifyAndroidFormatForRK3588(drmLayer->iFormat_);
 
           // RGA 的特殊修改，需要通过 wstride
           int src_stride = 0;

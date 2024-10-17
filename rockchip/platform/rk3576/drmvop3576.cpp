@@ -1668,12 +1668,20 @@ int Vop3576::TryRgaOverlayPolicy(
               rga_scale_max = true;
           }
 
+#if (defined(RK3576)) && (PLATFORM_SDK_VERSION <= 28)
+          dst_buffer = rgaBufferQueue_->DequeueDrmBuffer(ctx.state.iDisplayWidth_,
+                                                          ctx.state.iDisplayHeight_,
+                                                          HAL_PIXEL_FORMAT_YCrCb_NV12,
+                                                          MALI_GRALLOC_USAGE_NO_AFBC,
+                                                          "RGA-SurfaceView");
+#else
           dst_buffer = rgaBufferQueue_->DequeueDrmBuffer(ctx.state.iDisplayWidth_,
                                                           ctx.state.iDisplayHeight_,
                                                           HAL_PIXEL_FORMAT_YCrCb_NV12,
                                                           RK_GRALLOC_USAGE_STRIDE_ALIGN_16 |
                                                           MALI_GRALLOC_USAGE_NO_AFBC,
                                                           "RGA-SurfaceView");
+#endif
 
           if(dst_buffer == NULL){
             HWC2_ALOGD_IF_DEBUG("DequeueDrmBuffer fail!, skip this policy.");
@@ -1698,15 +1706,7 @@ int Vop3576::TryRgaOverlayPolicy(
             continue;
           }
 
-          // RGA 特殊修改，需要调整传入的format
-          int src_format = 0;
-          if(drmLayer->iFormat_ == HAL_PIXEL_FORMAT_YUV420_8BIT_I){
-            src_format = HAL_PIXEL_FORMAT_YCrCb_NV12;
-          }else if(drmLayer->iFormat_ == HAL_PIXEL_FORMAT_YUV420_10BIT_I){
-            src_format = HAL_PIXEL_FORMAT_YCrCb_NV12_10;
-          }else{
-            src_format = drmLayer->iFormat_;
-          }
+          int src_format = hwc_rga_utils::UnifyAndroidFormatForRK3576(drmLayer->iFormat_);
 
           // RGA 的特殊修改，需要通过 wstride
           int src_stride = 0;
@@ -1724,7 +1724,11 @@ int Vop3576::TryRgaOverlayPolicy(
 
           // AFBC format
           if(drmLayer->bAfbcd_)
-            src.rd_mode = IM_FBC_MODE;
+            src.rd_mode = IM_AFBC32x8_MODE;
+          else if(drmLayer->bRfbcd_)
+            src.rd_mode = IM_RKFBC64x4_MODE;
+          else
+            src.rd_mode = IM_RASTER_MODE;
 
           // Set src rect info
           src_rect.x = ALIGN_DOWN((int)drmLayer->source_crop.left,2);
