@@ -337,7 +337,8 @@ int ResourceManager::WriteBackUseVop(int display){
                                       RK_GRALLOC_USAGE_STRIDE_ALIGN_16 |
                                       MALI_GRALLOC_USAGE_NO_AFBC,
                                       "WriteBackBuffer");
-  if(!mNextWriteBackBuffer_->initCheck()){
+  if(mNextWriteBackBuffer_ != NULL &&
+     !mNextWriteBackBuffer_->initCheck()){
     HWC2_ALOGE("display=%d WBBuffer Dequeue fail, w=%d h=%d format=%d",
                                       display,
                                       iWBWidth_,
@@ -385,7 +386,8 @@ int ResourceManager::WriteBackUseRga(int display){
                                       RK_GRALLOC_USAGE_STRIDE_ALIGN_16 |
                                       MALI_GRALLOC_USAGE_NO_AFBC,
                                       "WriteBackBuffer");
-  if(!mNextWriteBackBuffer_->initCheck()){
+  if(mNextWriteBackBuffer_ != NULL &&
+     !mNextWriteBackBuffer_->initCheck()){
     HWC2_ALOGE("display=%d WBBuffer Dequeue fail, w=%d h=%d format=%d",
                                       display,
                                       iWBWidth_,
@@ -488,7 +490,8 @@ int ResourceManager::UpdateWriteBackResolutionUseVop(int display){
                                       RK_GRALLOC_USAGE_STRIDE_ALIGN_16 |
                                       MALI_GRALLOC_USAGE_NO_AFBC,
                                       "WriteBackBuffer");
-  if(!mNextWriteBackBuffer_->initCheck()){
+  if(mNextWriteBackBuffer_ != NULL &&
+     !mNextWriteBackBuffer_->initCheck()){
     HWC2_ALOGE("display=%d WBBuffer Dequeue fail, w=%d h=%d format=%d",
                 display, iWBWidth_, iWBHeight_, iWBFormat_);
     return -1;
@@ -809,7 +812,7 @@ int ResourceManager::SwapWBBuffer(uint64_t frame_no){
                                       RK_GRALLOC_USAGE_STRIDE_ALIGN_16 |
                                       MALI_GRALLOC_USAGE_NO_AFBC,
                                       "WriteBackBuffer");
-  if(!next->initCheck()){
+  if(next != NULL && !next->initCheck()){
     HWC2_ALOGE("display=%d WBBuffer Dequeue fail, w=%d h=%d format=%d",
                                       iWriteBackDisplayId_,
                                       iWBWidth_,

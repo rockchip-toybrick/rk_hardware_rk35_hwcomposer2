@@ -1037,7 +1037,7 @@ void DrmVideoProducer::Routine(){
 
     // 获取 buffer cache信息
     std::shared_ptr<DrmBuffer> buffer = ctx->GetBufferCache(acquire_buffer);
-    if(!buffer->initCheck()){
+    if(buffer != NULL && !buffer->initCheck()){
       HWC2_ALOGE("tunnel_id=%d buffer_id:0x%" PRIx64 " DrmBuffer import fail, "
                  "acquire_buffer=%p present_time=%" PRIi64 ,
                  ctx->GetTunnelId(), acquire_buffer->buffer_id,
