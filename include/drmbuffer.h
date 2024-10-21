@@ -62,6 +62,8 @@ public:
   uint64_t GetBufferId();
   uint32_t GetGemHandle();
   uint32_t DrmFormatToPlaneNum(uint32_t drm_format);
+  bool IsAfbc();
+  bool IsRfbc();
   uint32_t GetFbId();
   rga_buffer_handle_t GetRgaHandle();
   void* Lock();

@@ -112,7 +112,7 @@ static void dumpPqPlaneInfo(const HwpqDisplayStatus::PlaneInfo & planeinfo, std:
   ss << std::endl;
 }
 
-static std::shared_ptr<HwpqDisplayStatus> CollectPqDisplayStatus(std::vector<DrmHwcLayer*> &drm_hwc_layers_, PqDisplayCtx ctx){
+static std::shared_ptr<HwpqDisplayStatus> CollectPqDisplayStatus(std::vector<DrmHwcLayer*> &drm_hwc_layers, PqDisplayCtx ctx){
   std::shared_ptr<HwpqDisplayStatus> status = std::make_shared<HwpqDisplayStatus>();
   //初始化平台信息
   status->iPqZpos=-1;
@@ -125,17 +125,15 @@ static std::shared_ptr<HwpqDisplayStatus> CollectPqDisplayStatus(std::vector<Drm
   bool use_client_composite = false;
   bool use_video_transform = false;
   bool use_video_client_composite = false;
-  bool use_heavy_composite = false;//是否有梯形、畸变等操作
 
-  for (auto &drmlayer : drm_hwc_layers_) {
+  for (auto &drmlayer : drm_hwc_layers) {
     //查找fb_target图层
     if(drmlayer->bFbTarget_){
-      HwpqDisplayStatus::PlaneInfo layer_info_;
       client_layer_zpos = drmlayer->iDrmZpos_;
       break;
     }
   }
-  for (auto &drmlayer : drm_hwc_layers_) {
+  for (auto &drmlayer : drm_hwc_layers) {
     if (!drmlayer->bMatch_) {
       if(drmlayer->bFbTarget_){
         continue;
@@ -153,7 +151,7 @@ static std::shared_ptr<HwpqDisplayStatus> CollectPqDisplayStatus(std::vector<Drm
       //HWC合成图层，TODO：后续增加(RKCV/RGA/Skip)合成判断
       //获取win_type和zpos
 
-      bool is_hwpq_layer = drmlayer->uWinType_ == PLANE_RK3576_CLUSTER0_WIN0;
+      bool is_hwpq_layer = IsHwpqLayer(drmlayer->uWinType_);
       int zpos = drmlayer->iDrmZpos_;
       HwpqDisplayStatus::PlaneInfo layer_info;
 
@@ -178,7 +176,7 @@ static std::shared_ptr<HwpqDisplayStatus> CollectPqDisplayStatus(std::vector<Drm
       status->mapPlaneInfo_[client_layer_zpos].vecComposeInfo_ = clientComposeInfo;
     }
   }
-
+  //检查是否有pq图层
   if(status->iPqZpos<0 || status->mapPlaneInfo_.count(status->iPqZpos)==0){
     HWC2_ALOGE("Error Could not found PQ layer!");
     return NULL;
@@ -187,7 +185,7 @@ static std::shared_ptr<HwpqDisplayStatus> CollectPqDisplayStatus(std::vector<Drm
   auto setPqLayerType = [&status](HwpqDisplayStatus::PlaneInfo::PQ_LayerType type){
       status->mapPlaneInfo_.at(status->iPqZpos).iLayerType_ = type;
   };
-
+  //标注pq layer类型
   if(use_client_composite && client_layer_zpos == status->iPqZpos){
     if(use_video_client_composite){
       setPqLayerType(HwpqDisplayStatus::PlaneInfo::PQ_LayerType::PQ_LAYER_TYPE_VIDEO_WITH_UI);
@@ -201,6 +199,7 @@ static std::shared_ptr<HwpqDisplayStatus> CollectPqDisplayStatus(std::vector<Drm
       setPqLayerType(HwpqDisplayStatus::PlaneInfo::PQ_LayerType::PQ_LAYER_TYPE_VIDEO);
     }
   }
+  //dump收集到的结构
   if(LogLevel(DBG_DEBUG)){
     std::stringstream ss;
     for(auto &plane_info_map:status->mapPlaneInfo_){
@@ -269,6 +268,13 @@ static inline void PopulatePqLayerInfo(DrmHwcLayer *layer, HwpqDisplayStatus::Pl
   }
   layerInfo.PlaneType_ = plane_type;
   layerInfo.iZpos_ = layer->iDrmZpos_;
+}
+
+static bool IsHwpqLayer(uint64_t win_type){
+  if(gIsRK3576()){
+    return (win_type == PLANE_RK3576_CLUSTER0_WIN0);
+  }
+  return false;
 }
 #endif
 

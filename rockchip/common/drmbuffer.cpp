@@ -324,6 +324,14 @@ uint32_t DrmBuffer::DrmFormatToPlaneNum(uint32_t drm_format) {
   }
 }
 
+bool DrmBuffer::IsAfbc(){
+  return fourcc_mod_is_vendor(uModifier_,ARM);
+}
+
+bool DrmBuffer::IsRfbc(){
+  return IS_ROCKCHIP_RFBC_MOD(uModifier_);
+}
+
 void DrmBuffer::SetDataspace(android_dataspace_t dataspace){
   uDataspace_ = dataspace;
 }

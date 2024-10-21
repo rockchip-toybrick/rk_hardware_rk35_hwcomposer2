@@ -338,8 +338,7 @@ std::shared_ptr<DrmBuffer> DrmVideoProducer::DoHwPq(std::shared_ptr<VpContext> c
   src.mBufferInfo_.uBufferId_ = buffer->GetBufferId();
   src.mBufferInfo_.uDataSpace_ = (uint64_t)ctx->iDataSpace_;
 
-  auto modifier = buffer->GetModifier();
-  src.mIsFbcdFormat_ = (fourcc_mod_is_vendor(modifier,ARM)) || (IS_ROCKCHIP_RFBC_MOD(modifier));
+  src.mIsFbcdFormat_ = (buffer->IsAfbc() || buffer->IsRfbc());
 
   src.mCrop_.iLeft_  = (int)left;
   src.mCrop_.iTop_   = (int)top;
