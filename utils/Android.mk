@@ -4,26 +4,10 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := \
     worker.cpp
 
-# API 30 -> Android 11.0
-ifneq (1,$(strip $(shell expr $(PLATFORM_SDK_VERSION) \< 30)))
-
 LOCAL_C_INCLUDES += \
-  hardware/rockchip/hwcomposer/drmhwc2/include
-LOCAL_CPPFLAGS += -DANDROID_R
-
-else ifneq (1,$(strip $(shell expr $(PLATFORM_SDK_VERSION) \< 28)))
-LOCAL_C_INCLUDES += \
-    hardware/rockchip/hwcomposer/drmhwc2/include \
-    hardware/rockchip/hwcomposer/include
-LOCAL_CPPFLAGS += -DANDROID_P
-
-else
-LOCAL_C_INCLUDES += \
-  hardware/rockchip/hwcomposer/include
+  $(LOCAL_PATH)/../include
 
 LOCAL_CPPFLAGS += -DANDROID_Q
-
-endif
 
 LOCAL_CPPFLAGS := \
     -Wall \

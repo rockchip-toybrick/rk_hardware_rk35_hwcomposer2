@@ -1,0 +1,16 @@
+stages:
+  - build
+
+before_script:
+  # 所有作业执行前运行的脚本
+  - echo "Setting up the environment"
+  - export PATH=/home/lb/projects/gitlab-ci/drmhwc2-configs/build_sh/:$PATH
+  - echo "Updated PATH=$PATH"  # 打印修改后的 PATH
+
+a14_build:
+  stage: build
+  tags:
+    - android-14
+  script:
+    - echo "Building the Android-14 SDK ..."
+    - . build_for_android14_drmhwc2.sh
