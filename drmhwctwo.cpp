@@ -78,11 +78,11 @@ static inline long __currentTime(){
     return static_cast<long>(tp.tv_sec) * 1000000 + tp.tv_usec;
 }
 #define ALOGD_HWC2_DRM_LAYER_INFO(log_level, drmHwcLayers) \
-    if(1){ \
+    if(LogLevel(log_level)){ \
       String8 output; \
       for(auto &drmHwcLayer : drmHwcLayers) {\
         drmHwcLayer.DumpInfo(output); \
-        HWC2_ALOGI("%s",output.c_str()); \
+        ALOGD_IF(LogLevel(log_level),"%s",output.c_str()); \
         output.clear(); \
       }\
     }
@@ -1661,7 +1661,6 @@ HWC2::Error DrmHwcTwo::HwcDisplay::InitDrmHwcLayer() {
 #endif
 
   ALOGD_HWC2_DRM_LAYER_INFO((DBG_INFO),drm_hwc_layers_);
-  HWC2_ALOGI("rk-debug layers_,size = %zu drm_hwc_layers_.size()=%zu", layers_.size(), drm_hwc_layers_.size());
 
   return HWC2::Error::None;
 }
@@ -2998,7 +2997,8 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateDisplay(uint32_t *num_types,
   }
 #endif
 
-  DumpDisplayLayersInfo();
+  if(LogLevel(DBG_DEBUG))
+    DumpDisplayLayersInfo();
 
 if(!init_success_ || force_disconneted_){
     HWC2_ALOGD_IF_ERR("init_success_=%d force_disconneted_=%d skip.",init_success_, force_disconneted_);
