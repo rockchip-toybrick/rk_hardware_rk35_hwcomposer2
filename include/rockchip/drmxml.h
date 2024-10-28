@@ -46,7 +46,7 @@
 enum DrmDisplayMode {
   DRM_DISPLAY_MODE_NORMAL = 0,
   DRM_DISPLAY_MODE_SPLICE,  // 拼接模式
-  DRM_DISPLAY_MODE_HORIZONTAL_SPILT, // 异显模式
+  DRM_DISPLAY_MODE_HORIZONTAL_SPLIT, // 异显模式
 };
 
 struct DrmXmlVersion{

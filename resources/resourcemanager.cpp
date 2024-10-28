@@ -231,7 +231,7 @@ bool ResourceManager::GetRgaSupportAbove4GB() const{
 
 DrmDevice *ResourceManager::GetDrmDevice(int display) {
   for (auto &drm : drms_) {
-    if (drm->HandlesDisplay(display & ~DRM_CONNECTOR_SPILT_MODE_MASK))
+    if (drm->HandlesDisplay(display & ~DRM_CONNECTOR_SPLIT_MODE_MASK))
       return drm.get();
   }
   return NULL;
@@ -239,7 +239,7 @@ DrmDevice *ResourceManager::GetDrmDevice(int display) {
 
 std::shared_ptr<Importer> ResourceManager::GetImporter(int display) {
   for (unsigned int i = 0; i < drms_.size(); i++) {
-    if (drms_[i]->HandlesDisplay(display & ~DRM_CONNECTOR_SPILT_MODE_MASK))
+    if (drms_[i]->HandlesDisplay(display & ~DRM_CONNECTOR_SPLIT_MODE_MASK))
       return importers_[i];
   }
   return NULL;

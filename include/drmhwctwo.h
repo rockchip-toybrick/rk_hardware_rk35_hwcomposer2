@@ -836,11 +836,11 @@ class DrmHwcTwo : public hwc2_device_t {
    int EntreStaticScreen(uint64_t refresh, int refresh_cnt);
    int InvalidateControl(uint64_t refresh, int refresh_cnt);
    int isVirtual() { return type_ == HWC2::DisplayType::Virtual;}
-   //in dynamic cropspilt mode, skip screenshot layer to prevent flickering.
+   //in dynamic cropsplit mode, skip screenshot layer to prevent flickering.
    void SetSkipScreenShot();
    HWC2::Error GetOrCreateDummyLayer();
    HWC2::Error DestoryDummyLayer();
-   HWC2::Error CheckCropSpiltStatus();
+   HWC2::Error CheckCropSplitStatus();
 #ifdef USE_LIBEBOOK
    int isEBook() { return ebook_framebuffer_width > 0;}
 #endif
@@ -851,7 +851,7 @@ class DrmHwcTwo : public hwc2_device_t {
     int ResetDisplay();
     int DisconnectDisplay();
     int ConnectDisplay();
-    hwc2_layer_t GetSplitDummyLayer(){ return uCropSpiltDummyLayer_;}
+    hwc2_layer_t GetSplitDummyLayer(){ return uCropSplitDummyLayer_;}
 
    private:
     HWC2::Error ValidatePlanes();
@@ -862,7 +862,7 @@ class DrmHwcTwo : public hwc2_device_t {
     void AddFenceToRetireFence(int fd);
     int DoMirrorDisplay(int32_t *retire_fence);
     bool CheckForSkipScreenShot();
-    void CheckForSpiltModeTimeline();
+    void CheckForSplitModeTimeline();
 
     ResourceManager *resource_manager_;
     DrmDevice *drm_;
@@ -888,7 +888,7 @@ class DrmHwcTwo : public hwc2_device_t {
     // WriteBack 需要使用
     HwcLayer output_layer_;
     // 拼接模式创建的 dummy layer
-    hwc2_layer_t uCropSpiltDummyLayer_;
+    hwc2_layer_t uCropSplitDummyLayer_;
     std::set<uint64_t> mHasResetBufferId_;
 
     int32_t color_mode_;
@@ -913,8 +913,8 @@ class DrmHwcTwo : public hwc2_device_t {
     bool bLastSvepState_;
     bool bVrrDisplay_;
     bool bActiveModeChange_;
-    bool bValidateSpiltPrimary_ = false;
-    bool bValidateCropSpilt = false;
+    bool bValidateSplitPrimary_ = false;
+    bool bValidateCropSplit = false;
 
     bool bUseWriteBack_;
     int iLastTunnelId_=0;
@@ -993,7 +993,7 @@ class DrmHwcTwo : public hwc2_device_t {
     // 主屏切换事件处理流程
     int HandlePrimaryChange();
     // 拼接屏幕切换事件处理流程
-    int HandleSpiltModeChange();
+    int HandleSplitModeChange();
     DrmHwcTwo *hwc2_;
     std::queue<DrmEvent> mPendingEvent_;
   };
@@ -1087,8 +1087,8 @@ class DrmHwcTwo : public hwc2_device_t {
 };
 
 // 析构执行器，会析构的时候执行对应的函数或者成员函数，方便在函数return的时候执行
-// 用法示例：  DestructExecutor<DrmHwcTwo::HwcDisplay> check_spilt_timeline(this,&HwcDisplay::CheckForSpiltModeTimeline);
-// 此实例析构的时候会执行 this->CheckForSpiltModeTimeline();
+// 用法示例：  DestructExecutor<DrmHwcTwo::HwcDisplay> check_split_timeline(this,&HwcDisplay::CheckForSplitModeTimeline);
+// 此实例析构的时候会执行 this->CheckForSplitModeTimeline();
 template <typename T>
 class DestructExecutor {
   enum ExecType {

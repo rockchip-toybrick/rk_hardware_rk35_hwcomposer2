@@ -356,11 +356,11 @@ int DrmDevice::CheckEnvXmlChange(struct DisplayModeXml* last,
 
 
 
-int DrmDevice::UpdateSpiltInfoFromXml(){
+int DrmDevice::UpdateSplitInfoFromXml(){
   if(!DmXml_.Enable){
     HWC2_ALOGI("DmXml_.Enable = %d, ", DmXml_.Enable);
     for(auto &conn : connectors_) {
-      conn->ResetSpiltMode();
+      conn->ResetSplitMode();
     }
     return 0;
   }
@@ -368,14 +368,14 @@ int DrmDevice::UpdateSpiltInfoFromXml(){
   if(!DmXml_.Valid){
     HWC2_ALOGW("DmXml_.Valid = %d, ", DmXml_.Valid);
     for(auto &conn : connectors_) {
-      conn->ResetSpiltMode();
+      conn->ResetSplitMode();
     }
     return -1;
   }
 
-  bool spilt_main_connector = false;
+  bool split_main_connector = false;
   for(auto &conn : connectors_) {
-    conn->ResetSpiltMode();
+    conn->ResetSplitMode();
   }
 
   HWC2_ALOGI("DmXml_.Mode = %d ", DmXml_.Mode);
@@ -386,26 +386,26 @@ int DrmDevice::UpdateSpiltInfoFromXml(){
         if(!strncmp(conn_name, DmXml_.ConnectorInfo[i].Type, strlen(conn_name)) &&
            DmXml_.ConnectorInfo[i].TypeId == conn->type_id()){
           if(DmXml_.Mode == DRM_DISPLAY_MODE_SPLICE){
-            if(conn->setCropSpilt(DmXml_.FbWidth,
+            if(conn->setCropSplit(DmXml_.FbWidth,
                                   DmXml_.FbHeight,
                                   DmXml_.ConnectorInfo[i].SrcX,
                                   DmXml_.ConnectorInfo[i].SrcY,
                                   DmXml_.ConnectorInfo[i].SrcW,
                                   DmXml_.ConnectorInfo[i].SrcH,
                                   DmXml_.ConnectorInfo[i].Transform)){
-              HWC2_ALOGW("SpiltMode: %s-%d enter CropSpilt Mode fail.",
+              HWC2_ALOGW("SplitMode: %s-%d enter CropSplit Mode fail.",
                           connector_type_str(conn->type()), conn->type_id());
             }else{
-              HWC2_ALOGI("SpiltMode: %s-%d enter %s CropSpilt Mode.",
+              HWC2_ALOGI("SplitMode: %s-%d enter %s CropSplit Mode.",
                           connector_type_str(conn->type()), conn->type_id(),
-                          conn->IsSpiltPrimary() ? "Primary" : "External");
+                          conn->IsSplitPrimary() ? "Primary" : "External");
             }
-          }else if(DmXml_.Mode == DRM_DISPLAY_MODE_HORIZONTAL_SPILT){
-            if(conn->setHorizontalSpilt()){
-              HWC2_ALOGW("SpiltMode: %s-%d enter HorizontalSpilt Mode fail.",
+          }else if(DmXml_.Mode == DRM_DISPLAY_MODE_HORIZONTAL_SPLIT){
+            if(conn->setHorizontalSplit()){
+              HWC2_ALOGW("SplitMode: %s-%d enter HorizontalSplit Mode fail.",
                           connector_type_str(conn->type()), conn->type_id());
             }else{
-              HWC2_ALOGI("SpiltMode: %s-%d enter HorizontalSpilt Mode.",
+              HWC2_ALOGI("SplitMode: %s-%d enter HorizontalSplit Mode.",
                           connector_type_str(conn->type()), conn->type_id());
             }
           }
@@ -415,21 +415,21 @@ int DrmDevice::UpdateSpiltInfoFromXml(){
   }
   //寻找主屏（Display0），如果主屏参与拼接，则将主屏设置为拼接主屏
   for(auto &conn : connectors_) {
-    if(conn->isCropSpilt() && conn->display()==0){
-      spilt_main_connector = true;
-      conn->setCropSpiltPrimary();
-      HWC2_ALOGI("SpiltMode: Use %s-%d as CropSpilt primary display.",
+    if(conn->isCropSplit() && conn->display()==0){
+      split_main_connector = true;
+      conn->setCropSplitPrimary();
+      HWC2_ALOGI("SplitMode: Use %s-%d as CropSplit primary display.",
                  connector_type_str(conn->type()), conn->type_id());
       break;
     }
   }
   //如果主屏不参与拼接，指定其中一个拼接屏幕作为拼接主屏
-  if(!spilt_main_connector){
+  if(!split_main_connector){
     for(auto &conn : connectors_) {
-      if(conn->isCropSpilt()){
-        spilt_main_connector = true;
-        conn->setCropSpiltPrimary();
-        HWC2_ALOGI("SpiltMode: Use %s-%d as CropSpilt primary display.",
+      if(conn->isCropSplit()){
+        split_main_connector = true;
+        conn->setCropSplitPrimary();
+        HWC2_ALOGI("SplitMode: Use %s-%d as CropSplit primary display.",
                   connector_type_str(conn->type()), conn->type_id());
         break;
       }
@@ -778,16 +778,16 @@ std::tuple<int, int> DrmDevice::Init(int num_displays) {
     ++num_displays;
   }
 
-  // SpiltMode
-  if(UpdateSpiltInfoFromXml()){
-    HWC2_ALOGW("UpdateSpiltInfoFromXml fail, non-fatal error, check for ok.");
+  // SplitMode
+  if(UpdateSplitInfoFromXml()){
+    HWC2_ALOGW("UpdateSplitInfoFromXml fail, non-fatal error, check for ok.");
   }
 
   for (auto &conn : connectors_) {
-    if(conn->isHorizontalSpilt()){
-      HWC2_ALOGI("%s enable isHorizontalSpilt, to create SpiltModeDisplay id=0x%x",conn->unique_name(),conn->GetSpiltModeId());
-      int spilt_display_id = conn->GetSpiltModeId();
-      displays_[spilt_display_id] = spilt_display_id;
+    if(conn->isHorizontalSplit()){
+      HWC2_ALOGI("%s enable isHorizontalSplit, to create SplitModeDisplay id=0x%x",conn->unique_name(),conn->GetSplitModeId());
+      int split_display_id = conn->GetSplitModeId();
+      displays_[split_display_id] = split_display_id;
     }
   }
 
@@ -986,20 +986,20 @@ int DrmDevice::GetDisplayPipelineChange(uint64_t* output_change_mask) {
 }
 
 
-int DrmDevice::UpdateSpiltModeInfo() {
+int DrmDevice::UpdateSplitModeInfo() {
   std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
   // Spicling Mode
-  if(UpdateSpiltInfoFromXml()){
-    HWC2_ALOGW("SpiltMode: UpdateSpiltInfoFromXml fail, CropSpilt status will not change, please check xml file.");
+  if(UpdateSplitInfoFromXml()){
+    HWC2_ALOGW("SplitMode: UpdateSplitInfoFromXml fail, CropSplit status will not change, please check xml file.");
     return -1;
   }
 
-  // SpiltMode
+  // SplitMode
   for (auto &conn : connectors_) {
-    if(conn->isHorizontalSpilt()){
-      HWC2_ALOGI("%s enable isHorizontalSpilt, to create SpiltModeDisplay id=0x%x",conn->unique_name(),conn->GetSpiltModeId());
-      int spilt_display_id = conn->GetSpiltModeId();
-      displays_[spilt_display_id] = spilt_display_id;
+    if(conn->isHorizontalSplit()){
+      HWC2_ALOGI("%s enable isHorizontalSplit, to create SplitModeDisplay id=0x%x",conn->unique_name(),conn->GetSplitModeId());
+      int split_display_id = conn->GetSplitModeId();
+      displays_[split_display_id] = split_display_id;
     }
   }
   return 0;
@@ -1020,7 +1020,7 @@ int DrmDevice::GetCommitMirrorDisplayId() const {
 
 DrmConnector *DrmDevice::GetConnectorForDisplay(int display) const {
   for (auto &conn : connectors_) {
-    if (conn->display() == (display & ~DRM_CONNECTOR_SPILT_MODE_MASK))
+    if (conn->display() == (display & ~DRM_CONNECTOR_SPLIT_MODE_MASK))
       return conn.get();
   }
   return NULL;
@@ -1060,7 +1060,7 @@ DrmConnector *DrmDevice::AvailableWritebackConnector(int display) const {
 
 DrmCrtc *DrmDevice::GetCrtcForDisplay(int display) const {
   for (auto &crtc : crtcs_) {
-    if (crtc->display() == (display & ~DRM_CONNECTOR_SPILT_MODE_MASK))
+    if (crtc->display() == (display & ~DRM_CONNECTOR_SPLIT_MODE_MASK))
       return crtc.get();
   }
   return NULL;

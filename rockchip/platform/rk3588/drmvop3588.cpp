@@ -539,8 +539,8 @@ int Vop3588::TryHwcPolicy(
   InitContext(layers,plane_groups,crtc,gles_policy);
 
   // 拼接模式策略
-  if(ctx.state.setHwcPolicy.count(HWC_SPILT_MODE_POLICY)){
-    ret = TrySpiltPolicy(composition,layers,crtc,plane_groups);
+  if(ctx.state.setHwcPolicy.count(HWC_SPLIT_MODE_POLICY)){
+    ret = TrySplitPolicy(composition,layers,crtc,plane_groups);
     if(!ret)
       return 0;
   }
@@ -1739,7 +1739,7 @@ bool Vop3588::NeedUseRgaPolicy(DrmHwcLayer* layer, DrmCrtc *crtc){
   return true;
 }
 
-int Vop3588::TrySpiltPolicy(
+int Vop3588::TrySplitPolicy(
     std::vector<DrmCompositionPlane> *composition,
     std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
     std::vector<PlaneGroup *> &plane_groups) {
@@ -1747,12 +1747,12 @@ int Vop3588::TrySpiltPolicy(
   int ret = 0;
   // 拼接屏幕前处理，主要是拼接主屏的旋转角度需要设置到DrmLayer中：
   for(auto &drmLayer : layers){
-    if(ctx.state.bIsCropSpiltPrimary_){
+    if(ctx.state.bIsCropSplitPrimary_){
       if(drmLayer->bFbTarget_ && drmLayer->iFd_ > 0){
           DrmDevice *drm = crtc->getDrmDevice();
           DrmConnector *conn = drm->GetConnectorForDisplay(crtc->display());
           if(conn && conn->state() == DRM_MODE_CONNECTED){
-          int32_t transform = conn->getCropSpiltTransform();
+          int32_t transform = conn->getCropSplitTransform();
           switch(transform){
             case static_cast<int32_t>(HWC2::Transform::None):
               drmLayer->SetTransform(HWC2::Transform::None);
@@ -1779,7 +1779,7 @@ int Vop3588::TrySpiltPolicy(
               drmLayer->SetTransform(HWC2::Transform::FlipVRotate90);
               break;
             default:
-              HWC2_ALOGW("SpiltMode: invalid transform=%d", transform);
+              HWC2_ALOGW("SplitMode: invalid transform=%d", transform);
               drmLayer->SetTransform(HWC2::Transform::None);
               break;
           }
@@ -1789,7 +1789,7 @@ int Vop3588::TrySpiltPolicy(
   }
 
   // 如果是拼接主屏则直接使用GPU合成策略，若失败，尝试使用RGA旋转后再进行GPU合成策略匹配
-  if(ctx.state.bIsCropSpiltPrimary_){
+  if(ctx.state.bIsCropSplitPrimary_){
     ret = TryGLESPolicy(composition,layers,crtc,plane_groups);
     if(!ret)
       return 0;
@@ -1830,7 +1830,7 @@ int Vop3588::TrySpiltPolicy(
 
   for(auto &drmLayer : layers){
     // 若是拼接主屏，则仅处理FbTarget图层
-    if(ctx.state.bIsCropSpiltPrimary_){
+    if(ctx.state.bIsCropSplitPrimary_){
       if(drmLayer->bFbTarget_ == false){
         continue;
       }
@@ -1861,7 +1861,7 @@ int Vop3588::TrySpiltPolicy(
                                                      ctx.state.iDisplayHeight_,
                                                      HAL_PIXEL_FORMAT_RGB_888,
                                                      MALI_GRALLOC_USAGE_NO_AFBC,
-                                                     "SpiltModeView");
+                                                     "SplitModeView");
 
       if(dst_buffer == NULL){
         HWC2_ALOGD_IF_DEBUG("DequeueDrmBuffer fail!, skip this policy.");
@@ -2078,7 +2078,7 @@ int Vop3588::TrySpiltPolicy(
   if(rga_layer_ready){
     ALOGD_IF(LogLevel(DBG_DEBUG), "%s:line=%d rga layer ready, to matchPlanes",__FUNCTION__,__LINE__);
     int ret = 0;
-    if(ctx.state.bIsCropSpiltPrimary_){
+    if(ctx.state.bIsCropSplitPrimary_){
       ret = TryGLESPolicy(composition,layers,crtc,plane_groups);
     }else{
       ret = TryOverlayPolicy(composition,layers,crtc,plane_groups);
@@ -2133,7 +2133,7 @@ int Vop3588::TrySpiltPolicy(
   }else if(use_laster_rga_layer){
     ALOGD_IF(LogLevel(DBG_DEBUG), "%s:line=%d rga layer ready, to matchPlanes",__FUNCTION__,__LINE__);
     int ret = -1;
-    if(ctx.state.bIsCropSpiltPrimary_){
+    if(ctx.state.bIsCropSplitPrimary_){
       ret = TryGLESPolicy(composition,layers,crtc,plane_groups);
     }else{
       ret = TryOverlayPolicy(composition,layers,crtc,plane_groups);
@@ -4292,9 +4292,9 @@ void Vop3588::InitStateContext(
   DrmDevice *drm = crtc->getDrmDevice();
   DrmConnector *conn = drm->GetConnectorForDisplay(crtc->display());
   if(conn && conn->state() == DRM_MODE_CONNECTED){
-    // 更新 SpiltMode 信息
-    ctx.state.bIsCropSpilt_ = conn->isCropSpilt();
-    ctx.state.bIsCropSpiltPrimary_ = conn->IsSpiltPrimary();
+    // 更新 SplitMode 信息
+    ctx.state.bIsCropSplit_ = conn->isCropSplit();
+    ctx.state.bIsCropSplitPrimary_ = conn->IsSplitPrimary();
 
     DrmMode mode = conn->current_mode();
     if(ctx.state.b8kMode_ != mode.is_8k_mode()){
@@ -4417,8 +4417,8 @@ int Vop3588::InitContext(
   InitStateContext(layers,plane_groups,crtc);
 
   // 拼接屏幕使用RGA策略
-  if(ctx.state.bIsCropSpilt_){
-    ctx.state.setHwcPolicy.insert(HWC_SPILT_MODE_POLICY);
+  if(ctx.state.bIsCropSplit_){
+    ctx.state.setHwcPolicy.insert(HWC_SPLIT_MODE_POLICY);
   }
 
   //force go into GPU
@@ -4434,8 +4434,8 @@ int Vop3588::InitContext(
       ctx.state.setHwcPolicy.insert(HWC_ACCELERATE_POLICY);
     }
 
-    ALOGD_IF(LogLevel(DBG_DEBUG),"Force use GLES compose, iMode=%d, gles_policy=%d SpiltPrimary=%d, soc_id=%x",
-             iMode, gles_policy, ctx.state.bIsCropSpiltPrimary_, ctx.state.iSocId);
+    ALOGD_IF(LogLevel(DBG_DEBUG),"Force use GLES compose, iMode=%d, gles_policy=%d SplitPrimary=%d, soc_id=%x",
+             iMode, gles_policy, ctx.state.bIsCropSplitPrimary_, ctx.state.iSocId);
     return 0;
   }
 

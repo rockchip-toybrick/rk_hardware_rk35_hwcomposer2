@@ -102,7 +102,7 @@ typedef enum tagComposeMode{
    HWC_RGA_OVERLAY_POLICY,
    HWC_SR_OVERLAY_POLICY,
    HWC_ACCELERATE_POLICY,
-   HWC_SPILT_MODE_POLICY,
+   HWC_SPLIT_MODE_POLICY,
    HWC_3D_POLICY,
    HWC_DEBUG_POLICY,
 }ComposeMode;
@@ -205,9 +205,9 @@ typedef struct StateContext{
   int iVopPerformanceFactor;
 
   bool bNeedReservedCluster0ForHWPQ;
-  // CropSpilt mode
-  bool bIsCropSpilt_;
-  bool bIsCropSpiltPrimary_;
+  // CropSplit mode
+  bool bIsCropSplit_;
+  bool bIsCropSplitPrimary_;
 } StaCtx;
 
 typedef struct DrmVop2Context{
@@ -232,7 +232,7 @@ struct SvepXml{
 
 struct PqBufferInfo{
   hwc_frect_t source_crop;
-  hwc_rect_t display_frame;  
+  hwc_rect_t display_frame;
   uint64_t buffer_id=0;
   bool match(DrmHwcLayer* layer){
     if(!layer)
@@ -341,7 +341,7 @@ struct PqBufferInfo{
   int TryMixPolicy(std::vector<DrmCompositionPlane> *composition,
                         std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                         std::vector<PlaneGroup *> &plane_groups);
-  int TrySpiltPolicy(std::vector<DrmCompositionPlane> *composition,
+  int TrySplitPolicy(std::vector<DrmCompositionPlane> *composition,
                         std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                         std::vector<PlaneGroup *> &plane_groups);
   int TryGLESPolicy(std::vector<DrmCompositionPlane> *composition,
@@ -421,7 +421,7 @@ struct PqBufferInfo{
     HwPqImageInfo hwPqDstInfo_;
     std::shared_ptr<rk_hwpq_reg> lastHwPqReg_ = NULL;
     std::shared_ptr<Pq> pq_ = NULL;
-    PqBufferInfo lastHwPqBufInfo;  
+    PqBufferInfo lastHwPqBufInfo;
     sp<AcquireFence> lastHwPqAcquireFence = NULL;
     bool lastHwPqUseNewBuffer = false;
     int CheckHwPqDstScale(DrmHwcLayer* drmLayer);

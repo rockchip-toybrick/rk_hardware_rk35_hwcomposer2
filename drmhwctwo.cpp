@@ -583,8 +583,8 @@ HWC2::Error DrmHwcTwo::HwcDisplay::Init() {
     return HWC2::Error::NoResources;
   }
 
-  // CropSpilt must to
-  if(connector_->isCropSpilt()){
+  // CropSplit must to
+  if(connector_->isCropSplit()){
     std::unique_ptr<DrmDisplayComposition> composition = compositor_->CreateComposition();
     composition->Init(drm_, crtc_, importer_.get(), planner_.get(), frame_no_, handle_);
     composition->SetDpmsMode(DRM_MODE_DPMS_ON);
@@ -614,7 +614,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::Init() {
   }
 
   // 非主屏的拼接屏幕需要创建 DummyLayer
-  if(connector_->isCropSpilt() && !connector_->IsSpiltPrimary()){
+  if(connector_->isCropSplit() && !connector_->IsSplitPrimary()){
     GetOrCreateDummyLayer();
   }
 
@@ -746,7 +746,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::CheckStateAndReinit(bool clear_layer) {
   }
 
   // Reset HwcLayer resource
-  if(clear_layer && handle_ != HWC_DISPLAY_PRIMARY && !connector_->isCropSpilt()){
+  if(clear_layer && handle_ != HWC_DISPLAY_PRIMARY && !connector_->isCropSplit()){
     // Clear Layers
     for(auto &map_layer : layers_){
       map_layer.second.clear();
@@ -930,7 +930,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetActiveConfig(hwc2_config_t *config) {
     DrmMode const &best_mode = connector_->best_mode();
 
 
-    if(connector_->isHorizontalSpilt()){
+    if(connector_->isHorizontalSplit()){
       ctx_.framebuffer_width = best_mode.h_display() / 2;
       ctx_.framebuffer_height = best_mode.v_display();
     }else{
@@ -945,7 +945,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetActiveConfig(hwc2_config_t *config) {
 
   //如果Surfaceflinger查询到当前的ActiveConfig与Surfaceflinger内部保存的一致，
   //将不会再调用SetActiveConfig,因此需要在这里设置 client_layer_ 参数
-  if(connector_->isCropSpilt()){
+  if(connector_->isCropSplit()){
     int32_t srcX, srcY, srcW, srcH;
     connector_->getCropInfo(&srcX, &srcY, &srcW, &srcH);
     hwc_rect_t display_frame = {.left = 0,
@@ -1321,17 +1321,17 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetDisplayConfigs(uint32_t *num_configs,
       ALOGE("Failed to find available display mode for display %" PRIu64 "\n", handle_);
     }
 
-    if(connector_->isHorizontalSpilt()){
-      ctx_.rel_xres = best_mode.h_display() / DRM_CONNECTOR_SPILT_RATIO;
+    if(connector_->isHorizontalSplit()){
+      ctx_.rel_xres = best_mode.h_display() / DRM_CONNECTOR_SPLIT_RATIO;
       ctx_.rel_yres = best_mode.v_display();
-      ctx_.framebuffer_width = ctx_.framebuffer_width / DRM_CONNECTOR_SPILT_RATIO;
-      if(handle_ >= DRM_CONNECTOR_SPILT_MODE_MASK){
-        ctx_.rel_xoffset = best_mode.h_display() / DRM_CONNECTOR_SPILT_RATIO;
+      ctx_.framebuffer_width = ctx_.framebuffer_width / DRM_CONNECTOR_SPLIT_RATIO;
+      if(handle_ >= DRM_CONNECTOR_SPLIT_MODE_MASK){
+        ctx_.rel_xoffset = best_mode.h_display() / DRM_CONNECTOR_SPLIT_RATIO;
         ctx_.rel_yoffset = 0;//best_mode.v_display() / 2;
       }
-    }else if(connector_->isCropSpilt()){
+    }else if(connector_->isCropSplit()){
       int32_t fb_w = 0, fb_h = 0;
-      connector_->getCropSpiltFb(&fb_w, &fb_h);
+      connector_->getCropSplitFb(&fb_w, &fb_h);
       ctx_.framebuffer_width = fb_w;
       ctx_.framebuffer_height = fb_h;
       ctx_.rel_xres = best_mode.h_display();
@@ -2300,9 +2300,9 @@ HWC2::Error DrmHwcTwo::HwcDisplay::PresentEBookDisplay(int32_t *retire_fence) {
 }
 #endif
 
-void DrmHwcTwo::HwcDisplay::CheckForSpiltModeTimeline(){
+void DrmHwcTwo::HwcDisplay::CheckForSplitModeTimeline(){
   int pipeline_timeline = property_get_int32(DRM_XML_SYS_UPDATE, -1);
-  //Only Primary display check for cropspilt mode update
+  //Only Primary display check for cropsplit mode update
   if(handle_ == 0 && pipeline_timeline > 0 && drm_->IsCheckDisplayPipeline(pipeline_timeline)){
     DrmEvent event;
     event.type = DISPLAY_PIPELINE_UPDATE_EVENT;
@@ -2311,7 +2311,7 @@ void DrmHwcTwo::HwcDisplay::CheckForSpiltModeTimeline(){
   }
 
   pipeline_timeline = property_get_int32(DRM_XML_VENDOR_UPDATE, -1);
-  //Only Primary display check for cropspilt mode update
+  //Only Primary display check for cropsplit mode update
   if(handle_ == 0 && pipeline_timeline > 0 && drm_->IsCheckDisplayPipeline(pipeline_timeline)){
     DrmEvent event;
     event.type = DISPLAY_PIPELINE_UPDATE_EVENT;
@@ -2332,7 +2332,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::PresentDisplay(int32_t *retire_fence) {
   }
 #endif
 
-  DestructExecutor<DrmHwcTwo::HwcDisplay> check_spilt_timeline(this,&HwcDisplay::CheckForSpiltModeTimeline);
+  DestructExecutor<DrmHwcTwo::HwcDisplay> check_split_timeline(this,&HwcDisplay::CheckForSplitModeTimeline);
 
   int32_t merge_retire_fence = -1;
 
@@ -2344,7 +2344,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::PresentDisplay(int32_t *retire_fence) {
   }
 
   // 拼接主屏需要遍历其他拼接子屏幕
-  if(connector_->IsSpiltPrimary()){
+  if(connector_->IsSplitPrimary()){
     DoMirrorDisplay(&merge_retire_fence);
   }
 
@@ -2469,7 +2469,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetActiveConfig(hwc2_config_t config) {
     // SetDisplayModeInfo cost 2.5ms - 5ms, a A few cases cost 10ms - 20ms
     connector_->SetDisplayModeInfo(handle_);
   }else{
-    if(connector_->isCropSpilt()){
+    if(connector_->isCropSplit()){
       int32_t srcX, srcY, srcW, srcH;
       connector_->getCropInfo(&srcX, &srcY, &srcW, &srcH);
       hwc_rect_t display_frame = {.left = 0,
@@ -2645,13 +2645,13 @@ HWC2::Error DrmHwcTwo::HwcDisplay::SetPowerMode(int32_t mode_in) {
   }
 #endif
   // 拼接屏幕主屏需要更新拼接副屏的电源状态
-  if(connector_->IsSpiltPrimary()){
+  if(connector_->IsSplitPrimary()){
     for (auto &conn : drm_->connectors()) {
-      if(!conn->isCropSpilt()){
+      if(!conn->isCropSplit()){
         continue;
       }
       int display_id = conn->display();
-      if(!conn->IsSpiltPrimary()){
+      if(!conn->IsSplitPrimary()){
         auto &display = resource_manager_->GetHwc2()->displays_.at(display_id);
         display.SetPowerMode(mode_in);
       }
@@ -3002,7 +3002,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::ValidateDisplay(uint32_t *num_types,
 
 if(!init_success_ || force_disconneted_){
     HWC2_ALOGD_IF_ERR("init_success_=%d force_disconneted_=%d skip.",init_success_, force_disconneted_);
-    if(connector_->IsSpiltPrimary()){
+    if(connector_->IsSplitPrimary()){
       for (std::pair<const hwc2_layer_t, DrmHwcTwo::HwcLayer> &l : layers_){
           l.second.set_validated_type(HWC2::Composition::Client);
           //num_types 应该为发生改变的图层，不仅仅是Client图层
@@ -3611,14 +3611,14 @@ int DrmHwcTwo::HwcDisplay::UpdateDisplayMode(){
 int DrmHwcTwo::HwcDisplay::UpdateDisplayInfo(){
   if(!ctx_.bStandardSwitchResolution){
     const DrmMode active_mode = connector_->active_mode();
-    if(connector_->isHorizontalSpilt()){
-      ctx_.rel_xres = active_mode.h_display() / DRM_CONNECTOR_SPILT_RATIO;
+    if(connector_->isHorizontalSplit()){
+      ctx_.rel_xres = active_mode.h_display() / DRM_CONNECTOR_SPLIT_RATIO;
       ctx_.rel_yres = active_mode.v_display();
-      if(handle_ >= DRM_CONNECTOR_SPILT_MODE_MASK){
-        ctx_.rel_xoffset = active_mode.h_display() / DRM_CONNECTOR_SPILT_RATIO;
+      if(handle_ >= DRM_CONNECTOR_SPLIT_MODE_MASK){
+        ctx_.rel_xoffset = active_mode.h_display() / DRM_CONNECTOR_SPLIT_RATIO;
         ctx_.rel_yoffset = 0;//best_mode.v_display() / 2;
       }
-    }else if(connector_->isCropSpilt()){
+    }else if(connector_->isCropSplit()){
       ctx_.rel_xres = active_mode.h_display();
       ctx_.rel_yres = active_mode.v_display();
     }else{
@@ -4349,11 +4349,11 @@ int DrmHwcTwo::HwcDisplay::InvalidateControl(uint64_t refresh, int refresh_cnt){
 }
 
 int DrmHwcTwo::HwcDisplay::DoMirrorDisplay(int32_t *retire_fence){
-  if(!connector_->isCropSpilt()){
+  if(!connector_->isCropSplit()){
     return 0;
   }
 
-  if(!connector_->IsSpiltPrimary()){
+  if(!connector_->IsSplitPrimary()){
     return 0;
   }
 
@@ -4408,18 +4408,18 @@ int DrmHwcTwo::HwcDisplay::DoMirrorDisplay(int32_t *retire_fence){
   int32_t merge_rt_fence = -1;
   int32_t display_cnt = 1;
   for (auto &conn : drm_->connectors()) {
-    if(!conn->isCropSpilt()){
+    if(!conn->isCropSplit()){
       continue;
     }
     int display_id = conn->display();
     // 非拼接屏幕需要将主屏幕ClientBuffer作为一般Buffer传入
-    if(!conn->IsSpiltPrimary()){
+    if(!conn->IsSplitPrimary()){
       auto &display = resource_manager_->GetHwc2()->displays_.at(display_id);
       if (conn->state() == DRM_MODE_CONNECTED) {
         if(display.GetSplitDummyLayer() > 0 && display.has_layer(display.GetSplitDummyLayer())){
-          // 获取SpiltLayer并设置拼接屏幕的BufferHandle
-          HwcLayer &spilt_layer = display.get_layer(display.GetSplitDummyLayer());
-          spilt_layer.SetLayerBuffer(client_layer_.buffer(), dup(client_layer_.acquire_fence()->getFd()));
+          // 获取SplitLayer并设置拼接屏幕的BufferHandle
+          HwcLayer &split_layer = display.get_layer(display.GetSplitDummyLayer());
+          split_layer.SetLayerBuffer(client_layer_.buffer(), dup(client_layer_.acquire_fence()->getFd()));
           uint32_t num_types;
           uint32_t num_requests;
           display.ValidateDisplay(&num_types,&num_requests);
@@ -4454,11 +4454,11 @@ int DrmHwcTwo::HwcDisplay::DoMirrorDisplay(int32_t *retire_fence){
 
 HWC2::Error DrmHwcTwo::HwcDisplay::GetOrCreateDummyLayer(){
   std::unique_lock<std::recursive_mutex> lock(mDisplayMutex_);
-  if(uCropSpiltDummyLayer_ > 0 && has_layer(uCropSpiltDummyLayer_)){
+  if(uCropSplitDummyLayer_ > 0 && has_layer(uCropSplitDummyLayer_)){
     return HWC2::Error::None;
   }else{
-    CreateLayer(&uCropSpiltDummyLayer_);
-    HwcLayer &dummy_layer = get_layer(uCropSpiltDummyLayer_);
+    CreateLayer(&uCropSplitDummyLayer_);
+    HwcLayer &dummy_layer = get_layer(uCropSplitDummyLayer_);
     // 设置 frame 信息
     hwc_rect_t frame = {0,0,ctx_.framebuffer_width,ctx_.framebuffer_height};
     dummy_layer.SetLayerDisplayFrame(frame);
@@ -4477,7 +4477,7 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetOrCreateDummyLayer(){
     dummy_layer.SetLayerPlaneAlpha(1.0);
     dummy_layer.SetLayerCompositionType(HWC2_COMPOSITION_DEVICE);
     // 设置旋转信息
-    int32_t transform = connector_->getCropSpiltTransform();
+    int32_t transform = connector_->getCropSplitTransform();
     switch(transform){
       case static_cast<int32_t>(HWC2::Transform::None):
       case static_cast<int32_t>(HWC2::Transform::FlipH):
@@ -4489,23 +4489,23 @@ HWC2::Error DrmHwcTwo::HwcDisplay::GetOrCreateDummyLayer(){
       case static_cast<int32_t>(HWC2::Transform::FlipVRotate90):
         break;
       default:
-        HWC2_ALOGW("SpiltMode: invalid transform=%d", transform);
+        HWC2_ALOGW("SplitMode: invalid transform=%d", transform);
         transform = 0;
         break;
     }
     dummy_layer.SetLayerTransform(transform);
-    HWC2_ALOGI("SpiltMode: display=%" PRIu64" Create dummylayer = %" PRIu64 " crop=[%f,%f,%f,%f] frame=[%d,%d,%d,%d] transform=%s",
-               handle_, uCropSpiltDummyLayer_, crop.left, crop.top, crop.right, crop.bottom, frame.left, frame.top, frame.right, frame.bottom, getTransformName(static_cast<hwc_transform_t>(transform)));
+    HWC2_ALOGI("SplitMode: display=%" PRIu64" Create dummylayer = %" PRIu64 " crop=[%f,%f,%f,%f] frame=[%d,%d,%d,%d] transform=%s",
+               handle_, uCropSplitDummyLayer_, crop.left, crop.top, crop.right, crop.bottom, frame.left, frame.top, frame.right, frame.bottom, getTransformName(static_cast<hwc_transform_t>(transform)));
     return HWC2::Error::None;
   }
 }
 
 HWC2::Error DrmHwcTwo::HwcDisplay::DestoryDummyLayer(){
   std::unique_lock<std::recursive_mutex> lock(mDisplayMutex_);
-  if(uCropSpiltDummyLayer_ > 0 && has_layer(uCropSpiltDummyLayer_)){
-    HWC2_ALOGI("SpiltMode: display=%" PRIu64" Destory dummylayer = %" PRIu64, handle_, uCropSpiltDummyLayer_);
-    auto ret = DestroyLayer(uCropSpiltDummyLayer_);
-    uCropSpiltDummyLayer_ = 0;
+  if(uCropSplitDummyLayer_ > 0 && has_layer(uCropSplitDummyLayer_)){
+    HWC2_ALOGI("SplitMode: display=%" PRIu64" Destory dummylayer = %" PRIu64, handle_, uCropSplitDummyLayer_);
+    auto ret = DestroyLayer(uCropSplitDummyLayer_);
+    uCropSplitDummyLayer_ = 0;
     return ret;
   }else{
     return HWC2::Error::None;
@@ -5608,27 +5608,27 @@ void DrmHwcTwo::HandleInitialHotplugState(DrmDevice *drmDevice) {
           continue;
         // HWC_DISPLAY_PRIMARY display have been hotplug
         if(conn->display() == HWC_DISPLAY_PRIMARY){
-          // SpiltDisplay Hotplug
-          if(conn->isHorizontalSpilt()){
-            HandleDisplayHotplug((conn->GetSpiltModeId()), conn->state());
-            ALOGI("HWC2 Init: SF register connector %u type=%s, type_id=%d SpiltDisplay=%d\n",
-              conn->id(),drmDevice->connector_type_str(conn->type()),conn->type_id(),conn->GetSpiltModeId());
+          // SplitDisplay Hotplug
+          if(conn->isHorizontalSplit()){
+            HandleDisplayHotplug((conn->GetSplitModeId()), conn->state());
+            ALOGI("HWC2 Init: SF register connector %u type=%s, type_id=%d SplitDisplay=%d\n",
+              conn->id(),drmDevice->connector_type_str(conn->type()),conn->type_id(),conn->GetSplitModeId());
           }
           continue;
         }
-        // SpiltDisplay Hotplug
-        if(conn->isCropSpilt()){
-          if(conn->IsSpiltPrimary()){
+        // SplitDisplay Hotplug
+        if(conn->isCropSplit()){
+          if(conn->IsSplitPrimary()){
             HandleDisplayHotplug(conn->display(), conn->state());
             ALOGI("HWC2 Init: SF register connector %u type=%s, type_id=%d display-id=%d\n",
               conn->id(),drmDevice->connector_type_str(conn->type()),conn->type_id(),conn->display());
               continue;
           }else{
-            // CropSpilt
-            HWC2_ALOGI("HWC2 Init: not to register connector %u type=%s, type_id=%d isCropSpilt=%d\n",
+            // CropSplit
+            HWC2_ALOGI("HWC2 Init: not to register connector %u type=%s, type_id=%d isCropSplit=%d\n",
                       conn->id(),drmDevice->connector_type_str(conn->type()),
                       conn->type_id(),
-                      conn->isCropSpilt());
+                      conn->isCropSplit());
             continue;
           }
         }
@@ -5636,11 +5636,11 @@ void DrmHwcTwo::HandleInitialHotplugState(DrmDevice *drmDevice) {
         ALOGI("HWC2 Init: SF register connector %u type=%s, type_id=%d \n",
           conn->id(),drmDevice->connector_type_str(conn->type()),conn->type_id());
         HandleDisplayHotplug(conn->display(), conn->state());
-        // SpiltDisplay Hotplug
-        if(conn->isHorizontalSpilt()){
-          HandleDisplayHotplug((conn->GetSpiltModeId()), conn->state());
-          ALOGI("HWC2 Init: SF register connector %u type=%s, type_id=%d SpiltDisplay=%d\n",
-            conn->id(),drmDevice->connector_type_str(conn->type()),conn->type_id(),conn->GetSpiltModeId());
+        // SplitDisplay Hotplug
+        if(conn->isHorizontalSplit()){
+          HandleDisplayHotplug((conn->GetSplitModeId()), conn->state());
+          ALOGI("HWC2 Init: SF register connector %u type=%s, type_id=%d SplitDisplay=%d\n",
+            conn->id(),drmDevice->connector_type_str(conn->type()),conn->type_id(),conn->GetSplitModeId());
         }
       }
     }
@@ -5752,8 +5752,8 @@ void DrmHwcTwo::DrmHotplugHandler::HandleEvent(uint64_t timestamp_us) {
         HWC2_ALOGE("hwc_hotplug: %s connector %u type=%s type_id=%d state is error, skip hotplug.",
                    cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
                    conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
-      }else if(conn->isCropSpilt()){
-          HWC2_ALOGI("hwc_hotplug: %s connector %u type=%s type_id=%d isCropSpilt skip hotplug.",
+      }else if(conn->isCropSplit()){
+          HWC2_ALOGI("hwc_hotplug: %s connector %u type=%s type_id=%d isCropSplit skip hotplug.",
                     cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
                     conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
           display.SetPowerMode(HWC2_POWER_MODE_ON);
@@ -5809,8 +5809,8 @@ void DrmHwcTwo::DrmHotplugHandler::HandleEvent(uint64_t timestamp_us) {
                 HWC2_ALOGE("hwc_hotplug: MirrorDisplay Unplug primary-display-id=%d connector %u type=%s type_id=%d state is error, skip hotplug.",
                           mirror_primary_id,
                           mirror_primary->id(),drm_->connector_type_str(mirror_primary->type()),mirror_primary->type_id());
-              }else if(conn->isCropSpilt()){
-                HWC2_ALOGI("hwc_hotplug: MirrorDisplay Unplug primary-display-id=%d connector %u type=%s type_id=%d isCropSpilt skip hotplug.",
+              }else if(conn->isCropSplit()){
+                HWC2_ALOGI("hwc_hotplug: MirrorDisplay Unplug primary-display-id=%d connector %u type=%s type_id=%d isCropSplit skip hotplug.",
                           mirror_primary_id,
                           mirror_primary->id(),drm_->connector_type_str(mirror_primary->type()),mirror_primary->type_id());
                 // display.SetPowerMode(HWC2_POWER_MODE_OFF);
@@ -5832,8 +5832,8 @@ void DrmHwcTwo::DrmHotplugHandler::HandleEvent(uint64_t timestamp_us) {
           HWC2_ALOGE("hwc_hotplug: %s connector %u type=%s type_id=%d state is error, skip hotplug.",
                     cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
                     conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
-        }else if(conn->isCropSpilt()){
-            HWC2_ALOGI("hwc_hotplug: %s connector %u type=%s type_id=%d isCropSpilt skip hotplug.",
+        }else if(conn->isCropSplit()){
+            HWC2_ALOGI("hwc_hotplug: %s connector %u type=%s type_id=%d isCropSplit skip hotplug.",
                       cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
                       conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
           // display.SetPowerMode(HWC2_POWER_MODE_OFF);
@@ -5847,15 +5847,15 @@ void DrmHwcTwo::DrmHotplugHandler::HandleEvent(uint64_t timestamp_us) {
 
     }
 
-    // SpiltDisplay Hoplug.
+    // SplitDisplay Hoplug.
     ret = 0;
-    if(conn->isHorizontalSpilt()){
-      display_id = conn->GetSpiltModeId();
-      auto &spilt_display = hwc2_->displays_.at(display_id);
+    if(conn->isHorizontalSplit()){
+      display_id = conn->GetSplitModeId();
+      auto &split_display = hwc2_->displays_.at(display_id);
       if (cur_state == DRM_MODE_CONNECTED) {
-        ret |= (int32_t)spilt_display.HoplugEventTmeline();
-        ret |= (int32_t)spilt_display.CheckStateAndReinit(!hwc2_->IsHasRegisterDisplayId(display_id));
-        ret |= (int32_t)spilt_display.ChosePreferredConfig();
+        ret |= (int32_t)split_display.HoplugEventTmeline();
+        ret |= (int32_t)split_display.CheckStateAndReinit(!hwc2_->IsHasRegisterDisplayId(display_id));
+        ret |= (int32_t)split_display.ChosePreferredConfig();
         if(ret != 0){
           HWC2_ALOGE("hwc_hotplug: %s connector %u type=%s type_id=%d state is error, skip hotplug.",
                     cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
@@ -5865,10 +5865,10 @@ void DrmHwcTwo::DrmHotplugHandler::HandleEvent(uint64_t timestamp_us) {
                     cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
                     conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
           hwc2_->HandleDisplayHotplug(display_id, cur_state);
-          spilt_display.SyncPowerMode();
+          split_display.SyncPowerMode();
         }
       }else{
-      ret |= (int32_t)spilt_display.ClearDisplay();
+      ret |= (int32_t)split_display.ClearDisplay();
       ret |= (int32_t)drm_->ReleaseDpyRes(display_id);
       if(ret != 0){
         HWC2_ALOGE("hwc_hotplug: %s connector %u type=%s type_id=%d state is error, skip hotplug.",
@@ -5888,7 +5888,7 @@ void DrmHwcTwo::DrmHotplugHandler::HandleEvent(uint64_t timestamp_us) {
   if(event_type == DRM_HOTPLUG_UNPLUG_EVENT){
     for (auto &conn : drm_->connectors()) {
       // 多屏拼接不需要重新注册屏幕
-      if(conn->isCropSpilt()){
+      if(conn->isCropSplit()){
         continue;
       }
       ret = 0;
@@ -5950,7 +5950,7 @@ void DrmHwcTwo::DrmHotplugHandler::HandleResolutionSwitchEvent(int display_id) {
                   connector->id(),
                   drm_->connector_type_str(connector->type()),
                   connector->type_id());
-    if(!connector->isCropSpilt() || (connector->isCropSpilt() && connector->IsSpiltPrimary()))
+    if(!connector->isCropSplit() || (connector->isCropSplit() && connector->IsSplitPrimary()))
       hwc2_->HandleDisplayHotplug(display_id, DRM_MODE_CONNECTED);
     auto &primary = hwc2_->displays_.at(0);
     primary.InvalidateControl(5,20);
@@ -6021,7 +6021,7 @@ int DrmHwcTwo::EventWorker::SendDisplayModeUpdateEvent(DrmEvent event){
                   connector->id(),
                   drm->connector_type_str(connector->type()),
                   connector->type_id());
-    if(!connector->isCropSpilt() || (connector->isCropSpilt() && connector->IsSpiltPrimary()))
+    if(!connector->isCropSplit() || (connector->isCropSplit() && connector->IsSplitPrimary()))
       hwc2_->HandleDisplayHotplug(event.display_id, DRM_MODE_CONNECTED);
   }
 
@@ -6111,8 +6111,8 @@ int DrmHwcTwo::EventWorker::HaneleDisplayPipelineUpdateEvent(){
       }
 
       if((change_mask & DRM_PIPELINE_SPLIT_MODE_CHANGE) == DRM_PIPELINE_SPLIT_MODE_CHANGE){
-        if(HandleSpiltModeChange()){
-          HWC2_ALOGE("DisplayPipeChange : SpiltMode : HandleSpiltModeChange fail.");
+        if(HandleSplitModeChange()){
+          HWC2_ALOGE("DisplayPipeChange : SplitMode : HandleSplitModeChange fail.");
           return -1;
         }
       }
@@ -6196,23 +6196,23 @@ int DrmHwcTwo::EventWorker::HandlePrimaryChange(){
   return 0;
 }
 
-int DrmHwcTwo::EventWorker::HandleSpiltModeChange() {
+int DrmHwcTwo::EventWorker::HandleSplitModeChange() {
 
   int32_t ret = 0;
   ResourceManager* rm = ResourceManager::getInstance();
   if(!rm){
-    HWC2_ALOGE("DisplayPipeChange : SpiltMode: Can not get ResourceManager");
+    HWC2_ALOGE("DisplayPipeChange : SplitMode: Can not get ResourceManager");
     return -1;
   }
 
   DrmDevice* drm = rm->GetDrmDevice(0);
   if(!drm){
-    HWC2_ALOGE("DisplayPipeChange : SpiltMode: can not get drm device");
+    HWC2_ALOGE("DisplayPipeChange : SplitMode: can not get drm device");
     return -1;
   }
 
-  // 更新SpiltMode配置信息
-  drm->UpdateSpiltModeInfo();
+  // 更新SplitMode配置信息
+  drm->UpdateSplitModeInfo();
 
   // 遍历所有 connector 检查存在xml前后更新的差异
   for (auto &conn : drm->connectors()) {
@@ -6220,29 +6220,29 @@ int DrmHwcTwo::EventWorker::HandleSpiltModeChange() {
 
     // 如果当前屏幕未连接，且不是拼接主屏幕（拼接主屏不连接也需要更新信息）
     drmModeConnection cur_state = conn->hotplug_state();
-    if(cur_state != DRM_MODE_CONNECTED && !conn->IsSpiltPrimary()){
+    if(cur_state != DRM_MODE_CONNECTED && !conn->IsSplitPrimary()){
       continue;
     }
 
     int display_id = conn->display();
     auto &display = hwc2_->displays_.at(display_id);
-    // 所有屏幕都删除 SpiltDummyLayer
+    // 所有屏幕都删除 SplitDummyLayer
     display.DestoryDummyLayer();
 
     // 如果是拼接模式的屏幕
-    if(conn->isCropSpilt()){
-      if(conn->IsSpiltPrimary()){
+    if(conn->isCropSplit()){
+      if(conn->IsSplitPrimary()){
         if(display.CheckStateAndReinit(!hwc2_->IsHasRegisterDisplayId(display_id)) == HWC2::Error::None){
-          HWC2_ALOGI("DisplayPipeChange : SpiltMode : %s-%d IsSpiltPrimary, send hotplug to SF.",
+          HWC2_ALOGI("DisplayPipeChange : SplitMode : %s-%d IsSplitPrimary, send hotplug to SF.",
                     drm->connector_type_str(conn->type()),conn->type_id());
           hwc2_->HandleDisplayHotplug(display_id, DRM_MODE_CONNECTED);
         }else{
-          HWC2_ALOGE("DisplayPipeChange : SpiltMode : %s-%d IsSpiltPrimary CheckStateAndReinit fail, skip hotplug.",
+          HWC2_ALOGE("DisplayPipeChange : SplitMode : %s-%d IsSplitPrimary CheckStateAndReinit fail, skip hotplug.",
                     drm->connector_type_str(conn->type()),conn->type_id());
         }
       }else{
         if(hwc2_->IsHasRegisterDisplayId(display_id)){
-          HWC2_ALOGI("DisplayPipeChange : SpiltMode: %s-%d isCropSpilt, send unplug to SF.",
+          HWC2_ALOGI("DisplayPipeChange : SplitMode: %s-%d isCropSplit, send unplug to SF.",
                     drm->connector_type_str(conn->type()),conn->type_id());
           hwc2_->HandleDisplayHotplug(display_id, DRM_MODE_DISCONNECTED);
         }
@@ -6257,34 +6257,34 @@ int DrmHwcTwo::EventWorker::HandleSpiltModeChange() {
       // 更新拼接屏幕的屏幕信息
       display.ChosePreferredConfig();
       if(display.CheckStateAndReinit(!hwc2_->IsHasRegisterDisplayId(display_id)) == HWC2::Error::None){
-        HWC2_ALOGI("DisplayPipeChange : SpiltMode : %s-%d Exit CropSplit,, send hotplug to SF.",
+        HWC2_ALOGI("DisplayPipeChange : SplitMode : %s-%d Exit CropSplit,, send hotplug to SF.",
                   drm->connector_type_str(conn->type()),conn->type_id());
         hwc2_->HandleDisplayHotplug(display_id, cur_state);
       }else{
-        HWC2_ALOGE("DisplayPipeChange : SpiltMode : %s-%d Exit CropSplit, CheckStateAndReinit fail, skip hotplug.",
+        HWC2_ALOGE("DisplayPipeChange : SplitMode : %s-%d Exit CropSplit, CheckStateAndReinit fail, skip hotplug.",
                   drm->connector_type_str(conn->type()),conn->type_id());
       }
       display.SyncPowerMode();
     }
 
-    if(conn->isHorizontalSpilt()){
-      HWC2_ALOGI("DisplayPipeChange : SplitMode: %s-%d isHorizontalSpilt, send unplug to SF.",
+    if(conn->isHorizontalSplit()){
+      HWC2_ALOGI("DisplayPipeChange : SplitMode: %s-%d isHorizontalSplit, send unplug to SF.",
                   drm->connector_type_str(conn->type()),conn->type_id());
-      if(hwc2_->displays_.count(conn->GetSpiltModeId())==0){
-        hwc2_->CreateDisplay(conn->GetSpiltModeId(), HWC2::DisplayType::Physical);
+      if(hwc2_->displays_.count(conn->GetSplitModeId())==0){
+        hwc2_->CreateDisplay(conn->GetSplitModeId(), HWC2::DisplayType::Physical);
       }
       display.ChosePreferredConfig();
       if(display.CheckStateAndReinit(!hwc2_->IsHasRegisterDisplayId(display_id)) == HWC2::Error::None){
-        HWC2_ALOGI("DisplayPipeChange : SpiltMode : %s-%d isHorizontalSpilt,, send hotplug to SF.",
+        HWC2_ALOGI("DisplayPipeChange : SplitMode : %s-%d isHorizontalSplit,, send hotplug to SF.",
                   drm->connector_type_str(conn->type()),conn->type_id());
         hwc2_->HandleDisplayHotplug(display_id, cur_state);
       }else{
-        HWC2_ALOGE("DisplayPipeChange : SpiltMode : %s-%d isHorizontalSpilt, CheckStateAndReinit fail, skip hotplug.",
+        HWC2_ALOGE("DisplayPipeChange : SplitMode : %s-%d isHorizontalSplit, CheckStateAndReinit fail, skip hotplug.",
                   drm->connector_type_str(conn->type()),conn->type_id());
       }
     }else{
-      if(hwc2_->IsHasRegisterDisplayId(conn->GetSpiltModeId())){
-        hwc2_->HandleDisplayHotplug(conn->GetSpiltModeId(), DRM_MODE_DISCONNECTED);
+      if(hwc2_->IsHasRegisterDisplayId(conn->GetSplitModeId())){
+        hwc2_->HandleDisplayHotplug(conn->GetSplitModeId(), DRM_MODE_DISCONNECTED);
       }
     }
   }

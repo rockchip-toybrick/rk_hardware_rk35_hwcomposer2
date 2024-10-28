@@ -149,12 +149,12 @@ int DrmConnector::Init() {
 
   snprintf(cUniqueName_,30,"%s-%d",drm_->connector_type_str(type_),unique_id_);
 
-  bSpiltMode_=false;
-  ret = drm_->GetConnectorProperty(*this, "USER_SPLIT_MODE", &spilt_mode_property_);
+  bSplitMode_=false;
+  ret = drm_->GetConnectorProperty(*this, "USER_SPLIT_MODE", &split_mode_property_);
   if (ret) {
     ALOGW("Could not get USER_SPLIT_MODE property\n");
   }else{
-    std::tie(ret,bSpiltMode_) = spilt_mode_property_.value();
+    std::tie(ret,bSplitMode_) = split_mode_property_.value();
   }
 
   return 0;
@@ -1440,14 +1440,14 @@ const DrmProperty &DrmConnector::color_depth_property() const {
   return color_depth_property_;
 }
 
-int DrmConnector::GetSpiltModeId() const {
-  return (display_ + DRM_CONNECTOR_SPILT_MODE_MASK);
+int DrmConnector::GetSplitModeId() const {
+  return (display_ + DRM_CONNECTOR_SPLIT_MODE_MASK);
 }
 
-void DrmConnector::ResetSpiltMode(){
-  bHorizontalSpilt_ = false;
-  bSpiltPrimary_ = false;
-  bCropSpilt_ = false;
+void DrmConnector::ResetSplitMode(){
+  bHorizontalSplit_ = false;
+  bSplitPrimary_ = false;
+  bCropSplit_ = false;
   FbWidth_ = 0;
   FbHeight_ = 0;
   SrcX_ = 0;
@@ -1456,53 +1456,53 @@ void DrmConnector::ResetSpiltMode(){
   SrcH_ = 0;
 }
 
-void DrmConnector::GetSpiltModes(bool &HorizontalSpilt,bool &SpiltPrimary, bool &CropSpilt){
-  HorizontalSpilt = bHorizontalSpilt_;
-  SpiltPrimary = bSpiltPrimary_;
-  CropSpilt = bCropSpilt_;
+void DrmConnector::GetSplitModes(bool &HorizontalSplit,bool &SplitPrimary, bool &CropSplit){
+  HorizontalSplit = bHorizontalSplit_;
+  SplitPrimary = bSplitPrimary_;
+  CropSplit = bCropSplit_;
 }
 
-bool DrmConnector::isHorizontalSpilt() const {
-  return bHorizontalSpilt_;
+bool DrmConnector::isHorizontalSplit() const {
+  return bHorizontalSplit_;
 }
 
-int DrmConnector::setHorizontalSpilt(){
-  bHorizontalSpilt_ = true;
+int DrmConnector::setHorizontalSplit(){
+  bHorizontalSplit_ = true;
   return 0;
 }
 
-bool DrmConnector::isCropSpilt() const {
-  return bCropSpilt_;
+bool DrmConnector::isCropSplit() const {
+  return bCropSplit_;
 }
 
-int DrmConnector::setCropSpiltPrimary(){
-  bSpiltPrimary_ = true;
+int DrmConnector::setCropSplitPrimary(){
+  bSplitPrimary_ = true;
   return 0;
 }
 
-bool DrmConnector::IsSpiltPrimary(){
-  return bSpiltPrimary_;
+bool DrmConnector::IsSplitPrimary(){
+  return bSplitPrimary_;
 }
 
-int DrmConnector::setCropSpilt(int32_t fbWidth,
+int DrmConnector::setCropSplit(int32_t fbWidth,
                                int32_t fbHeight,
                                int32_t srcX,
                                int32_t srcY,
                                int32_t srcW,
                                int32_t srcH,
                                int32_t transform){
-  bCropSpilt_ = true;
+  bCropSplit_ = true;
   FbWidth_ = fbWidth;
   FbHeight_ = fbHeight;
   SrcX_ = srcX;
   SrcY_ = srcY;
   SrcW_ = srcW;
   SrcH_ = srcH;
-  iCropSpiltTransform = transform;
+  iCropSplitTransform = transform;
   return 0;
 }
 
-int DrmConnector::getCropSpiltFb(int32_t *fbWidth, int32_t *fbHeight){
+int DrmConnector::getCropSplitFb(int32_t *fbWidth, int32_t *fbHeight){
   *fbWidth = FbWidth_;
   *fbHeight = FbHeight_;
   return 0;
@@ -1516,8 +1516,8 @@ int DrmConnector::getCropInfo(int32_t *srcX, int32_t *srcY, int32_t *srcW, int32
   return 0;
 }
 
-int DrmConnector::getCropSpiltTransform(){
-  return iCropSpiltTransform;
+int DrmConnector::getCropSplitTransform(){
+  return iCropSplitTransform;
 }
 
 //检查格式是否支持

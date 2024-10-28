@@ -43,8 +43,8 @@ enum rk_if_color_format {
 
 namespace android {
 
-#define DRM_CONNECTOR_SPILT_MODE_MASK 0xf0
-#define DRM_CONNECTOR_SPILT_RATIO 2
+#define DRM_CONNECTOR_SPLIT_MODE_MASK 0xf0
+#define DRM_CONNECTOR_SPLIT_RATIO 2
 
 class DrmDevice;
 
@@ -145,28 +145,28 @@ class DrmConnector {
                                        hdr_output_metadata *hdr_metadata,
                                        bool is_10bit);
 
-  int GetSpiltModeId() const;
-  void ResetSpiltMode();
-  void GetSpiltModes(bool &HorizontalSpilt,bool &SpiltPrimary, bool &CropSpilt);
+  int GetSplitModeId() const;
+  void ResetSplitMode();
+  void GetSplitModes(bool &HorizontalSplit,bool &SplitPrimary, bool &CropSplit);
 
-  bool isHorizontalSpilt() const;
-  int setHorizontalSpilt();
+  bool isHorizontalSplit() const;
+  int setHorizontalSplit();
 
-  int setCropSpiltPrimary();
-  bool IsSpiltPrimary();
-  bool isCropSpilt() const;
-  int setCropSpilt(int32_t fbWidth,
+  int setCropSplitPrimary();
+  bool IsSplitPrimary();
+  bool isCropSplit() const;
+  int setCropSplit(int32_t fbWidth,
                    int32_t fbHeight,
                    int32_t srcX,
                    int32_t srcY,
                    int32_t srcW,
                    int32_t srcH,
                    int32_t transform);
-  int getCropSpiltFb(int32_t *fbWidth, int32_t *fbHeight);
+  int getCropSplitFb(int32_t *fbWidth, int32_t *fbHeight);
   int getCropInfo(int32_t *srcX, int32_t *srcY, int32_t *srcW, int32_t *srcH);
-  int getCropSpiltTransform();
-  void StoreSpiltMode();
-  bool SpiltModeDifferToStorage();
+  int getCropSplitTransform();
+  void StoreSplitMode();
+  bool SplitModeDifferToStorage();
 
   const DrmProperty &brightness_id_property() const;
   const DrmProperty &contrast_id_property() const;
@@ -293,7 +293,7 @@ class DrmConnector {
   DrmProperty color_depth_caps_property_;
 
   DrmProperty connector_id_property_;
-  DrmProperty spilt_mode_property_;
+  DrmProperty split_mode_property_;
   std::vector<DrmEncoder *> possible_encoders_;
   drmModeConnectorPtr connector_;
 
@@ -321,10 +321,10 @@ class DrmConnector {
   // output format
   int uColorFormat_ = output_ycbcr_high_subsampling;;
   int uColorDepth_ = Automatic;
-  struct CropSpiltInfoStorage{
-    bool bHorizontalSpilt_=false;
-    bool bSpiltPrimary_=false;
-    bool bCropSpilt_=false;
+  struct CropSplitInfoStorage{
+    bool bHorizontalSplit_=false;
+    bool bSplitPrimary_=false;
+    bool bCropSplit_=false;
     int32_t FbWidth_=0;
     int32_t FbHeight_=0;
     int32_t SrcX_=0;
@@ -335,22 +335,22 @@ class DrmConnector {
     int32_t DstY_=0;
     int32_t DstW_=0;
     int32_t DstH_=0;
-  }mCropSpiltStorage_;
-  // Spilt mode
-  bool bSpiltMode_=false;
+  }mCropSplitStorage_;
+  // Split mode
+  bool bSplitMode_=false;
   // Horizontal mode
-  bool bHorizontalSpilt_=false;
+  bool bHorizontalSplit_=false;
   // Crop mode
-  bool bSpiltPrimary_=false;
-  bool bCropSpilt_=false;
+  bool bSplitPrimary_=false;
+  bool bCropSplit_=false;
   int32_t FbWidth_=0;
   int32_t FbHeight_=0;
   int32_t SrcX_=0;
   int32_t SrcY_=0;
   int32_t SrcW_=0;
   int32_t SrcH_=0;
-  int32_t iCropSpiltTransform = 0;
-  bool bSpiltModeChanged = false;
+  int32_t iCropSplitTransform = 0;
+  bool bSplitModeChanged = false;
 
   // Connector mirror
   bool mirror_mode = false;

@@ -170,7 +170,7 @@ class DrmDevice {
 
   std::map<int, int> GetDisplays() { return displays_;}
   int UpdatePrimaryInfo();
-  int UpdateSpiltModeInfo();
+  int UpdateSplitModeInfo();
   int GetDisplayPipelineChange(uint64_t* output_change_mask);
 
   bool IsCheckDisplayPipeline(int timeline){
@@ -188,7 +188,7 @@ class DrmDevice {
   int CheckEnvXmlChange(struct DisplayModeXml* last,
                         struct DisplayModeXml* current,
                         uint64_t* out_change_mask);
-  int UpdateSpiltInfoFromXml();
+  int UpdateSplitInfoFromXml();
   void UpdateDrmInfoFromKernel();
   void ConfigurePossibleDisplays();
   void ConfigurePossibleDisplaysFromXml();

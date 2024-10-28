@@ -119,10 +119,10 @@ int Hwc3588::assignPlaneByPlaneMask(DrmDevice* drm){
     }
 
     // Connector SplitMode
-    if(conn->isHorizontalSpilt()){
+    if(conn->isHorizontalSplit()){
       uint32_t crtc_mask = 1 << crtc->pipe();
       uint64_t plane_mask = crtc->get_plane_mask();
-      HWC2_ALOGI("SpiltDisplay id=%d crtc-id=%d mask=0x%x ,plane_mask=0x%" PRIx64,
+      HWC2_ALOGI("SplitDisplay id=%d crtc-id=%d mask=0x%x ,plane_mask=0x%" PRIx64,
               display_id, crtc->id(), crtc_mask, plane_mask);
       for(auto &plane_group : all_plane_group){
         uint64_t plane_group_win_type = plane_group->win_type;
@@ -130,7 +130,7 @@ int Hwc3588::assignPlaneByPlaneMask(DrmDevice* drm){
           if((plane_group_win_type & PLANE_RK3588_ALL_CLUSTER_MASK) > 0)
             plane_group->set_current_crtc(crtc_mask, display_id);
           else if((plane_group_win_type & PLANE_RK3588_ALL_ESMART_MASK) > 0)
-            plane_group->set_current_crtc(crtc_mask, display_id + DRM_CONNECTOR_SPILT_MODE_MASK);
+            plane_group->set_current_crtc(crtc_mask, display_id + DRM_CONNECTOR_SPLIT_MODE_MASK);
         }
       }
     }else{ // Normal Mode

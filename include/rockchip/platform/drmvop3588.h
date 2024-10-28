@@ -97,7 +97,7 @@ typedef enum tagComposeMode{
    HWC_RGA_OVERLAY_POLICY,
    HWC_SR_OVERLAY_POLICY,
    HWC_ACCELERATE_POLICY,
-   HWC_SPILT_MODE_POLICY,
+   HWC_SPLIT_MODE_POLICY,
    HWC_3D_POLICY,
    HWC_DEBUG_POLICY
 }ComposeMode;
@@ -212,9 +212,9 @@ typedef struct StateContext{
   int iDisplayWidth_;
   int iDisplayHeight_;
 
-  // CropSpilt mode
-  bool bIsCropSpilt_;
-  bool bIsCropSpiltPrimary_;
+  // CropSplit mode
+  bool bIsCropSplit_;
+  bool bIsCropSplitPrimary_;
 } StaCtx;
 
 typedef struct DrmVop2Context{
@@ -319,7 +319,7 @@ struct SvepXml{
   int TryGLESPolicy(std::vector<DrmCompositionPlane> *composition,
                         std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                         std::vector<PlaneGroup *> &plane_groups);
-  int TrySpiltPolicy(std::vector<DrmCompositionPlane> *composition,
+  int TrySplitPolicy(std::vector<DrmCompositionPlane> *composition,
                         std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                         std::vector<PlaneGroup *> &plane_groups);
   int MatchPlanes(std::vector<DrmCompositionPlane> *composition,
