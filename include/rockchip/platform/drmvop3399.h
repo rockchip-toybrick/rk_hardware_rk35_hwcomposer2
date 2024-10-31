@@ -45,6 +45,25 @@
 namespace android {
 class DrmDevice;
 
+#ifdef USE_GRALLOC_0
+// define from hardware/rockchip/libgralloc/bifrost/src/mali_gralloc_usages.h
+#ifndef RK_GRALLOC_USAGE_WITHIN_4G
+#define RK_GRALLOC_USAGE_WITHIN_4G (1ULL << 56)
+#endif
+
+#ifndef RK_GRALLOC_USAGE_STRIDE_ALIGN_16
+#define RK_GRALLOC_USAGE_STRIDE_ALIGN_16 (1ULL << 57)
+#endif
+
+#ifndef RK_GRALLOC_USAGE_STRIDE_ALIGN_64
+#define RK_GRALLOC_USAGE_STRIDE_ALIGN_64 (1ULL << 60)
+#endif
+
+#ifndef MALI_GRALLOC_USAGE_NO_AFBC
+#define MALI_GRALLOC_USAGE_NO_AFBC (1ULL << 29)
+#endif
+#endif
+
 // This plan stage places as many layers on dedicated planes as possible (first
 // come first serve), and then sticks the rest in a precomposition plane (if
 // needed).

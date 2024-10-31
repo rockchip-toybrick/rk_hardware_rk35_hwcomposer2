@@ -7,10 +7,42 @@ before_script:
   - export PATH=/home/lb/projects/gitlab-ci/drmhwc2-configs/build_sh/:$PATH
   - echo "Updated PATH=$PATH"  # 打印修改后的 PATH
 
+a15_build:
+  stage: build
+  tags:
+    - android-15
+  script:
+    - echo "Building the Android-15 SDK ..."
+    - . 15_build_drmhwc2.sh
+
 a14_build:
   stage: build
   tags:
     - android-14
   script:
     - echo "Building the Android-14 SDK ..."
-    - . build_for_android14_drmhwc2.sh
+    - . 14_build_drmhwc2.sh
+
+a13_build:
+  stage: build
+  tags:
+    - android-13
+  script:
+    - echo "Building the Android-14 SDK ..."
+    - . 13_build_drmhwc2.sh
+
+a12_build:
+  stage: build
+  tags:
+    - android-12
+  script:
+    - echo "Building the Android-14 SDK ..."
+    - . 12_build_drmhwc2.sh
+
+a11_build:
+  stage: build
+  tags:
+    - android-11
+  script:
+    - echo "Building the Android-14 SDK ..."
+    - . 11_build_drmhwc2.sh
