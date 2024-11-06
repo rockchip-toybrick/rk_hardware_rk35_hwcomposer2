@@ -1031,6 +1031,21 @@ int DrmDisplayCompositor::CollectModeSetInfo(drmModeAtomicReqPtr pset,
         ALOGE("display %d enable hdr fail. datespace=%x",
                 display_, display_comp->dataspace());
       }else{
+        if(connector->is_connector_mirror_primary()){
+          std::set<int> mirror_set;
+          mirror_set = connector->get_connector_mirror_display_id();
+          if(mirror_set.size() > 0){
+            for(int mirror_display_id : mirror_set){
+              DrmConnector *conn_mirror = drm->GetConnectorForDisplay(mirror_display_id);
+              ret = conn_mirror->switch_hdmi_hdr_mode(pset, display_comp->dataspace(), display_comp->has_10bit_Yuv());
+              if(ret){
+                ALOGE("display %d enable hdr fail. datespace=%x",
+                        conn_mirror->display(), display_comp->dataspace());
+              }
+            }
+          }
+        }
+
         HWC2_ALOGD_IF_INFO("%s HDR mode %s.", display_comp->hdr_mode() ? "Enable" : "Disable",
                                               display_comp->has_10bit_Yuv() ? "10bit" : "8bit");
         request_mode_set_.hdr_.mode_    = display_comp->hdr_mode();
@@ -1054,6 +1069,23 @@ int DrmDisplayCompositor::CollectModeSetInfo(drmModeAtomicReqPtr pset,
         if(ret){
           ALOGE("display %d enable hdr fail.", display_);
         }else{
+          if(connector->is_connector_mirror_primary()){
+            std::set<int> mirror_set;
+            mirror_set = connector->get_connector_mirror_display_id();
+            if(mirror_set.size() > 0){
+              for(int mirror_display_id : mirror_set){
+                DrmConnector *conn_mirror = drm->GetConnectorForDisplay(mirror_display_id);
+                ret = conn_mirror->switch_hdmi_hdr_mode_by_medadata(pset,
+                                                              layer.metadataHdrParam_.hdr_hdmi_meta.color_prim,
+                                                              &hdr_metadata,
+                                                              layer.bYuv10bit_);
+                if(ret){
+                  ALOGE("display %d enable hdr fail. datespace=%x",
+                          conn_mirror->display(), display_comp->dataspace());
+                }
+              }
+            }
+          }
           HWC2_ALOGD_IF_INFO("%s HDR mode %s.", display_comp->hdr_mode() ? "Enable" : "Disable",
                                             display_comp->has_10bit_Yuv() ? "10bit" : "8bit");
           request_mode_set_.hdr_.mode_    = display_comp->hdr_mode();

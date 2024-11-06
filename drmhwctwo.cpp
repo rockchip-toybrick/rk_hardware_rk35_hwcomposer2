@@ -663,8 +663,6 @@ HWC2::Error DrmHwcTwo::HwcDisplay::InitEBook() {
 }
 #endif
 HWC2::Error DrmHwcTwo::HwcDisplay::CheckStateAndReinit(bool clear_layer) {
-
-
   HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64,handle_);
 
   int display = static_cast<int>(handle_);
@@ -3765,6 +3763,18 @@ bool DrmHwcTwo::HwcDisplay::DisableHdrMode(){
     return true;
   }
 
+  // 如果当前屏幕处于MirrorDisplay状态，则需要检查其Mirror屏幕是否支持HDR
+  // 只要存在一个不支持HDR，则采用SDR模式
+  if(connector_->is_connector_mirror_primary()){
+    for(int mirror_display_id : connector_->get_connector_mirror_display_id()){
+      DrmConnector *conn_mirror = drm_->GetConnectorForDisplay(mirror_display_id);
+      // 存在一路不支持HDR，则关闭HDR模式
+      if(conn_mirror != NULL && conn_mirror->is_hdmi_support_hdr() == false){
+        return true;
+      }
+    }
+  }
+
   return false;
 }
 
@@ -3808,6 +3818,18 @@ int DrmHwcTwo::HwcDisplay::EnableMetadataHdrMode(DrmHwcLayer& hdrLayer){
 
   // 显示器是否支持HDR
   bool is_hdr_display = connector_->is_hdmi_support_hdr();
+  // 如果当前屏幕处于MirrorDisplay状态，则需要检查其Mirror屏幕是否支持HDR
+  // 只要存在一个不支持HDR，则采用SDR模式
+  if(connector_->is_connector_mirror_primary()){
+    for(int mirror_display_id : connector_->get_connector_mirror_display_id()){
+      DrmConnector *conn_mirror = drm_->GetConnectorForDisplay(mirror_display_id);
+      // 存在一路不支持HDR，则关闭HDR模式
+      if(conn_mirror != NULL && conn_mirror->is_hdmi_support_hdr() == false){
+        is_hdr_display = false;
+        break;
+      }
+    }
+  }
   // 是否为 HDR 片源
   bool is_input_hdr = hdrLayer.bHdr_;
   // 2:自动模式: 电视支持 HDR模式播放HDR视频则切换HDR模式，否则使用SDR模式
@@ -4154,13 +4176,6 @@ int DrmHwcTwo::HwcDisplay::UpdateSidebandMode(){
 }
 
 int DrmHwcTwo::HwcDisplay::SwitchHdrMode(){
-  // 记录当前的Mirror状态
-  if(connector_->is_connector_mirror_mode()){
-    ctx_.hdr_mode = DRM_HWC_SDR;
-    ctx_.dataspace = HAL_DATASPACE_UNKNOWN;
-    return 0;
-  }
-
   // 需要HDR模式,找到 HDR layer,判断当前采用HDR模式
   for(auto &drmHwcLayer : drm_hwc_layers_){
     if(drmHwcLayer.bYuv_){
