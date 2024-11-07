@@ -1456,12 +1456,6 @@ void DrmConnector::ResetSplitMode(){
   SrcH_ = 0;
 }
 
-void DrmConnector::GetSplitModes(bool &HorizontalSplit,bool &SplitPrimary, bool &CropSplit){
-  HorizontalSplit = bHorizontalSplit_;
-  SplitPrimary = bSplitPrimary_;
-  CropSplit = bCropSplit_;
-}
-
 bool DrmConnector::isHorizontalSplit() const {
   return bHorizontalSplit_;
 }

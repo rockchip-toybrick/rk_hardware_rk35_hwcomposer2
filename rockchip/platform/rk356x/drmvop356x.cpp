@@ -38,6 +38,7 @@
 
 #include "rockchip/platform/drmvop356x.h"
 #include "drmdevice.h"
+#include <resources/resourcemanager.h>
 
 #include "im2d.hpp"
 
@@ -1788,7 +1789,8 @@ int Vop356x::TrySplitPolicy(
       dst_buffer = rgaBufferQueue_->DequeueDrmBuffer(ctx.state.iDisplayWidth_,
                                                      ctx.state.iDisplayHeight_,
                                                      HAL_PIXEL_FORMAT_RGB_888,
-                                                     MALI_GRALLOC_USAGE_NO_AFBC,
+                                                     MALI_GRALLOC_USAGE_NO_AFBC| 
+                                                     RK_GRALLOC_USAGE_WITHIN_4G,
                                                      "SplitModeView");
 
       if(dst_buffer == NULL){
@@ -1824,8 +1826,10 @@ int Vop356x::TrySplitPolicy(
                               drmLayer->iHeightStride_);
 
       // AFBC format
-      if(drmLayer->bAfbcd_)
+      if(drmLayer->bAfbcd_){
         src.rd_mode = IM_FBC_MODE;
+        HWC2_ALOGW("RK356x RGA do not support AFBC, RGAPolicy may fail");
+      }
 
       // Set src rect info
       src_rect.x = ALIGN_DOWN((int)drmLayer->source_crop.left,2);
@@ -2007,17 +2011,22 @@ int Vop356x::TrySplitPolicy(
           im_opt_t imOpt;
           memset(&imOpt, 0x00, sizeof(im_opt_t));
           // imOpt.core = IM_SCHEDULER_RGA3_CORE0 | IM_SCHEDULER_RGA3_CORE1;
+          int acquire_fence = -1;
           if(drmLayer->acquire_fence->isValid()){
-            if(drmLayer->acquire_fence->wait(500)){
-              HWC2_ALOGE("Wait AcquireFence 500ms failed! Info: size=%d act=%d signal=%d err=%d ,LayerName=%s ",
-                                drmLayer->acquire_fence->getSize(),
-                                drmLayer->acquire_fence->getActiveCount(),
-                                drmLayer->acquire_fence->getSignaledCount(),
-                                drmLayer->acquire_fence->getErrorCount(),
-                                drmLayer->sLayerName_.c_str());
+            if(ResourceManager::getInstance()->GetEnableRgaAcquireFence()){
+              acquire_fence = dup(drmLayer->acquire_fence->getFd());
+            }else{
+              if(drmLayer->acquire_fence->wait(500)){
+                HWC2_ALOGE("Wait AcquireFence 500ms failed! Info: size=%d act=%d signal=%d err=%d ,LayerName=%s ",
+                                  drmLayer->acquire_fence->getSize(),
+                                  drmLayer->acquire_fence->getActiveCount(),
+                                  drmLayer->acquire_fence->getSignaledCount(),
+                                  drmLayer->acquire_fence->getErrorCount(),
+                                  drmLayer->sLayerName_.c_str());
+              }
             }
           }
-          IM_STATUS im_state = improcess(src, dst, pat, src_rect, dst_rect, pat_rect, 0, &releaseFence, &imOpt, usage);
+          IM_STATUS im_state = improcess(src, dst, pat, src_rect, dst_rect, pat_rect, acquire_fence, &releaseFence, &imOpt, usage);
           if(im_state != IM_STATUS_SUCCESS){
             HWC2_ALOGE("call im2d scale fail, %s",imStrError(im_state));
             rgaBufferQueue_->QueueBuffer(dst_buffer);

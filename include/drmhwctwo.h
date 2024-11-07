@@ -836,11 +836,7 @@ class DrmHwcTwo : public hwc2_device_t {
    int EntreStaticScreen(uint64_t refresh, int refresh_cnt);
    int InvalidateControl(uint64_t refresh, int refresh_cnt);
    int isVirtual() { return type_ == HWC2::DisplayType::Virtual;}
-   //in dynamic cropsplit mode, skip screenshot layer to prevent flickering.
-   void SetSkipScreenShot();
-   HWC2::Error GetOrCreateDummyLayer();
-   HWC2::Error DestoryDummyLayer();
-   HWC2::Error CheckCropSplitStatus();
+
 #ifdef USE_LIBEBOOK
    int isEBook() { return ebook_framebuffer_width > 0;}
 #endif
@@ -848,10 +844,12 @@ class DrmHwcTwo : public hwc2_device_t {
 #ifdef USE_LIBPQ_HWPQ
    int CollectInfoForHwPqUIMode();
 #endif
+    HWC2::Error GetOrCreateDummyLayer();
+    HWC2::Error DestoryDummyLayer();
+    hwc2_layer_t GetSplitDummyLayer(){ return uCropSplitDummyLayer_;}
     int ResetDisplay();
     int DisconnectDisplay();
     int ConnectDisplay();
-    hwc2_layer_t GetSplitDummyLayer(){ return uCropSplitDummyLayer_;}
 
    private:
     HWC2::Error ValidatePlanes();
@@ -861,7 +859,6 @@ class DrmHwcTwo : public hwc2_device_t {
     int ImportBuffers();
     void AddFenceToRetireFence(int fd);
     int DoMirrorDisplay(int32_t *retire_fence);
-    bool CheckForSkipScreenShot();
     void CheckForSplitModeTimeline();
 
     ResourceManager *resource_manager_;
@@ -913,8 +910,6 @@ class DrmHwcTwo : public hwc2_device_t {
     bool bLastSvepState_;
     bool bVrrDisplay_;
     bool bActiveModeChange_;
-    bool bValidateSplitPrimary_ = false;
-    bool bValidateCropSplit = false;
 
     bool bUseWriteBack_;
     int iLastTunnelId_=0;

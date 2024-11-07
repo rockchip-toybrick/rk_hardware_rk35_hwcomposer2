@@ -4412,7 +4412,7 @@ int DrmHwcTwo::HwcDisplay::DoMirrorDisplay(int32_t *retire_fence){
       continue;
     }
     int display_id = conn->display();
-    // 非拼接屏幕需要将主屏幕ClientBuffer作为一般Buffer传入
+    // 非拼接主屏需要将主屏幕ClientBuffer作为一般Buffer传入
     if(!conn->IsSplitPrimary()){
       auto &display = resource_manager_->GetHwc2()->displays_.at(display_id);
       if (conn->state() == DRM_MODE_CONNECTED) {
@@ -5589,7 +5589,7 @@ void DrmHwcTwo::HandleDisplayHotplug(hwc2_display_t displayid, int state) {
   else{
     mHasRegisterDisplay_.erase(displayid);
   }
-  // 休眠200ms,等待上层处理
+  // 休眠100ms,等待上层处理
   usleep(100*1000);
 }
 

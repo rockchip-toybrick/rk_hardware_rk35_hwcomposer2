@@ -206,13 +206,11 @@ struct SvepXml{
  public:
   Vop356x()
   : rgaBufferQueue_((std::make_shared<DrmBufferQueue>()))
-#if (defined USE_LIBSR)
-    :
 #ifdef USE_LIBSR
+     ,
      svep_sr_(std::make_shared<SvepSr>()),
      bSrReady_(false),
      bufferQueue_((std::make_shared<DrmBufferQueue>(4)))
-#endif
 #endif
       { Init(); }
   void Init();

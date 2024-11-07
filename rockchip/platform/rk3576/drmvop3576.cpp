@@ -1988,17 +1988,22 @@ int Vop3576::TrySplitPolicy(
           im_opt_t imOpt;
           memset(&imOpt, 0x00, sizeof(im_opt_t));
           imOpt.core = IM_SCHEDULER_RGA2_CORE0|IM_SCHEDULER_RGA2_CORE1;
+          int acquire_fence = -1;
           if(drmLayer->acquire_fence->isValid()){
-            if(drmLayer->acquire_fence->wait(500)){
-              HWC2_ALOGE("Wait AcquireFence 500ms failed! Info: size=%d act=%d signal=%d err=%d ,LayerName=%s ",
-                                drmLayer->acquire_fence->getSize(),
-                                drmLayer->acquire_fence->getActiveCount(),
-                                drmLayer->acquire_fence->getSignaledCount(),
-                                drmLayer->acquire_fence->getErrorCount(),
-                                drmLayer->sLayerName_.c_str());
+            if(ResourceManager::getInstance()->GetEnableRgaAcquireFence()){
+              acquire_fence = dup(drmLayer->acquire_fence->getFd());
+            }else{
+              if(drmLayer->acquire_fence->wait(500)){
+                HWC2_ALOGE("Wait AcquireFence 500ms failed! Info: size=%d act=%d signal=%d err=%d ,LayerName=%s ",
+                                  drmLayer->acquire_fence->getSize(),
+                                  drmLayer->acquire_fence->getActiveCount(),
+                                  drmLayer->acquire_fence->getSignaledCount(),
+                                  drmLayer->acquire_fence->getErrorCount(),
+                                  drmLayer->sLayerName_.c_str());
+              }
             }
           }
-          IM_STATUS im_state = improcess(src, dst, pat, src_rect, dst_rect, pat_rect, 0, &releaseFence, &imOpt, usage);
+          IM_STATUS im_state = improcess(src, dst, pat, src_rect, dst_rect, pat_rect, acquire_fence, &releaseFence, &imOpt, usage);
           if(im_state != IM_STATUS_SUCCESS){
             HWC2_ALOGE("call im2d scale fail, %s",imStrError(im_state));
             rgaBufferQueue_->QueueBuffer(dst_buffer);

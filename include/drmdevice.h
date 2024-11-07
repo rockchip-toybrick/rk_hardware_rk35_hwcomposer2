@@ -114,8 +114,6 @@ class DrmDevice {
     event_listener_.FlipHotplugEventForInit();
   }
 
-  int UpdateDisplayStructure();
-
   // RK support
   type_name_define(encoder_type);
   type_name_define(connector_status);

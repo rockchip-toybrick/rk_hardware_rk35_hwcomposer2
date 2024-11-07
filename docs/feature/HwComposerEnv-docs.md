@@ -66,7 +66,6 @@ Rockchip Electronics Co., Ltd.
 | **日期**   | **版本** | **作者**  | **修改说明** |
 | ---------- | -------- | --------- | ------------ |
 | 2022/03/31 | 1.0.0    | GPU图形组 | 初始版本     |
-| 2022/03/31 | 1.1.0    | GPU图形组 | 增加旋转与动态切换功能支持 |
 | 2024/10/21 | 1.2.0 | GPU图形组 | 1. 新增：支持动态切换同显/拼接/主屏切换功能<br />2. 新增：支持拼接模式屏幕旋转功能 |
 
 **目 录**
@@ -126,7 +125,7 @@ $ adb shell getprop | grep ghwc
 
 ```
 
-大多数Android产品均为上述的送线模式。
+大多数Android产品均为上述的送显模式。
 
 #### 2.2 动态切换主屏模式
 
@@ -405,7 +404,7 @@ adb shell setprop sys.hwc.display_pipeline_timeline 2 ## 修改为2，前后存�
 |**Primary**|**主屏配置:**|1|见注3|
 |**Extend**|**副屏配置:**|0|见注3|
 
-* **注1-ConnectorType字段补充说明：**可使用modetest工具获取ConnectorType和TypeID：\
+* **注1-ConnectorType字段补充说明：** 可使用modetest工具获取ConnectorType和TypeID：\
   工具源码位于external/libdrm/tests/modetest\
   编译后目标文件位于$OUT/data/nativetest64/modetest/modetest
 
@@ -416,7 +415,7 @@ adb shell setprop sys.hwc.display_pipeline_timeline 2 ## 修改为2，前后存�
   409     408     connected       HDMI-A-1        700x390         26      408
   ```
 
-* **注2-Transform补充说明：**旋转配置如下，旋转的应用顺序为：先应用翻转，后应用旋转
+* **注2-Transform补充说明：** 旋转配置如下，旋转的应用顺序为：先应用翻转，后应用旋转
 
   * **1**: 水平翻转
   * **2**: 垂直翻转
@@ -424,7 +423,7 @@ adb shell setprop sys.hwc.display_pipeline_timeline 2 ## 修改为2，前后存�
   * **3**: 180°旋转（水平翻转+垂直翻转）
   * **7**: 270°旋转（水平翻转+垂直翻转+90°旋转）
 
-* **注3-主屏副屏补充说明：**Primary/Extend 有效值为 > 0，值越小，优先级越高。例如1/2，同时连接，1成为主屏。
+* **注3-主屏副屏补充说明：** Primary/Extend 有效值为 > 0，值越小，优先级越高。例如1/2，同时连接，1成为主屏。
 
   * 动态切换主屏/同屏异显：仅修改Primary/Extend参数即可实现主屏切换；
   * 多屏拼接：建议固定一个屏幕作为拼接主屏，其余均设置为副屏幕；
@@ -653,9 +652,9 @@ FbHeight= 1080 * 2 = 2160  // 3x2 布局的拼接屏幕
   | DP-1                 | 0    | 1080 | 3840 | 1080 |
   | HDMI-A-3             | 3840 | 1080 | 1920 | 1080 |
 
-  - **Transform：**当前应用场景不需要设置旋转，故设置为 0；
+  - **Transform：** 当前应用场景不需要设置旋转，故设置为 0；
   - **Primary：** HDMI-A-1 这是为拼接主屏
-  - **Extend：**其余均设置为拼接副屏幕
+  - **Extend：** 其余均设置为拼接副屏幕
 
 #### 3.2.2 6屏异显
 

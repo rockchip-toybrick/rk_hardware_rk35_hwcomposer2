@@ -44,7 +44,7 @@
 #include <drm_fourcc.h>
 #include <log/log.h>
 #include <rockchip/utils/rgautils.h>
-
+#include <resources/resourcemanager.h>
 //XML prase
 #include <tinyxml2.h>
 
@@ -2034,7 +2034,6 @@ int Vop3588::TrySplitPolicy(
                                                 dst_buffer->GetGemHandle(),
                                                 DRM_MODE_ROTATE_0);
       rga_layer_ready = true;
-      drmLayer->iBestPlaneType = PLANE_RK3588_ALL_ESMART_MASK;
       drmLayer->pRgaBuffer_ = dst_buffer;
       drmLayer->bUseRga_ = true;
       break;
@@ -2089,17 +2088,22 @@ int Vop3588::TrySplitPolicy(
           im_opt_t imOpt;
           memset(&imOpt, 0x00, sizeof(im_opt_t));
           imOpt.core = IM_SCHEDULER_RGA3_CORE0 | IM_SCHEDULER_RGA3_CORE1;
+          int acquire_fence = -1;
           if(drmLayer->acquire_fence->isValid()){
-            if(drmLayer->acquire_fence->wait(500)){
-              HWC2_ALOGE("Wait AcquireFence 500ms failed! Info: size=%d act=%d signal=%d err=%d ,LayerName=%s ",
-                                drmLayer->acquire_fence->getSize(),
-                                drmLayer->acquire_fence->getActiveCount(),
-                                drmLayer->acquire_fence->getSignaledCount(),
-                                drmLayer->acquire_fence->getErrorCount(),
-                                drmLayer->sLayerName_.c_str());
+            if(ResourceManager::getInstance()->GetEnableRgaAcquireFence()){
+              acquire_fence = dup(drmLayer->acquire_fence->getFd());
+            }else{
+              if(drmLayer->acquire_fence->wait(500)){
+                HWC2_ALOGE("Wait AcquireFence 500ms failed! Info: size=%d act=%d signal=%d err=%d ,LayerName=%s ",
+                                  drmLayer->acquire_fence->getSize(),
+                                  drmLayer->acquire_fence->getActiveCount(),
+                                  drmLayer->acquire_fence->getSignaledCount(),
+                                  drmLayer->acquire_fence->getErrorCount(),
+                                  drmLayer->sLayerName_.c_str());
+              }
             }
           }
-          IM_STATUS im_state = improcess(src, dst, pat, src_rect, dst_rect, pat_rect, 0, &releaseFence, &imOpt, usage);
+          IM_STATUS im_state = improcess(src, dst, pat, src_rect, dst_rect, pat_rect, acquire_fence, &releaseFence, &imOpt, usage);
           if(im_state != IM_STATUS_SUCCESS){
             HWC2_ALOGE("call im2d scale fail, %s",imStrError(im_state));
             rgaBufferQueue_->QueueBuffer(dst_buffer);
