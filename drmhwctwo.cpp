@@ -1864,7 +1864,7 @@ int DrmHwcTwo::HwcDisplay::CollectInfoForHwPqUIMode(){
     HWC2_ALOGD_IF_INFO("DrmGralloc is null, Can not get PQ Metadata");
   }else{
     for (auto &layer : drm_hwc_layers_) {
-      if(layer.bYuv_){
+      if(layer.bYuv_ && layer.bHasMetadata_){
         int64_t iMetaDataOffset_ = gralloc->hwc_get_offset_of_pq_metadata(layer.sf_handle);
         if(iMetaDataOffset_>0){
           ctx_.hwpq_meta_fd = layer.iFd_;
@@ -3956,7 +3956,7 @@ int DrmHwcTwo::HwcDisplay::EnableMetadataHdrMode(DrmHwcLayer& hdrLayer){
     hdr_height = hdrLayer.iHeight_;
   }
   // 获取存储 metadata 信息的offset
-  int64_t offset = gralloc->hwc_get_offset_of_dynamic_hdr_metadata(hdr_handle);
+  int64_t offset = hdrLayer.bHasMetadata_ ? gralloc->hwc_get_offset_of_dynamic_hdr_metadata(hdr_handle):0;
   if(offset < 0){
     HWC2_ALOGD_IF_ERR("Fail to get hdr metadata offset, Id=%d Name=%s ", hdrLayer.uId_, hdrLayer.sLayerName_.c_str());
   }
@@ -4922,6 +4922,7 @@ void DrmHwcTwo::HwcLayer::PopulateNormalLayer(DrmHwcLayer *drmHwcLayer,
       drmHwcLayer->uModifier_       = pBufferInfo_->uModifier_;
       drmHwcLayer->sLayerName_      = pBufferInfo_->sLayerName_;
       drmHwcLayer->uByteStridePlanes_ = pBufferInfo_->uByteStridePlanes_;
+      drmHwcLayer->bHasMetadata_ = pBufferInfo_->bHasMetadata_;
       drmHwcLayer->pBufferInfo_ = pBufferInfo_;
     }else{
       drmHwcLayer->iFd_     = -1;

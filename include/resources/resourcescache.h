@@ -72,6 +72,7 @@ class LayerInfoCache{
   LayerInfoCache& operator=(const LayerInfoCache&) = delete;
 
   base::unique_fd uniqueFd_;
+  buffer_handle_t buffer_ = NULL;
   int iFormat_=0;
   int iWidth_=0;
   int iHeight_=0;
@@ -88,7 +89,7 @@ class LayerInfoCache{
   GemHandle gemHandle_;
   std::string sLayerName_;
   bool bFbIdCached_ = false;
-
+  bool bHasMetadata_ = false;
   // RGA handle cache
   RgaHandle rgaHandle_;
 };

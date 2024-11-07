@@ -217,12 +217,29 @@ class DrmHwcTwo : public hwc2_device_t {
                               local_cache_slot,
                               pBufferInfo_->sLayerName_.c_str());
           success = true;
+          if(pBufferInfo_->buffer_){
+            buffer_ = pBufferInfo_->buffer_;
+            mCurrentState.buffer_ = pBufferInfo_->buffer_;
+          }
         }
       }
 
       if(success == false){
         bufferInfoMap_[local_cache_slot] = std::make_shared<LayerInfoCache>();
         pBufferInfo_ = bufferInfoMap_[local_cache_slot];
+        //如果有metadata，有可能在热插拔释放buffer后流程中还在使用此buffer，本地import防止composer释放buffer后出现野指针异常
+        if(drmGralloc_->hwc_get_offset_of_pq_metadata(buffer_)>0 || drmGralloc_->hwc_get_offset_of_dynamic_hdr_metadata(buffer_)>0){
+          buffer_handle_t tempHandle;
+          pBufferInfo_->bHasMetadata_ = true;
+          int ret = drmGralloc_->importBuffer(buffer_,&tempHandle);
+          if(ret != android::OK){
+            HWC2_ALOGE("import buffer failed! ret = %d", ret);
+          }else{
+            buffer_ = tempHandle;
+            mCurrentState.buffer_ = buffer_;
+            pBufferInfo_->buffer_ = buffer_;
+          }
+        }
         uint64_t buffer_id;
         drmGralloc_->hwc_get_handle_buffer_id(buffer_, &buffer_id);
         pBufferInfo_->uBufferId_ = buffer_id;
@@ -296,6 +313,20 @@ class DrmHwcTwo : public hwc2_device_t {
         }else{
           pBufferInfo_ = ret.first->second;
           pBufferInfo_->uBufferId_ = buffer_id;
+          //如果有metadata，有可能在热插拔释放buffer后流程中还在使用此buffer，本地import防止composer释放buffer后出现野指针异常
+          if(drmGralloc_->hwc_get_offset_of_pq_metadata(buffer_)>0 || drmGralloc_->hwc_get_offset_of_dynamic_hdr_metadata(buffer_)>0){
+            buffer_handle_t tempHandle;
+            pBufferInfo_->bHasMetadata_ = true;
+            int ret = drmGralloc_->importBuffer(buffer_,&tempHandle);
+            if(ret != android::OK){
+              HWC2_ALOGE("import buffer failed! ret = %d", ret);
+            }else{
+              buffer_ = tempHandle;
+              mCurrentState.buffer_ = buffer_;
+              pBufferInfo_->buffer_ = buffer_;
+            }
+          }
+
           // Bug:#426310
           // 多路视频同时输出，SurfaceFlinger可能会频繁触发 buffer_handle_t import/release行为
           // 可能会导致HWC本地cache的fd失效，故需要本地dup dma-buffer-fd副本，确保fd有效
@@ -330,6 +361,10 @@ class DrmHwcTwo : public hwc2_device_t {
       }else{
         bHasCache_ = true;
         pBufferInfo_ = mapBuffer->second;
+        if(pBufferInfo_->buffer_){
+          buffer_ = pBufferInfo_->buffer_;
+          mCurrentState.buffer_ = pBufferInfo_->buffer_;
+        }
         HWC2_ALOGD_IF_VERBOSE("bufferInfoMap_ size = %zu has cache! BufferId=%" PRIx64 " Name=%s",
                              bufferInfoMap_.size(),buffer_id,pBufferInfo_->sLayerName_.c_str());
       }
@@ -351,6 +386,19 @@ class DrmHwcTwo : public hwc2_device_t {
       uint64_t buffer_id;
       drmGralloc_->hwc_get_handle_buffer_id(buffer_, &buffer_id);
       pBufferInfo_ = std::make_shared<LayerInfoCache>();
+      //如果有metadata，有可能在热插拔释放buffer后流程中还在使用此buffer，本地import防止composer释放buffer后出现野指针异常
+      if(drmGralloc_->hwc_get_offset_of_pq_metadata(buffer_)>0 || drmGralloc_->hwc_get_offset_of_dynamic_hdr_metadata(buffer_)>0){
+        buffer_handle_t tempHandle;
+        pBufferInfo_->bHasMetadata_ = true;
+        int ret = drmGralloc_->importBuffer(buffer_,&tempHandle);
+        if(ret != android::OK){
+          HWC2_ALOGE("import buffer failed! ret = %d", ret);
+        }else{
+          buffer_ = tempHandle;
+          mCurrentState.buffer_ = buffer_;
+          pBufferInfo_->buffer_ = buffer_;
+        }
+      }
       pBufferInfo_->uBufferId_ = buffer_id;
       pBufferInfo_->uniqueFd_     = base::unique_fd(dup(drmGralloc_->hwc_get_handle_primefd(buffer_)));
       pBufferInfo_->iWidth_  = drmGralloc_->hwc_get_handle_attibute(buffer_,ATT_WIDTH);

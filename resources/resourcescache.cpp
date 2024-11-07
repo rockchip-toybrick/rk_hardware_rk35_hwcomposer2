@@ -103,6 +103,10 @@ LayerInfoCache::~LayerInfoCache(){
     bFbIdCached_ = false;
     DrmGralloc::getInstance()->hwc_fbid_dec_layer_ref_count(uBufferId_);
   }
+  if(buffer_){
+    DrmGralloc::getInstance()->freeBuffer(buffer_);
+    buffer_ = NULL;
+  }
 
 }
 

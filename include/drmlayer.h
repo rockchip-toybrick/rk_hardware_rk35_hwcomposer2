@@ -232,6 +232,7 @@ struct DrmHwcLayer {
   // Only RK3528 Support
   bool bMetadataHdr_;
   bool bYuv10bit_;
+  bool bHasMetadata_ = false;
 
   bool bSkipLayer_;
   float fHScaleMul_;

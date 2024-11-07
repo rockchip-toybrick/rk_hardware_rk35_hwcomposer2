@@ -2534,7 +2534,7 @@ int Vop3576::RunHwPqVideoMode(DrmHwcLayer* drmLayer) {
       DrmGralloc* gralloc = DrmGralloc::getInstance();
       if(gralloc == NULL){
         HWC2_ALOGD_IF_INFO("DrmGralloc is null, Can not get PQ Metadata");
-      }else{
+      }else if(drmLayer->bHasMetadata_){
         src.iMetaDataOffset_ = gralloc->hwc_get_offset_of_pq_metadata(drmLayer->sf_handle);
         if(src.iMetaDataOffset_>0){
           src.iMetaDataFd_ = drmLayer->iFd_;
@@ -4675,7 +4675,7 @@ int Vop3576::CheckHwPqDstScale(DrmHwcLayer* drmLayer) {
   DrmGralloc* gralloc = DrmGralloc::getInstance();
   if(gralloc == NULL){
     HWC2_ALOGD_IF_INFO("DrmGralloc is null, Can not get PQ Metadata");
-  }else{
+  }else if(drmLayer->bHasMetadata_){
     src.iMetaDataOffset_ = gralloc->hwc_get_offset_of_pq_metadata(drmLayer->sf_handle);
     if(src.iMetaDataOffset_>0){
       src.iMetaDataFd_ = drmLayer->iFd_;
