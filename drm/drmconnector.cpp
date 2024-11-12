@@ -65,6 +65,7 @@ DrmConnector::DrmConnector(DrmDevice *drm, drmModeConnectorPtr c,
       unique_id_(0),
       priority_(0),
       state_(c->connection),
+      hotplug_state_(c->connection),
       mm_width_(c->mmWidth),
       mm_height_(c->mmHeight),
       possible_encoders_(possible_encoders),
@@ -350,6 +351,30 @@ int DrmConnector::UpdateModes() {
   }
 
   return 0;
+}
+
+int DrmConnector::UpdateHotplugState(bool fast_mode){
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
+  //drmModeGetConnectorCurrent will faster than drmModeGetConnector sence it will not probe mode.
+  if(fast_mode){
+    auto c = drmModeGetConnectorCurrent(drm_->fd(), id_);
+    if(!c){
+      HWC2_ALOGE("Get connector %" PRIu32" failed!", id_);
+      return -1;
+    }
+    hotplug_state_ = c->connection;
+    drmModeFreeConnector(c);
+    return 0;
+  }else{
+    auto c = drmModeGetConnector(drm_->fd(), id_);
+    if(!c){
+      HWC2_ALOGE("Get connector %" PRIu32" failed!", id_);
+      return -1;
+    }
+    hotplug_state_ = c->connection;
+    drmModeFreeConnector(c);
+    return 0;
+  }
 }
 
 int DrmConnector::UpdatePropertys(){

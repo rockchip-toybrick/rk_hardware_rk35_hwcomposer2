@@ -242,6 +242,8 @@ class DrmConnector {
   }
   // Connector Mirror 功能
 
+  int UpdateHotplugState(bool fast_mode);
+
  private:
   DrmDevice *drm_;
 

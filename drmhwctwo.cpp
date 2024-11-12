@@ -391,6 +391,9 @@ HWC2::Error DrmHwcTwo::RegisterCallback(int32_t descriptor,
       auto &drmDevices = resource_manager_->GetDrmDevices();
       for (auto &device : drmDevices)
         HandleInitialHotplugState(device.get());
+
+      // 热插拔事件处理线程启动
+      eventWorker_.Start();
       break;
     }
 
@@ -430,6 +433,18 @@ DrmHwcTwo::HwcDisplay::HwcDisplay(ResourceManager *resource_manager,
 }
 
 int DrmHwcTwo::HwcDisplay::ClearDisplay() {
+    // 虚拟屏不执行此逻辑
+  if(isVirtual()){
+    return 0;
+  }
+
+#ifdef USE_LIBEBOOK
+  // 电子书不执行此逻辑
+  if(isEBook()){
+    return 0;
+  }
+#endif
+
   if(!init_success_){
     HWC2_ALOGE("display=%" PRIu64 " init_success_=%d skip.", handle_, init_success_);
     return -1;
@@ -439,34 +454,71 @@ int DrmHwcTwo::HwcDisplay::ClearDisplay() {
     compositor_->ClearDisplay();
   }
 
-  HWC2_ALOGI("display-id=%" PRIu64,handle_);
+  HWC2_ALOGD_IF_INFO("display-id=%" PRIu64,handle_);
   return 0;
 }
 
 int DrmHwcTwo::HwcDisplay::ResetDisplay(){
+  // 虚拟屏不执行此逻辑
+  if(isVirtual()){
+    return 0;
+  }
+
+#ifdef USE_LIBEBOOK
+  // 电子书不执行此逻辑
+  if(isEBook()){
+    return 0;
+  }
+#endif
+
   init_success_ = false;
   // 等待一段时间，display处理完当前帧
   usleep(50*1000);
   if(compositor_ != NULL){
     compositor_->ClearDisplay();
   }
-  HWC2_ALOGI("display-id=%" PRIu64,handle_);
+  HWC2_ALOGD_IF_INFO("display-id=%" PRIu64,handle_);
   return 0;
 };
 
 
 int DrmHwcTwo::HwcDisplay::DisconnectDisplay(){
+  // 虚拟屏不执行此逻辑
+  if(isVirtual()){
+    return 0;
+  }
+
+#ifdef USE_LIBEBOOK
+  // 电子书不执行此逻辑
+  if(isEBook()){
+    return 0;
+  }
+#endif
+
   force_disconneted_ = true;
   // 等待一段时间，display处理完当前帧
   usleep(50*1000);
   if(compositor_ != NULL){
     compositor_->ClearDisplay();
   }
-  HWC2_ALOGI("display-id=%" PRIu64,handle_);
+  HWC2_ALOGD_IF_INFO("display-id=%" PRIu64,handle_);
   return 0;
 }
 int DrmHwcTwo::HwcDisplay::ConnectDisplay(){
+  // 虚拟屏不执行此逻辑
+  if(isVirtual()){
+    return 0;
+  }
+
+#ifdef USE_LIBEBOOK
+  // 电子书不执行此逻辑
+  if(isEBook()){
+    return 0;
+  }
+#endif
+
   force_disconneted_ = false;
+  HWC2_ALOGD_IF_INFO("display-id=%" PRIu64,handle_);
   return 0;
 }
 
@@ -698,6 +750,18 @@ HWC2::Error DrmHwcTwo::HwcDisplay::InitEBook() {
 HWC2::Error DrmHwcTwo::HwcDisplay::CheckStateAndReinit(bool clear_layer) {
   HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64,handle_);
 
+  // 虚拟屏不执行此逻辑
+  if(isVirtual()){
+    return HWC2::Error::BadConfig;
+  }
+
+#ifdef USE_LIBEBOOK
+  // 电子书不执行此逻辑
+  if(isEBook()){
+    return HWC2::Error::BadConfig;
+  }
+#endif
+
   int display = static_cast<int>(handle_);
 
   connector_ = drm_->GetConnectorForDisplay(display);
@@ -902,13 +966,13 @@ HWC2::Error DrmHwcTwo::HwcDisplay::CreateLayer(hwc2_layer_t *layer) {
   layers_.emplace(static_cast<hwc2_layer_t>(layer_idx_), HwcLayer(layer_idx_, drm_));
   *layer = static_cast<hwc2_layer_t>(layer_idx_);
   ++layer_idx_;
-  HWC2_ALOGI("display-id=%" PRIu64 ", layer-id=%" PRIu64,handle_,*layer);
+  HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ", layer-id=%" PRIu64,handle_,*layer);
   return HWC2::Error::None;
 }
 
 HWC2::Error DrmHwcTwo::HwcDisplay::DestroyLayer(hwc2_layer_t layer) {
   std::unique_lock<std::recursive_mutex> lock(mDisplayMutex_);
-  HWC2_ALOGI("display-id=%" PRIu64 ", layer-id=%" PRIu64,handle_,layer);
+  HWC2_ALOGD_IF_VERBOSE("display-id=%" PRIu64 ", layer-id=%" PRIu64,handle_,layer);
   auto map_layer = layers_.find(layer);
   if (map_layer != layers_.end()){
     map_layer->second.clear();
@@ -3581,7 +3645,7 @@ int DrmHwcTwo::HwcDisplay::UpdateDisplayMode(){
                drm_->GetCrtcForDisplay(old_mirror_display_id) != NULL){
               // 发送热插拔注册事件
               DrmEvent event;
-              event.type = HOTPLUG_EVENT;
+              event.type = HOTPLUG_USER_EVENT;
               event.display_id = old_mirror_display_id;
               event.connection = DRM_MODE_CONNECTED;
               g_ctx->eventWorker_.SendDrmEvent(event);
@@ -3596,7 +3660,7 @@ int DrmHwcTwo::HwcDisplay::UpdateDisplayMode(){
       if(old_is_mirror_state == false && connector_->is_connector_mirror_mode() == true){
         // 发送热插拔注册事件
         DrmEvent event;
-        event.type = HOTPLUG_EVENT;
+        event.type = HOTPLUG_USER_EVENT;
         event.display_id = connector_->display();
         event.connection = DRM_MODE_DISCONNECTED;
         g_ctx->eventWorker_.SendDrmEvent(event);
@@ -5594,7 +5658,7 @@ void DrmHwcTwo::HandleDisplayHotplug(hwc2_display_t displayid, int state) {
 }
 
 void DrmHwcTwo::HandleInitialHotplugState(DrmDevice *drmDevice) {
-    // RK3528 HDMI/TV互斥模式要求，若HDMI已连接，则 TV不注册
+    // RK3528 HDMI/TV互斥模式要求，若HDMI已连接，则 TV 不注册
     if(gIsRK3528()){
       drmDevice->FlipHotplugEventForInit();
       return;
@@ -5646,9 +5710,16 @@ void DrmHwcTwo::HandleInitialHotplugState(DrmDevice *drmDevice) {
     }
 }
 
-void DrmHwcTwo::DrmHotplugHandler::HdmiTvOnlyOne(PLUG_EVENT_TYPE hdmi_hotplug_state){
+void DrmHwcTwo::EventWorker::HdmiTvOnlyOne(PLUG_EVENT_TYPE hdmi_hotplug_state){
   if(!gIsRK3528())
     return;
+  ResourceManager* rm = ResourceManager::getInstance();
+  int primary_id = 0;
+  DrmDevice* drm_ = rm->GetDrmDevice(primary_id);
+  if(drm_ == NULL){
+    HWC2_ALOGE("Failed to get DrmDevice for display 0");
+    return;
+  }
 
   // RK3528 HDMI拔出，则需要注册 TV 到 SurfaceFlinger
   if(hdmi_hotplug_state == DRM_HOTPLUG_UNPLUG_EVENT){
@@ -5701,173 +5772,259 @@ void DrmHwcTwo::DrmHotplugHandler::HdmiTvOnlyOne(PLUG_EVENT_TYPE hdmi_hotplug_st
   return ;
 }
 
-
 void DrmHwcTwo::DrmHotplugHandler::HandleEvent(uint64_t timestamp_us) {
+  std::unique_lock<std::recursive_mutex> lock(mRecursiveMutex);
+  int changed_conn_cnt = 0;
+  for (auto &conn : drm_->connectors()) {
+    drmModeConnection old_state = conn->hotplug_state();
+    //update hotplug state by fast mode
+    conn->UpdateHotplugState(true);
+    drmModeConnection cur_state = conn->hotplug_state();
+    if(cur_state != old_state){
+      DrmEvent event;
+      event.display_id = conn->display();
+      event.connection = cur_state;
+      event.type = HOTPLUG_DRM_EVENT;
+      event.timestamp = timestamp_us;
+      hwc2_->eventWorker_.SendDrmEvent(event);
+      changed_conn_cnt++;
+      HWC2_ALOGI("hwc_hotplug : %s-%d state is changed! %s -> %s, timestamp_us=%" PRIu64,
+                 drm_->connector_type_str(conn->type()), conn->type_id(),
+                 old_state == DRM_MODE_CONNECTED ? "Connected" : "Disconnected",
+                 cur_state == DRM_MODE_CONNECTED ? "Connected" : "Disconnected",
+                 timestamp_us);
+    }else{
+      HWC2_ALOGD_IF_INFO("hwc_hotplug : %s-%d state is no changed! %s -> %s, timestamp_us=%" PRIu64,
+                 drm_->connector_type_str(conn->type()), conn->type_id(),
+                 old_state == DRM_MODE_CONNECTED ? "Connected" : "Disconnected",
+                 cur_state == DRM_MODE_CONNECTED ? "Connected" : "Disconnected",
+                 timestamp_us);
+    }
+  }
+  if(changed_conn_cnt == 0){
+    HWC2_ALOGI("hwc_hotplug : receive drm hotplug event but no state change. check by slow mode.");
+    for (auto &conn : drm_->connectors()) {
+      drmModeConnection old_state = conn->hotplug_state();
+      //update hotplug state by slow mode
+      conn->UpdateHotplugState(false);
+      drmModeConnection cur_state = conn->hotplug_state();
+      if(cur_state != old_state){
+        DrmEvent event;
+        event.display_id = conn->display();
+        event.connection = cur_state;
+        event.type = HOTPLUG_DRM_EVENT;
+        event.timestamp = timestamp_us;
+        hwc2_->eventWorker_.SendDrmEvent(event);
+        changed_conn_cnt++;
+        HWC2_ALOGI("hwc_hotplug : connector %s-%d state is changed! %s -> %s, timestamp_us=%" PRIu64,
+                    drm_->connector_type_str(conn->type()), conn->type_id(),
+                    old_state == DRM_MODE_CONNECTED ? "Connected" : "Disconnected",
+                    cur_state == DRM_MODE_CONNECTED ? "Connected" : "Disconnected",
+                    timestamp_us);
+      }else{
+        HWC2_ALOGD_IF_INFO("hwc_hotplug : connector %s-%d state is no changed! %s -> %s, timestamp_us=%" PRIu64,
+                            drm_->connector_type_str(conn->type()), conn->type_id(),
+                            old_state == DRM_MODE_CONNECTED ? "Connected" : "Disconnected",
+                            cur_state == DRM_MODE_CONNECTED ? "Connected" : "Disconnected",
+                            timestamp_us);
+      }
+    }
+  }
+
+  if(changed_conn_cnt == 0){
+    HWC2_ALOGW("hwc_hotplug : receive drm hotplug event but no state change. "
+               "display's connection maybe have error, timestamp_us=%" PRIu64, timestamp_us);
+  }
+}
+
+int DrmHwcTwo::EventWorker::HandleDrmHotplugEvent(DrmEvent event) {
+  uint64_t timestamp_us = event.timestamp;
+
+  ResourceManager* rm = ResourceManager::getInstance();
+  DrmDevice* drm_ = rm->GetDrmDevice(event.display_id);
+  if(drm_ == NULL){
+    HWC2_ALOGE("Failed to get DrmDevice for display %d", event.display_id);
+    return -1;
+  }
+
   int32_t ret = 0;
   PLUG_EVENT_TYPE event_type = DRM_HOTPLUG_NONE;
-  for (auto &conn : drm_->connectors()) {
-    ret = 0;
+  DrmConnector* conn = drm_->GetConnectorForDisplay(event.display_id);
+  if(!conn){
+    HWC2_ALOGE("Failed to get DrmConnector for display %d", event.display_id);
+    return -1;
+  }
 
-    // RK3528 TV 不需要处理TV的热插拔事件
-    if(gIsRK3528() && conn->type() == DRM_MODE_CONNECTOR_TV){
-      ALOGI("hwc_hotplug: RK3528 not handle type=%s-%d hotplug event.\n",
-            drm_->connector_type_str(conn->type()), conn->type_id());
-      continue;
-    }
+  // RK3528 TV 不需要处理TV的热插拔事件
+  if(gIsRK3528() && conn->type() == DRM_MODE_CONNECTOR_TV){
+    ALOGI("hwc_hotplug: RK3528 not handle type=%s-%d hotplug event.\n",
+          drm_->connector_type_str(conn->type()), conn->type_id());
+    return -1;
+  }
 
-    drmModeConnection old_state = conn->hotplug_state();
-    conn->ResetModesReady();
-    conn->UpdateModes();
-    conn->update_hotplug_state();
-    drmModeConnection cur_state = conn->hotplug_state();
-    if(!conn->ModesReady())
-      continue;
+  //更新设备的分辨率列表
+  conn->ResetModesReady();
+  conn->UpdateModes();
+  if(!conn->ModesReady()){
+    HWC2_ALOGE("hwc_hotplug : display-id=%d %s-%d DrmMode is not ready.",
+                event.display_id, drm_->connector_type_str(conn->type()),
+                conn->type_id());
+    return -1;
+  }
 
-    if (cur_state == old_state)
-      continue;
+  drmModeConnection cur_state = conn->state();
+  if(event.connection != cur_state){
+    HWC2_ALOGE("hwc_hotplug : display-id=%d %s-%d cur_state=%s event.connection=%s skip hotplug.",
+                event.display_id, drm_->connector_type_str(conn->type()), conn->type_id(), 
+                cur_state == DRM_MODE_CONNECTED ? "Connected" : "Disconnected",
+                event.connection == DRM_MODE_CONNECTED ? "Connected" : "Disconnected");
+    return -1;
+  }
 
-    ALOGI("hwc_hotplug: %s event @%" PRIu64 " for connector %u type=%s, type_id=%d\n",
-          cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug", timestamp_us, conn->id(),
-          drm_->connector_type_str(conn->type()),conn->type_id());
+  ALOGI("hwc_hotplug: %s event %" PRIu64 " for connector %u type=%s, type_id=%d\n",
+        event.connection == DRM_MODE_CONNECTED ? "Plug" : "Unplug", event.timestamp, conn->id(),
+        drm_->connector_type_str(conn->type()), conn->type_id());
 
+  // 当前状态为未连接，则为拔出事件
+  if(cur_state == DRM_MODE_DISCONNECTED){
+    event_type = DRM_HOTPLUG_UNPLUG_EVENT;
+  }else{
+    event_type = DRM_HOTPLUG_PLUG_EVENT;
+  }
 
-    // 当前状态为未连接，则为拔出事件
-    if(cur_state == DRM_MODE_DISCONNECTED){
-      event_type = DRM_HOTPLUG_UNPLUG_EVENT;
+  // RK3528 HDMI/TV 互斥功能需要提前处理 TV display
+  if(gIsRK3528() && conn->type() == DRM_MODE_CONNECTOR_HDMIA)
+    HdmiTvOnlyOne(event_type);
+
+  int display_id = conn->display();
+  auto &display = hwc2_->displays_.at(display_id);
+  if (cur_state == DRM_MODE_CONNECTED) {
+    ret |= (int32_t)display.HoplugEventTmeline();
+    ret |= (int32_t)display.CheckStateAndReinit(!hwc2_->IsHasRegisterDisplayId(display_id));
+    ret |= (int32_t)display.ChosePreferredConfig();
+    if(ret != 0){
+      HWC2_ALOGE("hwc_hotplug: %s connector %u type=%s type_id=%d state is error, skip hotplug.",
+                  cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
+                  conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
+    }else if(conn->isCropSplit()){
+        HWC2_ALOGI("hwc_hotplug: %s connector %u type=%s type_id=%d isCropSplit skip hotplug.",
+                  cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
+                  conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
+        display.SetPowerMode(HWC2_POWER_MODE_ON);
     }else{
-      event_type = DRM_HOTPLUG_PLUG_EVENT;
+      HWC2_ALOGI("hwc_hotplug: %s connector %u type=%s type_id=%d send hotplug event to SF.",
+                  cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
+                  conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
+      if(event.state_change_panding){
+        display.SetNeedPowerModeSync(event.state_change_panding);
+      }
+      hwc2_->HandleDisplayHotplug(display_id, cur_state);
+              //如果前后状态一致，但是中间出现一次快速热插拔，驱动的powermode可能和HWC不同步，强制sync
+      display.SyncPowerMode();
     }
+  }else{
+    // 当前拔出的设备是Mirror的主屏
+    if(conn->is_connector_mirror_mode()){
+      // 如果是MirrorPrimary,说明还存在MirrorExternal屏幕，故仅执行断开drm资源操作，不上报拔出事件
+      if(conn->is_connector_mirror_primary()){
+        ret = (int32_t)drm_->ReleaseDpyRes(display_id);
+        if(ret){
+          HWC2_ALOGE("hwc_hotplug: MirrorDisplayPrimary %s connector %u type=%s type_id=%d state is error.",
+                    cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
+                    conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
+          return ret;
+        }
+        HWC2_ALOGI("hwc_hotplug: MirrorDisplayPrimary %s connector %u type=%s type_id=%d, skip hotplug.",
+                  cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
+                  conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
+        return ret;
+      }else{ // 非MirrorPrimary设备，故仅执行断开drm资源操作
+        int mirror_primary_id = conn->get_connector_mirror_primary_id();
+        ret = (int32_t)drm_->ReleaseDpyRes(display_id);
+        if(ret){
+          HWC2_ALOGE("hwc_hotplug: MirrorDisplayExternal %s connector %u type=%s type_id=%d state is error.",
+                    cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
+                    conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
+          return ret;
+        }
 
-    // RK3528 HDMI/TV 互斥功能需要提前处理 TV display
-    if(gIsRK3528() && conn->type() == DRM_MODE_CONNECTOR_HDMIA)
-      HdmiTvOnlyOne(event_type);
+        HWC2_ALOGI("hwc_hotplug: MirrorDisplayExternal %s connector %u type=%s type_id=%d, skip hotplug.",
+                  cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
+                  conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
 
-    int display_id = conn->display();
-    auto &display = hwc2_->displays_.at(display_id);
-    if (cur_state == DRM_MODE_CONNECTED) {
-      ret |= (int32_t)display.HoplugEventTmeline();
-      ret |= (int32_t)display.CheckStateAndReinit(!hwc2_->IsHasRegisterDisplayId(display_id));
-      ret |= (int32_t)display.ChosePreferredConfig();
+        // 检查MirrorPrimary的连接状态，如果此MirrorPrimary设备已断开，且没有其他MirrorExternal，则需要上报拔出事件，销毁对应的SF Display
+        if(mirror_primary_id > 0){
+          auto &mirror_primary_display = hwc2_->displays_.at(mirror_primary_id);
+          DrmConnector *mirror_primary = drm_->GetConnectorForDisplay(mirror_primary_id);
+          // MirrorPrimary 变为非MirrorMode状态，说明所有MirrorExternal都已经断开
+          // 如果此时 MirrorPrimary 也是断开，就需要上报拔出事件，销毁对应的SF Display
+          if(mirror_primary != NULL &&
+              mirror_primary->hotplug_state() == DRM_MODE_DISCONNECTED &&
+              mirror_primary->is_connector_mirror_mode() == false){
+            ret |= (int32_t)mirror_primary_display.ClearDisplay();
+            ret |= (int32_t)drm_->ReleaseDpyRes(mirror_primary_id);
+            if(ret != 0){
+              HWC2_ALOGE("hwc_hotplug: MirrorDisplay Unplug primary-display-id=%d connector %u type=%s type_id=%d state is error, skip hotplug.",
+                        mirror_primary_id,
+                        mirror_primary->id(),drm_->connector_type_str(mirror_primary->type()),mirror_primary->type_id());
+            }else if(conn->isCropSplit()){
+              HWC2_ALOGI("hwc_hotplug: MirrorDisplay Unplug primary-display-id=%d connector %u type=%s type_id=%d isCropSplit skip hotplug.",
+                        mirror_primary_id,
+                        mirror_primary->id(),drm_->connector_type_str(mirror_primary->type()),mirror_primary->type_id());
+              // display.SetPowerMode(HWC2_POWER_MODE_OFF);
+            }else{
+              HWC2_ALOGI("hwc_hotplug: MirrorDisplay Unplug primary-display-id=%d connector %u type=%s type_id=%d send hotplug event to SF.",
+                        mirror_primary_id,
+                        mirror_primary->id(),drm_->connector_type_str(mirror_primary->type()),mirror_primary->type_id());
+              hwc2_->HandleDisplayHotplug(mirror_primary_id, DRM_MODE_DISCONNECTED);
+            }
+          }
+        }
+
+        return ret;
+      }
+    }else{
+      ret |= (int32_t)display.ClearDisplay();
+      ret |= (int32_t)drm_->ReleaseDpyRes(display_id);
       if(ret != 0){
         HWC2_ALOGE("hwc_hotplug: %s connector %u type=%s type_id=%d state is error, skip hotplug.",
-                   cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
-                   conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
+                  cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
+                  conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
       }else if(conn->isCropSplit()){
           HWC2_ALOGI("hwc_hotplug: %s connector %u type=%s type_id=%d isCropSplit skip hotplug.",
                     cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
                     conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
-          display.SetPowerMode(HWC2_POWER_MODE_ON);
+        // display.SetPowerMode(HWC2_POWER_MODE_OFF);
       }else{
         HWC2_ALOGI("hwc_hotplug: %s connector %u type=%s type_id=%d send hotplug event to SF.",
-                   cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
-                   conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
+                  cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
+                  conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
         hwc2_->HandleDisplayHotplug(display_id, cur_state);
-        display.SyncPowerMode();
+      }
+    }
+  }
+
+  // SplitDisplay Hoplug.
+  ret = 0;
+  if(conn->isHorizontalSplit()){
+    display_id = conn->GetSplitModeId();
+    auto &split_display = hwc2_->displays_.at(display_id);
+    if (cur_state == DRM_MODE_CONNECTED) {
+      ret |= (int32_t)split_display.HoplugEventTmeline();
+      ret |= (int32_t)split_display.CheckStateAndReinit(!hwc2_->IsHasRegisterDisplayId(display_id));
+      ret |= (int32_t)split_display.ChosePreferredConfig();
+      if(ret != 0){
+        HWC2_ALOGE("hwc_hotplug: %s connector %u type=%s type_id=%d state is error, skip hotplug.",
+                  cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
+                  conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
+      }else{
+        HWC2_ALOGI("hwc_hotplug: %s connector %u type=%s type_id=%d send hotplug event to SF.",
+                  cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
+                  conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
+        hwc2_->HandleDisplayHotplug(display_id, cur_state);
+        split_display.SyncPowerMode();
       }
     }else{
-      // 当前拔出的设备是Mirror的主屏
-      if(conn->is_connector_mirror_mode()){
-        // 如果是MirrorPrimary,说明还存在MirrorExternal屏幕，故仅执行断开drm资源操作，不上报拔出事件
-        if(conn->is_connector_mirror_primary()){
-          ret = (int32_t)drm_->ReleaseDpyRes(display_id);
-          if(ret){
-            HWC2_ALOGE("hwc_hotplug: MirrorDisplayPrimary %s connector %u type=%s type_id=%d state is error.",
-                      cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
-                      conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
-            continue;
-          }
-          HWC2_ALOGI("hwc_hotplug: MirrorDisplayPrimary %s connector %u type=%s type_id=%d, skip hotplug.",
-                    cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
-                    conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
-          continue;
-        }else{ // 非MirrorPrimary设备，故仅执行断开drm资源操作
-          int mirror_primary_id = conn->get_connector_mirror_primary_id();
-          ret = (int32_t)drm_->ReleaseDpyRes(display_id);
-          if(ret){
-            HWC2_ALOGE("hwc_hotplug: MirrorDisplayExternal %s connector %u type=%s type_id=%d state is error.",
-                      cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
-                      conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
-            continue;
-          }
-
-          HWC2_ALOGI("hwc_hotplug: MirrorDisplayExternal %s connector %u type=%s type_id=%d, skip hotplug.",
-                    cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
-                    conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
-
-          // 检查MirrorPrimary的连接状态，如果此MirrorPrimary设备已断开，且没有其他MirrorExternal，则需要上报拔出事件，销毁对应的SF Display
-          if(mirror_primary_id > 0){
-            auto &mirror_primary_display = hwc2_->displays_.at(mirror_primary_id);
-            DrmConnector *mirror_primary = drm_->GetConnectorForDisplay(mirror_primary_id);
-            // MirrorPrimary 变为非MirrorMode状态，说明所有MirrorExternal都已经断开
-            // 如果此时 MirrorPrimary 也是断开，就需要上报拔出事件，销毁对应的SF Display
-            if(mirror_primary != NULL &&
-               mirror_primary->hotplug_state() == DRM_MODE_DISCONNECTED &&
-               mirror_primary->is_connector_mirror_mode() == false){
-              ret |= (int32_t)mirror_primary_display.ClearDisplay();
-              ret |= (int32_t)drm_->ReleaseDpyRes(mirror_primary_id);
-              if(ret != 0){
-                HWC2_ALOGE("hwc_hotplug: MirrorDisplay Unplug primary-display-id=%d connector %u type=%s type_id=%d state is error, skip hotplug.",
-                          mirror_primary_id,
-                          mirror_primary->id(),drm_->connector_type_str(mirror_primary->type()),mirror_primary->type_id());
-              }else if(conn->isCropSplit()){
-                HWC2_ALOGI("hwc_hotplug: MirrorDisplay Unplug primary-display-id=%d connector %u type=%s type_id=%d isCropSplit skip hotplug.",
-                          mirror_primary_id,
-                          mirror_primary->id(),drm_->connector_type_str(mirror_primary->type()),mirror_primary->type_id());
-                // display.SetPowerMode(HWC2_POWER_MODE_OFF);
-              }else{
-                HWC2_ALOGI("hwc_hotplug: MirrorDisplay Unplug primary-display-id=%d connector %u type=%s type_id=%d send hotplug event to SF.",
-                          mirror_primary_id,
-                          mirror_primary->id(),drm_->connector_type_str(mirror_primary->type()),mirror_primary->type_id());
-                hwc2_->HandleDisplayHotplug(mirror_primary_id, DRM_MODE_DISCONNECTED);
-              }
-            }
-          }
-
-          continue;
-        }
-      }else{
-        ret |= (int32_t)display.ClearDisplay();
-        ret |= (int32_t)drm_->ReleaseDpyRes(display_id);
-        if(ret != 0){
-          HWC2_ALOGE("hwc_hotplug: %s connector %u type=%s type_id=%d state is error, skip hotplug.",
-                    cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
-                    conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
-        }else if(conn->isCropSplit()){
-            HWC2_ALOGI("hwc_hotplug: %s connector %u type=%s type_id=%d isCropSplit skip hotplug.",
-                      cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
-                      conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
-          // display.SetPowerMode(HWC2_POWER_MODE_OFF);
-        }else{
-          HWC2_ALOGI("hwc_hotplug: %s connector %u type=%s type_id=%d send hotplug event to SF.",
-                    cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
-                    conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
-          hwc2_->HandleDisplayHotplug(display_id, cur_state);
-        }
-      }
-
-    }
-
-    // SplitDisplay Hoplug.
-    ret = 0;
-    if(conn->isHorizontalSplit()){
-      display_id = conn->GetSplitModeId();
-      auto &split_display = hwc2_->displays_.at(display_id);
-      if (cur_state == DRM_MODE_CONNECTED) {
-        ret |= (int32_t)split_display.HoplugEventTmeline();
-        ret |= (int32_t)split_display.CheckStateAndReinit(!hwc2_->IsHasRegisterDisplayId(display_id));
-        ret |= (int32_t)split_display.ChosePreferredConfig();
-        if(ret != 0){
-          HWC2_ALOGE("hwc_hotplug: %s connector %u type=%s type_id=%d state is error, skip hotplug.",
-                    cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
-                    conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
-        }else{
-          HWC2_ALOGI("hwc_hotplug: %s connector %u type=%s type_id=%d send hotplug event to SF.",
-                    cur_state == DRM_MODE_CONNECTED ? "Plug" : "Unplug",
-                    conn->id(),drm_->connector_type_str(conn->type()),conn->type_id());
-          hwc2_->HandleDisplayHotplug(display_id, cur_state);
-          split_display.SyncPowerMode();
-        }
-      }else{
       ret |= (int32_t)split_display.ClearDisplay();
       ret |= (int32_t)drm_->ReleaseDpyRes(display_id);
       if(ret != 0){
@@ -5881,7 +6038,6 @@ void DrmHwcTwo::DrmHotplugHandler::HandleEvent(uint64_t timestamp_us) {
         hwc2_->HandleDisplayHotplug(display_id, cur_state);
       }
     }
-    }
   }
 
   // 拔出事件，说明存在crtc资源释放
@@ -5889,7 +6045,7 @@ void DrmHwcTwo::DrmHotplugHandler::HandleEvent(uint64_t timestamp_us) {
     for (auto &conn : drm_->connectors()) {
       // 多屏拼接不需要重新注册屏幕
       if(conn->isCropSplit()){
-        continue;
+        return ret;
       }
       ret = 0;
       drmModeConnection cur_state = conn->state();
@@ -5916,10 +6072,9 @@ void DrmHwcTwo::DrmHotplugHandler::HandleEvent(uint64_t timestamp_us) {
     }
   }
 
-  auto &display = hwc2_->displays_.at(0);
-  display.InvalidateControl(5,20);
-
-  return;
+  auto &primary = hwc2_->displays_.at(0);
+  primary.InvalidateControl(5,20);
+  return 0;
 }
 
 void DrmHwcTwo::DrmHotplugHandler::HandleResolutionSwitchEvent(int display_id) {
@@ -5974,18 +6129,45 @@ int DrmHwcTwo::EventWorker::Init(DrmHwcTwo *hwc2) {
   return InitWorker();
 }
 
+void DrmHwcTwo::EventWorker::Start(){
+  Lock();
+  bCanHotplugCallBack_ = true;
+  Unlock();
+  Signal();
+}
+
 int DrmHwcTwo::EventWorker::SendDrmEvent(DrmEvent event){
   Lock();
-  HWC2_ALOGD_IF_INFO("add event display-id=%d type=%d connection=%s",
+  HWC2_ALOGD_IF_INFO("hwc_hotplug : add event display-id=%d type=%d connection=%s timestamp=%" PRIu64,
                       event.display_id, event.type,
-                      event.connection == DRM_MODE_CONNECTED ? "connected" : "disconnected");
-  mPendingEvent_.push(event);
+                      event.connection == DRM_MODE_CONNECTED ? "connected" : "disconnected",
+                      event.timestamp);
+
+  if (mMapPendingEvent_.count(event.display_id) > 0) {
+    // 外层 map 中存在 id
+    if (mMapPendingEvent_[event.display_id].count(event.type) > 0) {
+      if(mMapPendingEvent_[event.display_id][event.type].connection != event.connection){
+        HWC2_ALOGI("hwc_hotplug : Duplicate hotplug events display-id=%d type=%d connection %s -> %s, pending_handle set true.",
+                    event.display_id, event.type,
+                    mMapPendingEvent_[event.display_id][event.type].connection == DRM_MODE_CONNECTED ? "connected" : "disconnected",
+                    event.connection == DRM_MODE_CONNECTED ? "connected" : "disconnected");
+        event.state_change_panding = true;
+      }else{
+        HWC2_ALOGI("hwc_hotplug : Duplicate hotplug events display-id=%d type=%d %s event, use lastest event %" PRIu64 " -> %" PRIu64 ".",
+                    event.display_id, event.type,
+                    event.connection == DRM_MODE_CONNECTED ? "connected" : "disconnected",
+                    mMapPendingEvent_[event.display_id][event.type].timestamp,
+                    event.timestamp);
+      }
+    }
+  }
+  mMapPendingEvent_[event.display_id][event.type] = event;
   Unlock();
   Signal();
   return 0;
 }
 
-int DrmHwcTwo::EventWorker::SendDisplayModeUpdateEvent(DrmEvent event){
+int DrmHwcTwo::EventWorker::HandleDisplayModeUpdateEvent(DrmEvent event){
   // 若系统没有设置为动态更新模式的话，则不进行分辨率更新
   ResourceManager* rm = ResourceManager::getInstance();
   if(!rm->IsDynamicDisplayMode()){
@@ -6033,7 +6215,7 @@ int DrmHwcTwo::EventWorker::SendDisplayModeUpdateEvent(DrmEvent event){
   return 0;
 }
 
-int DrmHwcTwo::EventWorker::SendLocalHotplugEvent(DrmEvent event){
+int DrmHwcTwo::EventWorker::HandleUserHotplugEvent(DrmEvent event){
   // 若系统没有设置为动态更新模式的话，则不进行分辨率更新
   ResourceManager* rm = ResourceManager::getInstance();
 
@@ -6300,9 +6482,15 @@ int DrmHwcTwo::EventWorker::HandleSplitModeChange() {
 void DrmHwcTwo::EventWorker::Routine() {
   ATRACE_CALL();
   Lock();
-
   int ret = 0;
-  if(mPendingEvent_.empty()){
+
+  if(!bCanHotplugCallBack_){
+    ret = WaitForSignalOrExitLocked();
+    Unlock();
+    return;
+  }
+
+  if(mMapPendingEvent_.empty()){
     ret = WaitForSignalOrExitLocked();
     if (ret == -EINTR) {
       HWC2_ALOGI("EventWorker: WaitForSignalOrExitLocked fail! ret=%d", ret);
@@ -6311,32 +6499,47 @@ void DrmHwcTwo::EventWorker::Routine() {
     }
   }
 
-  DrmEvent event = mPendingEvent_.front();
-  mPendingEvent_.pop();
+  //将 Pending 的事件打包成 queue 队列进行处理
+  std::queue<DrmEvent> local_pending_event;
+  for (const auto& outerPair : mMapPendingEvent_) {
+      const auto& innerMap = outerPair.second;
+      for (const auto& innerPair : innerMap) {
+        local_pending_event.push(innerPair.second);
+      }
+  }
+  mMapPendingEvent_.clear();
   Unlock();
 
-  switch(event.type){
-    case DISPLAY_MODE_UPDATE_EVENT:
-      ret = SendDisplayModeUpdateEvent(event);
-      break;
-    case HOTPLUG_EVENT:
-      ret = SendLocalHotplugEvent(event);
-      break;
-    case DISPLAY_PIPELINE_UPDATE_EVENT:
-      ret = HaneleDisplayPipelineUpdateEvent();
-      break;
-    default:
-      ret = -1;
-      HWC2_ALOGE("unknow hotplug event, display-id=%d type=%d connection=%d",
-        event.display_id, event.type, event.connection);
-      break;
-  }
+  // 处理实际的热插拔事件请求
+  while(!local_pending_event.empty()){
+    DrmEvent event = local_pending_event.front();
+    local_pending_event.pop();
+    switch(event.type){
+      case HOTPLUG_DRM_EVENT:
+        ret = HandleDrmHotplugEvent(event);
+        break;
+      case HOTPLUG_USER_EVENT:
+        ret = HandleUserHotplugEvent(event);
+        break;
+      case DISPLAY_MODE_UPDATE_EVENT:
+        ret = HandleDisplayModeUpdateEvent(event);
+        break;
+      case DISPLAY_PIPELINE_UPDATE_EVENT:
+        ret = HaneleDisplayPipelineUpdateEvent();
+        break;
+      default:
+        ret = -1;
+        HWC2_ALOGE("unknow hotplug event, display-id=%d type=%d connection=%d",
+          event.display_id, event.type, event.connection);
+        break;
+    }
 
-  if(ret){
-      HWC2_ALOGE("send hotplug event fail ret=%d , display-id=%d type=%d connection=%d",
-        ret, event.display_id, event.type, event.connection);
-  }
+    if(ret){
+        HWC2_ALOGE("send hotplug event fail ret=%d , display-id=%d type=%d connection=%d",
+          ret, event.display_id, event.type, event.connection);
+    }
 
+  }
   return;
 }
 

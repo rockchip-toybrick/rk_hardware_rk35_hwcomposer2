@@ -43,6 +43,7 @@
 #include <map>
 #include <atomic>
 #include <vector>
+#include <mutex>
 
 namespace android {
 
@@ -851,6 +852,9 @@ class DrmHwcTwo : public hwc2_device_t {
     int DisconnectDisplay();
     int ConnectDisplay();
 
+    void SetNeedPowerModeSync(bool need){
+      bNeedSyncPMState_ = bNeedSyncPMState_ || need;
+    }
    private:
     HWC2::Error ValidatePlanes();
     HWC2::Error InitDrmHwcLayer();
@@ -945,19 +949,20 @@ class DrmHwcTwo : public hwc2_device_t {
     DrmHotplugHandler(DrmHwcTwo *hwc2, DrmDevice *drm)
         : hwc2_(hwc2), drm_(drm) {
     }
-    void HdmiTvOnlyOne(PLUG_EVENT_TYPE hdmi_hotplug_state);
     void HandleEvent(uint64_t timestamp_us);
     void HandleResolutionSwitchEvent(int display_id);
 
    private:
     DrmHwcTwo *hwc2_;
     DrmDevice *drm_;
+    mutable std::recursive_mutex mRecursiveMutex;
   };
 
   enum DrmEventType{
     UNKNOW_EVENT = 0,
+    HOTPLUG_USER_EVENT,
+    HOTPLUG_DRM_EVENT,
     DISPLAY_MODE_UPDATE_EVENT,
-    HOTPLUG_EVENT,
     DISPLAY_PIPELINE_UPDATE_EVENT,
   };
 
@@ -965,6 +970,8 @@ class DrmHwcTwo : public hwc2_device_t {
     DrmEventType type;
     int display_id;
     drmModeConnection connection;
+    uint64_t timestamp;
+    bool state_change_panding = false;
   };
 
   class EventWorker : public Worker {
@@ -973,14 +980,17 @@ class DrmHwcTwo : public hwc2_device_t {
     ~EventWorker() override;
 
     int Init(DrmHwcTwo *hwc2);
+    void Start();
     int SendDrmEvent(DrmEvent event);
 
   protected:
     void Routine() override;
-    // 发送热插拔事件
-    int SendLocalHotplugEvent(DrmEvent event);
+    // 处理来源于HWC的热插拔事件
+    int HandleUserHotplugEvent(DrmEvent event);
+    // 处理来源于DRM Driver的热插拔事件
+    int HandleDrmHotplugEvent(DrmEvent event);
     // 发送分辨率更新事件
-    int SendDisplayModeUpdateEvent(DrmEvent event);
+    int HandleDisplayModeUpdateEvent(DrmEvent event);
     // 处理显示管道更新时间
     int HaneleDisplayPipelineUpdateEvent();
 
@@ -989,8 +999,11 @@ class DrmHwcTwo : public hwc2_device_t {
     int HandlePrimaryChange();
     // 拼接屏幕切换事件处理流程
     int HandleSplitModeChange();
+    // RK3528 的 TV 处理逻辑
+    void HdmiTvOnlyOne(PLUG_EVENT_TYPE hdmi_hotplug_state);
     DrmHwcTwo *hwc2_;
-    std::queue<DrmEvent> mPendingEvent_;
+    bool bCanHotplugCallBack_;
+    std::map<int/* displayid */, std::map<DrmEventType, DrmEvent>> mMapPendingEvent_;
   };
 
 

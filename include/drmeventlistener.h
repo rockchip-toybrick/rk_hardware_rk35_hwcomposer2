@@ -58,6 +58,7 @@ class DrmEventListener : public Worker {
   fd_set fds_;
   UniqueFd uevent_fd_;
   int max_fd_ = -1;
+  std::atomic<bool> is_pending_event_ = false;
 
   DrmDevice *drm_;
   std::unique_ptr<DrmEventHandler> hotplug_handler_;

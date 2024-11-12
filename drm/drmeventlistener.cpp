@@ -65,6 +65,19 @@ int DrmEventListener::Init() {
 void DrmEventListener::RegisterHotplugHandler(DrmEventHandler *handler) {
   assert(!hotplug_handler_);
   hotplug_handler_.reset(handler);
+  // 判断是否存在 pending
+  bool is_pending = is_pending_event_.exchange(false);
+  if(is_pending){
+    struct timespec ts;
+    uint64_t timestamp = 0;
+    int ret = clock_gettime(CLOCK_MONOTONIC, &ts);
+    if (!ret)
+      timestamp = ts.tv_sec * 1000 * 1000 * 1000 + ts.tv_nsec;
+    else
+      ALOGE("Failed to get monotonic clock on hotplug %d", ret);
+    HWC2_ALOGI("hwc_hotplug : handle pending drm event, timestamp=%" PRIu64, timestamp);
+    hotplug_handler_->HandleEvent(timestamp);
+  }
 }
 
 void DrmEventListener::FlipHandler(int /* fd */, unsigned int /* sequence */,
@@ -92,14 +105,6 @@ void DrmEventListener::UEventHandler() {
   char buffer[1024];
   int ret;
 
-  struct timespec ts;
-  uint64_t timestamp = 0;
-  ret = clock_gettime(CLOCK_MONOTONIC, &ts);
-  if (!ret)
-    timestamp = ts.tv_sec * 1000 * 1000 * 1000 + ts.tv_nsec;
-  else
-    ALOGE("Failed to get monotonic clock on hotplug %d", ret);
-
   while (true) {
     ret = read(uevent_fd_.get(), &buffer, sizeof(buffer));
     if (ret == 0) {
@@ -108,9 +113,6 @@ void DrmEventListener::UEventHandler() {
       ALOGE("Got error reading uevent %d", ret);
       return;
     }
-
-    if (!hotplug_handler_)
-      continue;
 
     bool drm_event = false, hotplug_event = false;
     for (int i = 0; i < ret;) {
@@ -123,8 +125,22 @@ void DrmEventListener::UEventHandler() {
       i += strlen(event) + 1;
     }
 
-    if (drm_event && hotplug_event)
-      hotplug_handler_->HandleEvent(timestamp);
+    if (drm_event && hotplug_event){
+      struct timespec ts;
+      uint64_t timestamp = 0;
+      ret = clock_gettime(CLOCK_MONOTONIC, &ts);
+      if (!ret)
+        timestamp = ts.tv_sec * 1000 * 1000 * 1000 + ts.tv_nsec;
+      else
+        HWC2_ALOGE("hwc_hotplug : Failed to get monotonic clock on hotplug %d", ret);
+      // 如果 hotplug_handler_ 非空，则正常执行热插拔流程
+      if(hotplug_handler_){
+        hotplug_handler_->HandleEvent(timestamp);
+      }else{
+        // 设置drm event pending 标志位，待后续注册 hotplug_handler_ 后再执行热插拔流程
+        is_pending_event_.exchange(true);
+      }
+    }
   }
 }
 
