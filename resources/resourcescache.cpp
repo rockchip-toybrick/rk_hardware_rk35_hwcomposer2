@@ -97,17 +97,56 @@ bool RgaHandle::isValid(){
   return uRgaHandle_ != 0;
 }
 
-LayerInfoCache::LayerInfoCache(){};
-LayerInfoCache::~LayerInfoCache(){
-  if(bFbIdCached_){
+LayerInfoCache::LayerInfoCache() {};
+LayerInfoCache::~LayerInfoCache() {
+  if (bFbIdCached_) {
     bFbIdCached_ = false;
     DrmGralloc::getInstance()->hwc_fbid_dec_layer_ref_count(uBufferId_);
   }
-  if(buffer_){
+  if (buffer_) {
     DrmGralloc::getInstance()->freeBuffer(buffer_);
     buffer_ = NULL;
   }
-
 }
 
+bool LayerInfoCache::NeedCacheBufferHandle(buffer_handle_t handle) {
+  // pq metadata
+  if (DrmGralloc::getInstance()->hwc_get_offset_of_pq_metadata(handle) > 0) {
+    // 存在 pq metadata
+    bHasMetadata_ = true;
+    return true;
+  }
+
+  // hdr metadata
+  if (DrmGralloc::getInstance()->hwc_get_offset_of_dynamic_hdr_metadata(handle) > 0) {
+    // 存在 hdr metadata
+    bHasMetadata_ = true;
+    return true;
+  }
+
+#ifdef RK3528
+  metadata_for_rkvdec_scaling_t* metadata = NULL;
+  DrmGralloc::getInstance()->lock_rkvdec_scaling_metadata(handle, &metadata);
+  if (metadata != NULL) {
+    DrmGralloc::getInstance()->unlock_rkvdec_scaling_metadata(handle);
+    return true;
+  }
+#endif
+
+  return false;
+}
+
+int LayerInfoCache::CacheBufferHandle(buffer_handle_t handle) {
+  if (buffer_ != NULL) {
+    return 0;
+  }
+
+  int ret = DrmGralloc::getInstance()->importBuffer(handle, &buffer_);
+  if (ret != android::OK) {
+    HWC2_ALOGE("import buffer failed! ret = %d", ret);
+    buffer_ = NULL;
+    return -1;
+  }
+  return 0;
+}
 };

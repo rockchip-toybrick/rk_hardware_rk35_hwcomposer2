@@ -217,6 +217,7 @@ class DrmHwcTwo : public hwc2_device_t {
                               local_cache_slot,
                               pBufferInfo_->sLayerName_.c_str());
           success = true;
+          // 如果存在本地 cache 的 buffer handle，则优先使用本地的
           if(pBufferInfo_->buffer_){
             buffer_ = pBufferInfo_->buffer_;
             mCurrentState.buffer_ = pBufferInfo_->buffer_;
@@ -227,18 +228,10 @@ class DrmHwcTwo : public hwc2_device_t {
       if(success == false){
         bufferInfoMap_[local_cache_slot] = std::make_shared<LayerInfoCache>();
         pBufferInfo_ = bufferInfoMap_[local_cache_slot];
-        //如果有metadata，有可能在热插拔释放buffer后流程中还在使用此buffer，本地import防止composer释放buffer后出现野指针异常
-        if(drmGralloc_->hwc_get_offset_of_pq_metadata(buffer_)>0 || drmGralloc_->hwc_get_offset_of_dynamic_hdr_metadata(buffer_)>0){
-          buffer_handle_t tempHandle;
-          pBufferInfo_->bHasMetadata_ = true;
-          int ret = drmGralloc_->importBuffer(buffer_,&tempHandle);
-          if(ret != android::OK){
-            HWC2_ALOGE("import buffer failed! ret = %d", ret);
-          }else{
-            buffer_ = tempHandle;
-            mCurrentState.buffer_ = buffer_;
-            pBufferInfo_->buffer_ = buffer_;
-          }
+        // 如果需要 Cache BufferHandle , 则执行cache操作
+        if(pBufferInfo_->NeedCacheBufferHandle(buffer_) && pBufferInfo_->CacheBufferHandle(buffer_) == 0){
+          buffer_ = pBufferInfo_->buffer_;
+          mCurrentState.buffer_ = pBufferInfo_->buffer_;
         }
         uint64_t buffer_id;
         drmGralloc_->hwc_get_handle_buffer_id(buffer_, &buffer_id);
@@ -313,18 +306,10 @@ class DrmHwcTwo : public hwc2_device_t {
         }else{
           pBufferInfo_ = ret.first->second;
           pBufferInfo_->uBufferId_ = buffer_id;
-          //如果有metadata，有可能在热插拔释放buffer后流程中还在使用此buffer，本地import防止composer释放buffer后出现野指针异常
-          if(drmGralloc_->hwc_get_offset_of_pq_metadata(buffer_)>0 || drmGralloc_->hwc_get_offset_of_dynamic_hdr_metadata(buffer_)>0){
-            buffer_handle_t tempHandle;
-            pBufferInfo_->bHasMetadata_ = true;
-            int ret = drmGralloc_->importBuffer(buffer_,&tempHandle);
-            if(ret != android::OK){
-              HWC2_ALOGE("import buffer failed! ret = %d", ret);
-            }else{
-              buffer_ = tempHandle;
-              mCurrentState.buffer_ = buffer_;
-              pBufferInfo_->buffer_ = buffer_;
-            }
+          // 如果需要 Cache BufferHandle , 则执行cache操作
+          if(pBufferInfo_->NeedCacheBufferHandle(buffer_) && pBufferInfo_->CacheBufferHandle(buffer_) == 0){
+            buffer_ = pBufferInfo_->buffer_;
+            mCurrentState.buffer_ = pBufferInfo_->buffer_;
           }
 
           // Bug:#426310
@@ -361,7 +346,8 @@ class DrmHwcTwo : public hwc2_device_t {
       }else{
         bHasCache_ = true;
         pBufferInfo_ = mapBuffer->second;
-        if(pBufferInfo_->buffer_){
+        // 如果存在本地 cache 的 buffer handle，则优先使用本地的
+        if(pBufferInfo_->buffer_ != NULL){
           buffer_ = pBufferInfo_->buffer_;
           mCurrentState.buffer_ = pBufferInfo_->buffer_;
         }
@@ -386,18 +372,10 @@ class DrmHwcTwo : public hwc2_device_t {
       uint64_t buffer_id;
       drmGralloc_->hwc_get_handle_buffer_id(buffer_, &buffer_id);
       pBufferInfo_ = std::make_shared<LayerInfoCache>();
-      //如果有metadata，有可能在热插拔释放buffer后流程中还在使用此buffer，本地import防止composer释放buffer后出现野指针异常
-      if(drmGralloc_->hwc_get_offset_of_pq_metadata(buffer_)>0 || drmGralloc_->hwc_get_offset_of_dynamic_hdr_metadata(buffer_)>0){
-        buffer_handle_t tempHandle;
-        pBufferInfo_->bHasMetadata_ = true;
-        int ret = drmGralloc_->importBuffer(buffer_,&tempHandle);
-        if(ret != android::OK){
-          HWC2_ALOGE("import buffer failed! ret = %d", ret);
-        }else{
-          buffer_ = tempHandle;
-          mCurrentState.buffer_ = buffer_;
-          pBufferInfo_->buffer_ = buffer_;
-        }
+      // 如果需要 Cache BufferHandle , 则执行cache操作
+      if(pBufferInfo_->NeedCacheBufferHandle(buffer_) && pBufferInfo_->CacheBufferHandle(buffer_) == 0){
+        buffer_ = pBufferInfo_->buffer_;
+        mCurrentState.buffer_ = pBufferInfo_->buffer_;
       }
       pBufferInfo_->uBufferId_ = buffer_id;
       pBufferInfo_->uniqueFd_     = base::unique_fd(dup(drmGralloc_->hwc_get_handle_primefd(buffer_)));
