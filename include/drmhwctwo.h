@@ -698,9 +698,9 @@ class DrmHwcTwo : public hwc2_device_t {
     std::shared_ptr<DrmBufferQueue> FbTfBufferQueue_;
 #ifdef USE_LIBPQ
     std::shared_ptr<DrmBufferQueue> bufferQueue_;
-    Pq* swpq_;
+    Pq* swpq_ = NULL;
     std::shared_ptr<Pq> hwpq_;
-    bool bPqReady_;
+    bool bPqReady_ = false;
     PqContext pqCtx_;
 #endif
   };
