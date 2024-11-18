@@ -61,7 +61,15 @@ DrmBuffer::DrmBuffer(int w, int h, int format, uint64_t usage, std::string name,
           usage),
   uFourccFormat_(0),
   uModifier_(0),
+  uBufferId_(0),
+  uGemHandle_(0),
+  uFbId_(0),
+  uRgaHandle_(0),
   uDataspace_(HAL_DATASPACE_UNKNOWN),
+  iLeft_(-1),
+  iTop_(-1),
+  iRight_(-1),
+  iBottom_(-1),
   iFinishFence_(-1),
   iReleaseFence_(-1),
   bInit_(false),
@@ -82,7 +90,15 @@ DrmBuffer::DrmBuffer(native_handle_t* in_handle) :
   iUsage_(0),
   uFourccFormat_(0),
   uModifier_(0),
+  uBufferId_(0),
+  uGemHandle_(0),
+  uFbId_(0),
+  uRgaHandle_(0),
   uDataspace_(HAL_DATASPACE_UNKNOWN),
+  iLeft_(-1),
+  iTop_(-1),
+  iRight_(-1),
+  iBottom_(-1),
   iFinishFence_(-1),
   iReleaseFence_(-1),
   bInit_(false),
@@ -187,6 +203,13 @@ int DrmBuffer::Init(){
     HWC2_ALOGE("DrmBuffer init fail, w=%d h=%d format=%d",iWidth_,iHeight_,iFormat_);
     return -1;
   }
+
+  // Gralloc 0.3 不支持 uint64_t usage
+#ifdef USE_GRALLOC_0
+  HWC2_ALOGD_IF_WARN("Gralloc0.3 unsupport uint64_t usage, force cvt 0x%" PRIx64" to uint32_t 0x%" PRIx64,
+                     iUsage_, iUsage_ & UINT32_MAX);
+  iUsage_ = iUsage_ & UINT32_MAX;
+#endif
 
   ptrBuffer_ = new GraphicBuffer(iWidth_, iHeight_, iFormat_, 0, iUsage_, sName_);
   if(ptrBuffer_->initCheck()) {

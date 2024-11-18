@@ -254,7 +254,10 @@ LOCAL_CPPFLAGS += -DANDROID_P=1
 LOCAL_C_INCLUDES += \
   hardware/rockchip/libgralloc/ \
   system/core/liblog/include/
+LOCAL_CPPFLAGS += -DUSE_GRALLOC_0=1
 endif
+
+
 
 endif
 

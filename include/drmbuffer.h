@@ -101,33 +101,33 @@ public:
 #endif
 
 private:
-  uint64_t uId;
-  int iParentId_;
-  uint64_t iExternelId_;
+  uint64_t uId = 0;
+  int iParentId_ = -1;
+  uint64_t iExternelId_ = 0;
   // BufferInfo
-  int iFd_;
-  int iWidth_;
-  int iHeight_;
-  int iFormat_;
-  int iStride_;
-  int iHeightStride_;
-  int iByteStride_;
+  int iFd_ = -1;
+  int iWidth_ = -1;
+  int iHeight_ = -1;
+  int iFormat_ = -1;
+  int iStride_ = -1;
+  int iHeightStride_ = -1;
+  int iByteStride_ = -1;
   std::vector<uint32_t> uByteStridePlanes_;
-  int iSize_;
-  uint64_t iUsage_;
-  uint32_t uFourccFormat_;
-  uint64_t uModifier_;
-  uint64_t uBufferId_;
-  uint32_t uGemHandle_;
-  uint32_t uFbId_;
+  int iSize_ = -1;
+  uint64_t iUsage_ = 0;
+  uint32_t uFourccFormat_ = 0;
+  uint64_t uModifier_ = 0;
+  uint64_t uBufferId_ = 0;
+  uint32_t uGemHandle_ = 0;
+  uint32_t uFbId_ = 0;
   rga_buffer_handle_t uRgaHandle_=0;
-  android_dataspace_t uDataspace_;
+  android_dataspace_t uDataspace_ = HAL_DATASPACE_UNKNOWN;
 
   // rect crop info
-  int iLeft_;
-  int iTop_;
-  int iRight_;
-  int iBottom_;
+  int iLeft_ = -1;
+  int iTop_ = -1;
+  int iRight_ = -1;
+  int iBottom_ = -1;
 
   // Fence info
   UniqueFd iFinishFence_;
@@ -140,15 +140,15 @@ private:
   int ResetPreScaleBuffer();
 #endif
   // Init flags
-  bool bInit_;
+  bool bInit_ = false;
   std::string sName_;
-  native_handle_t* inBuffer_;
-  buffer_handle_t buffer_;
-  sp<GraphicBuffer> ptrBuffer_;
-  DrmGralloc *ptrDrmGralloc_;
+  native_handle_t* inBuffer_ = NULL;
+  buffer_handle_t buffer_ = NULL;
+  sp<GraphicBuffer> ptrBuffer_ = NULL;
+  DrmGralloc *ptrDrmGralloc_ = NULL;
   mutable std::mutex mtx_;
 #ifdef USE_LIBPQ_HWPQ
-  std::shared_ptr<rk_hwpq_reg> spHwPqReg_;
+  std::shared_ptr<rk_hwpq_reg> spHwPqReg_ = NULL;
 #endif
 };
 
