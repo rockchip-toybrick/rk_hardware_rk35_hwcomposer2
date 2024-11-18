@@ -337,8 +337,7 @@ LOCAL_C_INCLUDES += \
   hardware/rockchip/libsvep/libsvepmemc/lib/Android/$(TARGET_SOC_PLATFORM)/include
 
 LOCAL_SHARED_LIBRARIES += \
-	libsvepmemc \
-	librknnrt-memc
+	libsvepmemc
 
 LOCAL_CFLAGS += \
 	-DUSE_LIBSVEP_MEMC=1
