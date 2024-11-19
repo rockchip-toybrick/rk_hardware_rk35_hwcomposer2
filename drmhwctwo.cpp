@@ -1948,6 +1948,14 @@ int DrmHwcTwo::HwcDisplay::ImportBuffers() {
           ALOGE("Failed to get_gemhanle client_layer, ret=%d", ret);
           return ret;
         }
+        if(client_layer_.isAfbc() != fourcc_mod_is_vendor(drm_hwc_layer.uModifier_,ARM)){
+          //如果AFBC状态与匹配的状态不一致，说明Client layer可能下发失败
+          //此状态一般热插拔后第一帧复现，由于热插拔有强制刷新，后续必然存在正常下发的帧，丢弃第一帧影响不大。
+          HWC2_ALOGW("Client Layer AFBC %s not match client buffer modifier 0x%" PRIx64" skip frame.", 
+                     client_layer_.isAfbc()?"[Enabled]":"[Disabled]",
+                     drm_hwc_layer.uModifier_);
+          return -1;
+        }
 #ifdef USE_LIBPQ
 #ifdef USE_LIBPQ_HWPQ
         if(gIsRK3576()){
