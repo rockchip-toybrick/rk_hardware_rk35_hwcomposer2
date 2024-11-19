@@ -4666,7 +4666,7 @@ HWC2::Error DrmHwcTwo::HwcLayer::SetLayerBuffer(buffer_handle_t buffer,
   }
 
   if(need_cache){
-    if(uCacheSlot > 0){
+    if(uCacheSlot >= 0){
       CacheBufferInfoBySlot(buffer, bUseSlotCache, uCacheSlot);
     }else{
       CacheBufferInfo(buffer);
@@ -4676,7 +4676,7 @@ HWC2::Error DrmHwcTwo::HwcLayer::SetLayerBuffer(buffer_handle_t buffer,
   }
   acquire_fence_ = sp<AcquireFence>(new AcquireFence(acquire_fence));
   bUseSlotCache = false;
-  uCacheSlot = 0;
+  uCacheSlot = -1;
   return HWC2::Error::None;
 }
 

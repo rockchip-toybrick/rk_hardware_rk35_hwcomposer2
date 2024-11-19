@@ -202,7 +202,7 @@ class DrmHwcTwo : public hwc2_device_t {
 
     std::string name() { return layer_name_;}
 
-    void CacheBufferInfoBySlot(buffer_handle_t buffer, bool use_cache, uint32_t slot) {
+    void CacheBufferInfoBySlot(buffer_handle_t buffer, bool use_cache, int slot) {
       buffer_ = buffer;
       mCurrentState.buffer_ = buffer;
       uint64_t local_cache_slot = static_cast<uint64_t>(slot);
@@ -256,7 +256,7 @@ class DrmHwcTwo : public hwc2_device_t {
         pBufferInfo_->bFbIdCached_ = true;
         drmGralloc_->hwc_fbid_add_layer_ref_count(buffer_id);
         HWC2_ALOGD_IF_DEBUG("bufferInfoMap_ size = %zu insert success! slot=%" PRIu64
-                              "w=%d h=%d format=%d fourcc=%c%c%c%c Name=%s",
+                              " w=%d h=%d format=%d fourcc=%c%c%c%c Name=%s",
                               bufferInfoMap_.size(), local_cache_slot,
                               pBufferInfo_->iWidth_,
                               pBufferInfo_->iHeight_,
@@ -332,7 +332,7 @@ class DrmHwcTwo : public hwc2_device_t {
           pBufferInfo_->bFbIdCached_ = true;
           drmGralloc_->hwc_fbid_add_layer_ref_count(buffer_id);
           HWC2_ALOGD_IF_VERBOSE("bufferInfoMap_ size = %zu insert success! BufferId=%" PRIx64
-                                "w=%d h=%d format=%d fourcc=%c%c%c%c Name=%s",
+                                " w=%d h=%d format=%d fourcc=%c%c%c%c Name=%s",
                                bufferInfoMap_.size(),buffer_id,
                                pBufferInfo_->iWidth_,
                                pBufferInfo_->iHeight_,
@@ -671,7 +671,7 @@ class DrmHwcTwo : public hwc2_device_t {
 
     // Slot cache
     bool bUseSlotCache = false;
-    uint32_t uCacheSlot = 0;
+    int uCacheSlot = -1;
 
     std::map<uint64_t, std::shared_ptr<LayerInfoCache>> bufferInfoMap_;
     std::string layer_name_;
