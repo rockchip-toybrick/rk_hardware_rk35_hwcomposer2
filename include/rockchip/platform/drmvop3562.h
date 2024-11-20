@@ -42,23 +42,25 @@
 
 #include <cutils/properties.h>
 
+#ifdef USE_LIBSR
+#include "SvepSr.h"
+#endif
+// define from hardware/rockchip/libgralloc/bifrost/src/mali_gralloc_usages.h
+#ifndef RK_GRALLOC_USAGE_WITHIN_4G
+#define RK_GRALLOC_USAGE_WITHIN_4G (1ULL << 56)
+#endif
 
-// // define from hardware/rockchip/libgralloc/bifrost/src/mali_gralloc_usages.h
-// #ifndef RK_GRALLOC_USAGE_WITHIN_4G
-// #define RK_GRALLOC_USAGE_WITHIN_4G (1ULL << 56)
-// #endif
+#ifndef RK_GRALLOC_USAGE_STRIDE_ALIGN_16
+#define RK_GRALLOC_USAGE_STRIDE_ALIGN_16 (1ULL << 57)
+#endif
 
-// #ifndef RK_GRALLOC_USAGE_STRIDE_ALIGN_16
-// #define RK_GRALLOC_USAGE_STRIDE_ALIGN_16 (1ULL << 57)
-// #endif
+#ifndef RK_GRALLOC_USAGE_STRIDE_ALIGN_64
+#define RK_GRALLOC_USAGE_STRIDE_ALIGN_64 (1ULL << 60)
+#endif
 
-// #ifndef RK_GRALLOC_USAGE_STRIDE_ALIGN_64
-// #define RK_GRALLOC_USAGE_STRIDE_ALIGN_64 (1ULL << 60)
-// #endif
-
-// #ifndef MALI_GRALLOC_USAGE_NO_AFBC
-// #define MALI_GRALLOC_USAGE_NO_AFBC (1ULL << 29)
-// #endif
+#ifndef MALI_GRALLOC_USAGE_NO_AFBC
+#define MALI_GRALLOC_USAGE_NO_AFBC (1ULL << 29)
+#endif
 
 namespace android {
 class DrmDevice;
@@ -81,7 +83,7 @@ typedef enum tagComposeMode{
    HWC_GLES_SIDEBAND_POLICY,
    HWC_GLES_POLICY,
    HWC_RGA_OVERLAY_POLICY,
-   HWC_SVEP_OVERLAY_POLICY,
+   HWC_SR_OVERLAY_POLICY,
    HWC_3D_POLICY,
    HWC_DEBUG_POLICY
 }ComposeMode;
@@ -192,11 +194,18 @@ struct SvepXml{
   bool mValid;
   std::vector<std::string> mSvepWhitelist_;
   std::vector<std::string> mSvepBlacklist_;
+  std::set<uint32_t> mSvepWhitelistUid_;
 };
 
  public:
   Vop3562()
     : rgaBufferQueue_((std::make_shared<DrmBufferQueue>()))
+#ifdef USE_LIBSR
+    ,
+    svep_sr_(std::make_shared<SvepSr>()),
+    bSrReady_(false),
+    bufferQueue_((std::make_shared<DrmBufferQueue>(4)))
+#endif
   {
     Init();
   }
@@ -209,6 +218,7 @@ struct SvepXml{
                    bool gles_policy);
   // Try to assign DrmPlane to display
   int TryAssignPlane(DrmDevice* drm, const std::map<int,int> map_dpys);
+  int InitSvep();
  protected:
   int TryOverlayPolicy(std::vector<DrmCompositionPlane> *composition,
                         std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
@@ -216,6 +226,18 @@ struct SvepXml{
   int TryRgaOverlayPolicy(std::vector<DrmCompositionPlane> *composition,
                       std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                       std::vector<PlaneGroup *> &plane_groups);
+#if (defined USE_LIBSR)
+  bool TrySvepOverlay();
+  int TrySvepPolicy(std::vector<DrmCompositionPlane> *composition,
+                        std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
+                        std::vector<PlaneGroup *> &plane_groups);
+#endif
+
+#ifdef USE_LIBSR
+  int TrySrPolicy(std::vector<DrmCompositionPlane> *composition,
+                        std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
+                        std::vector<PlaneGroup *> &plane_groups);
+#endif
   int TryMixSidebandPolicy(std::vector<DrmCompositionPlane> *composition,
                     std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                     std::vector<PlaneGroup *> &plane_groups);
@@ -247,6 +269,12 @@ struct SvepXml{
                       std::vector<DrmHwcLayer*> &layers, DrmCrtc *crtc,
                       std::vector<PlaneGroup *> &plane_groups);
   bool TryOverlay();
+#ifdef USE_LIBSR
+  int InitSvepSrEnv();
+  bool SvepSrAllowedByBlacklist(DrmHwcLayer *layer);
+  bool SvepSrAllowedByWhitelist(DrmHwcLayer *layer);
+  bool SvepSrAllowedByLocalPolicy(DrmHwcLayer *layer);
+#endif
   void TryMix();
   bool NeedUseRgaPolicy(DrmHwcLayer* layer, DrmCrtc *crtc);
   void UpdateResevedPlane(DrmCrtc *crtc);
@@ -293,6 +321,22 @@ struct SvepXml{
  private:
   Vop2Ctx ctx;
   std::shared_ptr<DrmBufferQueue> rgaBufferQueue_;
+#ifdef USE_LIBSR
+  // SR
+  std::shared_ptr<SvepSr> svep_sr_;
+  bool bSrReady_;
+  std::shared_ptr<DrmBufferQueue> bufferQueue_;
+  SvepXml mSrEnv_;
+  SrMode mLastMode_;
+  bool mEnableOnelineMode_;
+  uint64_t mSrBeginTimeMs_;
+  bool last_sr_mode = false;
+  uint64_t last_buffer_id = 0;
+  int last_enhancement_rate = 0;
+  int last_contrast_mode = 0;
+  int last_contrast_offset = 0;
+  bool mSrSupportScale_;
+#endif
 };
 
 }  // namespace android

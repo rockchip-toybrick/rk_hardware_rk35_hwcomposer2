@@ -2414,7 +2414,6 @@ int Vop356x::TrySrPolicy(std::vector<DrmCompositionPlane> *composition,
                                                     DRM_MODE_ROTATE_0);
           rga_layer_ready = true;
           drmLayer->bUseSr_ = true;
-          drmLayer->iBestPlaneType = PLANE_RK3588_ALL_ESMART_MASK;
           break;
         }else{
           std::shared_ptr<DrmBuffer> output_buffer = bufferQueue_->BackDrmBuffer();
@@ -2452,7 +2451,6 @@ int Vop356x::TrySrPolicy(std::vector<DrmCompositionPlane> *composition,
                                                     DRM_MODE_ROTATE_0);
           use_laster_rga_layer = true;
           drmLayer->bUseSr_ = true;
-          drmLayer->iBestPlaneType = PLANE_RK3588_ALL_ESMART_MASK;
           drmLayer->pSrBuffer_ = output_buffer;
           drmLayer->acquire_fence = sp<AcquireFence>(new AcquireFence(output_buffer->GetFinishFence()));
           break;

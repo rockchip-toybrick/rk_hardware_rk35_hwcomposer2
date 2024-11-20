@@ -918,30 +918,32 @@ class DrmHwcTwo : public hwc2_device_t {
     hwc2_layer_t uCropSplitDummyLayer_;
     std::set<uint64_t> mHasResetBufferId_;
 
-    int32_t color_mode_;
-    bool init_success_;
+    int32_t color_mode_ = -1;
+    bool init_success_ = false;
     bool force_disconneted_ = false;
-    bool validate_success_;
-    bool present_finish_;
+    bool validate_success_ = false;
+    bool present_finish_ = false;
     hwc2_drm_display_t ctx_;
-    bool static_screen_timer_enable_;
-    bool static_screen_opt_;
-    bool force_gles_;
-    bool bNeedSyncPMState_;
+    bool static_screen_timer_enable_ = false;
+    bool static_screen_opt_ = false;
+    bool force_gles_ = false;
+    bool bNeedSyncPMState_ = false;
     HWC2::PowerMode mPowerMode_;
-    int fb_blanked;
-    int iLastLayerSize_;
+    int fb_blanked = -1;
+    int iLastLayerSize_ = 0;
 
     uint32_t frame_no_ = 0;
     uint64_t wb_frame_no_ = 0;
     SyncTimeline sync_timeline_;
     DeferredRetireFence d_retire_fence_;
-    bool bDropFrame_;
-    bool bLastSvepState_;
-    bool bVrrDisplay_;
-    bool bActiveModeChange_;
+    bool bDropFrame_ = false;
+    bool bLastSvepState_ = false;
+    bool bVrrDisplay_ = false;
+    bool bActiveModeChange_ = false;
+    bool bValidateSplitPrimary_ = false;
+    bool bValidateCropSplit = false;
 
-    bool bUseWriteBack_;
+    bool bUseWriteBack_ = false;
     int iLastTunnelId_=0;
 
 #ifdef USE_LIBEBOOK
