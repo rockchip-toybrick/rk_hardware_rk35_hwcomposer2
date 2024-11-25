@@ -84,7 +84,7 @@ class DrmHwcTwo : public hwc2_device_t {
       uLastFrameCnt_ = 0;
       lastTimeRecod_ = 0;
       last_buffer_id_ = 0;
-      mSvepFps_ = 0;
+      mSvepFps_ = 30.0;
       acquire_fence_ = AcquireFence::NO_FENCE;
       layer_name_ = std::string("UnSet");
     };
@@ -600,10 +600,6 @@ class DrmHwcTwo : public hwc2_device_t {
       bUpdate_ = true;
       last_buffer_id_ = buffer_id;
 
-      if(uLastFrameCnt_ == 0){
-        mSvepFps_ = 60;
-      }
-
       // 如果图层更新间隔大于300ms仅计算实时fps，不计算active fps
       nsecs_t current_time = systemTime();
       if((current_time - last_buffer_id_timestamp_) > float(ms2ns(300))){
@@ -690,7 +686,7 @@ class DrmHwcTwo : public hwc2_device_t {
     // 考虑世界时间的fps, 1s内不刷新则刷新率为0
     float mFps_ = 0;
     // SVEP 使用的帧率估计
-    float mSvepFps_ = 0;
+    float mSvepFps_ = 30.0;
 
     // DRM Resource
     DrmGralloc *drmGralloc_;

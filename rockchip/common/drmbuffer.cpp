@@ -146,6 +146,58 @@ DrmBuffer::DrmBuffer(native_handle_t* in_handle) :
   return;
 }
 
+DrmBuffer::DrmBuffer( int Fd,
+                      int width,
+                      int height,
+                      int stride,
+                      int heightStride,
+                      int byteStride,
+                      int fourccFormat,
+                      int size,
+                      uint64_t bufferId,
+                      uint64_t modifier,
+                      std::string name):
+  uId(getUniqueId()),
+  iFd_(Fd),
+  iWidth_(width),
+  iHeight_(height),
+  iFormat_(-1),
+  iStride_(stride),
+  iHeightStride_(heightStride),
+  iByteStride_(byteStride),
+  iSize_(size),
+  iUsage_(0),
+  uFourccFormat_(fourccFormat),
+  uModifier_(modifier),
+  uBufferId_(bufferId),
+  iFinishFence_(-1),
+  iReleaseFence_(-1),
+  bInit_(false),
+  sName_(name),
+  inBuffer_(NULL),
+  ptrBuffer_(NULL),
+  ptrDrmGralloc_(DrmGralloc::getInstance()){
+
+  uByteStridePlanes_={0,0,0,0};
+  int ret = ptrDrmGralloc_->hwc_get_gemhandle_from_fd(iFd_, uBufferId_, &uGemHandle_);
+  if(ret){
+    HWC2_ALOGE("%s hwc_get_gemhandle_from_fd fail, buffer_id =%" PRIx64, sName_.c_str(), uBufferId_);
+    return;
+  }
+
+  HWC2_ALOGD_IF_DEBUG("Import buffer fd=%d w=%d h=%d s=%d hs=%d bs=%d f=%d fcc=%c%c%c%c mdf=0x%" PRIx64 " BufferId=0x%" PRIx64 " name=%s ",
+                      iFd_, iWidth_, iHeight_, iStride_, iHeightStride_, iByteStride_,iFormat_,
+                      uFourccFormat_ , uFourccFormat_ >> 8 , uFourccFormat_ >> 16, uFourccFormat_ >> 24,
+                      uModifier_, uBufferId_, sName_.c_str());
+
+  uFbId_ = 0;
+#ifdef RK3528
+  uPreScaleFbId_= 0;
+#endif
+  bInit_ = true;
+  return;
+}
+
 DrmBuffer::~DrmBuffer(){
   WaitFinishFence();
   WaitReleaseFence();

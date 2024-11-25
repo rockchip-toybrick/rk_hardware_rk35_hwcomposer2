@@ -1989,6 +1989,11 @@ int DrmHwcTwo::HwcDisplay::ImportBuffers() {
     // SidebandStream 图层不需要执行 import 操作
     if(drm_hwc_layer.bSidebandStreamLayer_)
       continue;
+
+    // Memc 图层不需要执行 import 操作
+    if(drm_hwc_layer.bUseMemc_)
+      continue;
+
     // 执行ImportBuffer,获取FbId
     ret = drm_hwc_layer.ImportBuffer(importer_.get());
     if (ret) {
@@ -4363,12 +4368,12 @@ int DrmHwcTwo::HwcDisplay::SelfRefreshEnable(){
       break;
     }
     // MEMC
-    if(drmHwcLayer.bUseMemc_){
-      HWC2_ALOGD_IF_DEBUG("Memc Enable SelfRefresh!");
-      enable_self_refresh = true;
-      self_fps = 60;
-      break;
-    }
+    // if(drmHwcLayer.bUseMemc_){
+    //   HWC2_ALOGD_IF_DEBUG("Memc Enable SelfRefresh!");
+    //   enable_self_refresh = true;
+    //   self_fps = 60;
+    //   break;
+    // }
 #endif
 
     if(drmHwcLayer.bAccelerateLayer_ && !drmHwcLayer.bMatch_){

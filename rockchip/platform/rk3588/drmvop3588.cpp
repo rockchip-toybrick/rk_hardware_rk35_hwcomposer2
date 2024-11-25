@@ -449,11 +449,11 @@ bool Vop3588::SvepMemcAllowedByWhitelist(DrmHwcLayer* layer){
 
 #define SVEP_MEMC_SUPPORT_MAX_FPS 40
 bool Vop3588::SvepMemcAllowedByLocalPolicy(DrmHwcLayer* layer){
-  // 视频大于4K则不使用 SR.
+  // 视频大于4K则不使用 MEMC.
   if(layer->iWidth_ > 4096)
     return false;
 
-  // 如果不是视频格式，并且不在白名单内，则不使用SR
+  // 如果不是视频格式，并且不在白名单内，则不使用MEMC
   if(!layer->bYuv_ && !SvepMemcAllowedByWhitelist(layer))
     return false;
 
@@ -470,7 +470,7 @@ bool Vop3588::SvepMemcAllowedByLocalPolicy(DrmHwcLayer* layer){
       break;
   }
 
-  // 10bit 视频不使用SR
+  // 10bit 视频不使用MEMC
   if(yuv_10bit){
     return false;
   }
@@ -3362,13 +3362,12 @@ int Vop3588::TryMemcPolicy(std::vector<DrmCompositionPlane> *composition,
   ResetLayer(layers);
   ResetPlaneGroups(plane_groups);
 
-  // SR_RUNTIME_DISABLE_NAME 主要适用于前端系统服务判断当前场景无法使用SR模式才设置为 1
+  // MEMC_RUNTIME_DISABLE_NAME 主要适用于前端系统服务判断当前场景无法使用MEMC模式才设置为 1
   // 例如 30帧以上片源 或 低延迟场景
   int svep_runtime_disable = hwc_get_int_property(MEMC_RUNTIME_DISABLE_NAME,"0");
   bool memc_mode = false;
-  // Match policy first
   HWC2_ALOGD_IF_DEBUG("%s=%d bMemcReady_=%d",MEMC_MODE_NAME, HWC2_SR_MEMC, bMemcReady_);
-  // 只有主屏可以享受视频 SR 效果
+  // 只有主屏可以享受视频 MEMC 效果
   if(svep_runtime_disable == 0){
     // Match policy first
     memc_mode = true;
@@ -3396,226 +3395,180 @@ int Vop3588::TryMemcPolicy(std::vector<DrmCompositionPlane> *composition,
   }
 
   bool memc_layer_ready = false;
-  bool use_laster_memc_layer = false;
+  bool memc_new_buffer = false;
+
   std::shared_ptr<DrmBuffer> dst_buffer;
-  static uint64_t last_buffer_id = 0;
+  static uint64_t last_memc_buffer_id = 0;
   int releaseFence = -1;
 
   MemcImageInfo memcSrcInfo;
   MemcImageInfo memcReqInfo;
   MemcImageInfo memcDstInfo;
 
+  bool enableSr = (hwc_get_int_property(MEMC_ENABLR_SR_NAME, "0") > 0);
   bool enableMemcComparation = (hwc_get_int_property(MEMC_CONTRAST_MODE_NAME, "0") > 0);
   bool enableMemcOsd = (hwc_get_int_property(MEMC_OSD_DISABLE_MODE, "0") == 0);
   bool enableMemcOsdOneline = (hwc_get_int_property(MEMC_OSD_VIDEO_ONELINE_MODE, "0") > 0);
   int osd_oneline_wait_second = hwc_get_int_property(MEMC_OSD_VIDEO_ONELINE_WATI_SEC, "12");
-  MEMC_MODE memc_match_mode = MEMC_MODE::MEMC_UN_SUPPORT;
+  static MemcMode memc_match_mode = MemcMode::MEMC_UNSUPPORT;
   for(auto &drmLayer : layers){
     if(SvepMemcAllowedByLocalPolicy(drmLayer) &&
        SvepMemcAllowedByBlacklist(drmLayer)){
         ALOGD_IF(LogLevel(DBG_DEBUG), "%s:line=%d",__FUNCTION__,__LINE__);
-        if(last_buffer_id != drmLayer->uBufferId_ ||
-           last_memc_mode != memc_mode){
-           last_memc_mode = memc_mode;
-           last_buffer_id = drmLayer->uBufferId_;//更新为当前帧的uBufferId_
-          // set src info
-          memcSrcInfo.mBufferInfo_.iFd_     = drmLayer->iFd_;
-          memcSrcInfo.mBufferInfo_.iWidth_  = drmLayer->iWidth_;
-          memcSrcInfo.mBufferInfo_.iHeight_ = drmLayer->iHeight_;
-          memcSrcInfo.mBufferInfo_.iFormat_ = drmLayer->iFormat_;
-          memcSrcInfo.mBufferInfo_.iStride_ = drmLayer->iStride_;
-          memcSrcInfo.mBufferInfo_.uBufferId_ = drmLayer->uBufferId_;
-          memcSrcInfo.mBufferInfo_.uColorSpace_ = (uint64_t)drmLayer->eDataSpace_;
+        // set src info
+        memcSrcInfo.mBufferInfo_.iFd_     = drmLayer->iFd_;
+        memcSrcInfo.mBufferInfo_.iWidth_  = drmLayer->iWidth_;
+        memcSrcInfo.mBufferInfo_.iHeight_ = drmLayer->iHeight_;
+        memcSrcInfo.mBufferInfo_.iFormat_ = drmLayer->uFourccFormat_;
+        memcSrcInfo.mBufferInfo_.iStride_ = drmLayer->iStride_;
+        memcSrcInfo.mBufferInfo_.iHeightStride_ = drmLayer->iHeightStride_;
+        memcSrcInfo.mBufferInfo_.iSize_   = drmLayer->iSize_;
+        memcSrcInfo.mBufferInfo_.uBufferId_ = drmLayer->uBufferId_;
+        memcSrcInfo.mBufferInfo_.uColorSpace_ = MEMC_DATASPACE_UNKNOWN;
 
-          if(drmLayer->iFormat_ == HAL_PIXEL_FORMAT_YUV420_8BIT_I){
-            memcSrcInfo.mBufferInfo_.iFormat_ = HAL_PIXEL_FORMAT_YCrCb_NV12;
-          }else if(drmLayer->iFormat_ == HAL_PIXEL_FORMAT_YUV420_10BIT_I){
-            memcSrcInfo.mBufferInfo_.iFormat_ = HAL_PIXEL_FORMAT_YCrCb_NV12_10;
-          }
-
-          // AFBC format
-          if(drmLayer->bAfbcd_){
-            memcSrcInfo.mBufferInfo_.uMask_ = MEMC_AFBC_FORMAT;
-          }
-
-          memcSrcInfo.mCrop_.iLeft_  = drmLayer->source_crop.left;
-          memcSrcInfo.mCrop_.iTop_   = drmLayer->source_crop.top;
-          memcSrcInfo.mCrop_.iRight_ = drmLayer->source_crop.right;
-          memcSrcInfo.mCrop_.iBottom_= drmLayer->source_crop.bottom;
-
-
-          MEMC_MODE memc_mode = MEMC_MODE::MEMC_UN_SUPPORT;
-          int ret = svep_memc_->MatchMemcMode(&memcSrcInfo, &memc_match_mode);
-          if(ret != MEMC_ERROR::MEMC_NO_ERROR){
-            HWC2_ALOGD_IF_DEBUG("MatchMemcMode fail!, skip this policy. ret=%d", ret);
-            drmLayer->bUseMemc_ = false;
-            continue;
-          }
-
-          //get dst info
-          ret = svep_memc_->GetDstImageInfo(&memcReqInfo);
-          if(ret != MEMC_ERROR::MEMC_NO_ERROR){
-            HWC2_ALOGD_IF_DEBUG("GetDstImageInfo fail!, skip this policy. ret=%d", ret);
-            continue;
-          }
-          dst_buffer = memcBufferQueue_->DequeueDrmBuffer(memcReqInfo.mBufferInfo_.iWidth_,
-                                                        memcReqInfo.mBufferInfo_.iHeight_,
-                                                        memcReqInfo.mBufferInfo_.iFormat_,
-                                                        RK_GRALLOC_USAGE_STRIDE_ALIGN_16 |
-                                                        MALI_GRALLOC_USAGE_NO_AFBC |
-                                                        RK_GRALLOC_USAGE_WITHIN_4G,
-                                                        "MEMC-SurfaceView");
-
-          if(dst_buffer == NULL){
-            HWC2_ALOGD_IF_DEBUG("DequeueDrmBuffer fail!, skip this policy.");
-            continue;
-          }
-
-          // set dst info
-          memcDstInfo.mBufferInfo_.iFd_     = dst_buffer->GetFd();
-          memcDstInfo.mBufferInfo_.iWidth_  = dst_buffer->GetWidth();
-          memcDstInfo.mBufferInfo_.iHeight_ = dst_buffer->GetHeight();
-          memcDstInfo.mBufferInfo_.iFormat_ = dst_buffer->GetFormat();
-          memcDstInfo.mBufferInfo_.iStride_ = dst_buffer->GetStride();
-          memcDstInfo.mBufferInfo_.uBufferId_ = dst_buffer->GetBufferId();
-
-          memcDstInfo.mCrop_.iLeft_  = memcReqInfo.mCrop_.iLeft_;
-          memcDstInfo.mCrop_.iTop_   = memcReqInfo.mCrop_.iTop_;
-          memcDstInfo.mCrop_.iRight_ = memcReqInfo.mCrop_.iRight_;
-          memcDstInfo.mCrop_.iBottom_= memcReqInfo.mCrop_.iBottom_;
-
-          // update drmlayer info
-          hwc_frect_t source_crop;
-          source_crop.left   = memcDstInfo.mCrop_.iLeft_;
-          source_crop.top    = memcDstInfo.mCrop_.iTop_;
-          source_crop.right  = ALIGN_DOWN((int)(memcDstInfo.mCrop_.Width()),2);
-          source_crop.bottom = ALIGN_DOWN((int)(memcDstInfo.mCrop_.Height()),2);
-          drmLayer->UpdateAndStoreInfoFromDrmBuffer(dst_buffer->GetHandle(),
-                                                    dst_buffer->GetFd(),
-                                                    dst_buffer->GetFormat(),
-                                                    dst_buffer->GetWidth(),
-                                                    dst_buffer->GetHeight(),
-                                                    dst_buffer->GetStride(),
-                                                    dst_buffer->GetHeightStride(),
-                                                    dst_buffer->GetByteStride(),
-                                                    dst_buffer->GetSize(),
-                                                    dst_buffer->GetUsage(),
-                                                    dst_buffer->GetFourccFormat(),
-                                                    dst_buffer->GetModifier(),
-                                                    dst_buffer->GetByteStridePlanes(),
-                                                    dst_buffer->GetName(),
-                                                    source_crop,
-                                                    dst_buffer->GetBufferId(),
-                                                    dst_buffer->GetGemHandle(),
-                                                    DRM_MODE_ROTATE_0);
-          memc_layer_ready = true;
-          drmLayer->bUseMemc_ = true;
-          break;
-        }else{
-          // set src info
-          memcSrcInfo.mBufferInfo_.iFd_     = drmLayer->iFd_;
-          memcSrcInfo.mBufferInfo_.iWidth_  = drmLayer->iWidth_;
-          memcSrcInfo.mBufferInfo_.iHeight_ = drmLayer->iHeight_;
-          memcSrcInfo.mBufferInfo_.iFormat_ = drmLayer->iFormat_;
-          memcSrcInfo.mBufferInfo_.iStride_ = drmLayer->iStride_;
-          memcSrcInfo.mBufferInfo_.uBufferId_ = drmLayer->uBufferId_;
-          memcSrcInfo.mBufferInfo_.uColorSpace_ = (uint64_t)drmLayer->eDataSpace_;
-
-          if(drmLayer->iFormat_ == HAL_PIXEL_FORMAT_YUV420_8BIT_I){
-            memcSrcInfo.mBufferInfo_.iFormat_ = HAL_PIXEL_FORMAT_YCrCb_NV12;
-          }else if(drmLayer->iFormat_ == HAL_PIXEL_FORMAT_YUV420_10BIT_I){
-            memcSrcInfo.mBufferInfo_.iFormat_ = HAL_PIXEL_FORMAT_YCrCb_NV12_10;
-          }
-
-          // AFBC format
-          if(drmLayer->bAfbcd_){
-            memcSrcInfo.mBufferInfo_.uMask_ = MEMC_AFBC_FORMAT;
-          }
-
-          /*RK内部 encode IP 对 YUV422 AFBC 的打包处理都一样
-            将 HAL_PIXEL_FORMAT_YCBCR_422_I 转换为 RGA3 能处理的 RK_FORMAT_YCbCr_422_SP 格式即可进行解码*/
-          if(drmLayer->iFormat_ == HAL_PIXEL_FORMAT_YCBCR_422_I && drmLayer->bAfbcd_){
-            memcSrcInfo.mBufferInfo_.iFormat_ = RK_FORMAT_YCbCr_422_SP;
-          }
-
-          memcSrcInfo.mCrop_.iLeft_  = drmLayer->source_crop.left;
-          memcSrcInfo.mCrop_.iTop_   = drmLayer->source_crop.top;
-          memcSrcInfo.mCrop_.iRight_ = drmLayer->source_crop.right;
-          memcSrcInfo.mCrop_.iBottom_= drmLayer->source_crop.bottom;
-
-          MEMC_MODE memc_mode = MEMC_MODE::MEMC_UN_SUPPORT;
-          int ret = svep_memc_->MatchMemcMode(&memcSrcInfo, &memc_match_mode);
-          if(ret != MEMC_ERROR::MEMC_NO_ERROR){
-            HWC2_ALOGD_IF_DEBUG("MatchMemcMode fail!, skip this policy. ret=%d", ret);
-            drmLayer->bUseMemc_ = false;
-            continue;
-          }
-
-          //get dst info
-          ret = svep_memc_->GetDstImageInfo(&memcReqInfo);
-          if(ret != MEMC_ERROR::MEMC_NO_ERROR){
-            HWC2_ALOGD_IF_DEBUG("GetDstImageInfo fail!, skip this policy. ret=%d", ret);
-            continue;
-          }
-          dst_buffer = memcBufferQueue_->DequeueDrmBuffer(memcReqInfo.mBufferInfo_.iWidth_,
-                                                        memcReqInfo.mBufferInfo_.iHeight_,
-                                                        memcReqInfo.mBufferInfo_.iFormat_,
-                                                        RK_GRALLOC_USAGE_STRIDE_ALIGN_16 |
-                                                        MALI_GRALLOC_USAGE_NO_AFBC |
-                                                        RK_GRALLOC_USAGE_WITHIN_4G,
-                                                        "MEMC-SurfaceView");
-
-
-          if(dst_buffer == NULL){
-            HWC2_ALOGD_IF_DEBUG("DequeueDrmBuffer fail!, skip this policy.");
-            continue;
-          }
-
-          memcDstInfo.mBufferInfo_.iFd_     = dst_buffer->GetFd();
-          memcDstInfo.mBufferInfo_.iWidth_  = dst_buffer->GetWidth();
-          memcDstInfo.mBufferInfo_.iHeight_ = dst_buffer->GetHeight();
-          memcDstInfo.mBufferInfo_.iFormat_ = dst_buffer->GetFormat();
-          memcDstInfo.mBufferInfo_.iStride_ = dst_buffer->GetStride();
-          memcDstInfo.mBufferInfo_.uBufferId_ = dst_buffer->GetBufferId();
-
-          memcDstInfo.mCrop_.iLeft_  = memcReqInfo.mCrop_.iLeft_;
-          memcDstInfo.mCrop_.iTop_   = memcReqInfo.mCrop_.iTop_;
-          memcDstInfo.mCrop_.iRight_ = memcReqInfo.mCrop_.iRight_;
-          memcDstInfo.mCrop_.iBottom_= memcReqInfo.mCrop_.iBottom_;
-
-          hwc_frect_t source_crop;
-          source_crop.left  = memcDstInfo.mCrop_.iLeft_;
-          source_crop.top   = memcDstInfo.mCrop_.iTop_;
-          source_crop.right =   ALIGN_DOWN((int)(memcDstInfo.mCrop_.Width()),2);
-          source_crop.bottom  = ALIGN_DOWN((int)(memcDstInfo.mCrop_.Height()),2);
-          drmLayer->UpdateAndStoreInfoFromDrmBuffer(dst_buffer->GetHandle(),
-                                                    dst_buffer->GetFd(),
-                                                    dst_buffer->GetFormat(),
-                                                    dst_buffer->GetWidth(),
-                                                    dst_buffer->GetHeight(),
-                                                    dst_buffer->GetStride(),
-                                                    dst_buffer->GetHeightStride(),
-                                                    dst_buffer->GetByteStride(),
-                                                    dst_buffer->GetSize(),
-                                                    dst_buffer->GetUsage(),
-                                                    dst_buffer->GetFourccFormat(),
-                                                    dst_buffer->GetModifier(),
-                                                    dst_buffer->GetByteStridePlanes(),
-                                                    dst_buffer->GetName(),
-                                                    source_crop,
-                                                    dst_buffer->GetBufferId(),
-                                                    dst_buffer->GetGemHandle(),
-                                                    DRM_MODE_ROTATE_0);
-
-          use_laster_memc_layer = true;
-          drmLayer->bUseMemc_ = true;
-          drmLayer->iBestPlaneType = PLANE_RK3588_ALL_ESMART_MASK;
-          break;
+        // AFBC format
+        if(drmLayer->bAfbcd_){
+          memcSrcInfo.mBufferInfo_.uMask_ = MEMC_AFBC_FORMAT;
         }
-      }
+
+        int ret = svep_memc_->EnableSvepSr(enableSr);
+        if (ret != MemcError::MEMC_NO_ERROR){
+          HWC2_ALOGE("Memc EnableSvepSr fail.\n");
+          continue;
+        }
+
+        ret = svep_memc_->SetFpsInfo(drmLayer->fFps_, ctx.state.fScreenRefresh_);
+        if(ret != MemcError::MEMC_NO_ERROR){
+          HWC2_ALOGD_IF_DEBUG("Memc SetFpsInfo fail!, skip this policy. ret=%d", ret);
+          drmLayer->bUseMemc_ = false;
+          continue;
+        }
+
+        if(enableMemcOsd){
+          MemcOsdMode osd_mode = MEMC_OSD_ENABLE_VIDEO;
+          const wchar_t* osd_str = MEMC_OSD_VIDEO_STR;
+          if(enableMemcOsdOneline > 0){
+            if(mMemcLastMode_ != memc_match_mode){
+              struct timeval tp;
+              gettimeofday(&tp, NULL);
+              mMemcLastMode_ = memc_match_mode;
+              mMemcBeginTimeMs_ = tp.tv_sec * 1000 + tp.tv_usec / 1000;
+              mMemcEnableOnelineMode_ = false;
+            }
+            if(!mMemcEnableOnelineMode_){
+              struct timeval tp;
+              gettimeofday(&tp, NULL);
+              uint64_t current_time = tp.tv_sec * 1000 + tp.tv_usec / 1000;
+              if((current_time - mMemcBeginTimeMs_) > osd_oneline_wait_second * 1000){
+                mMemcEnableOnelineMode_ = true;
+              }
+            }else{
+              osd_mode = MEMC_OSD_ENABLE_VIDEO_ONELINE;
+              osd_str = MEMC_OSD_VIDEO_ONELINE_STR;
+            }
+          }
+          svep_memc_->SetOsdMode(osd_mode, osd_str);
+        }else{
+          svep_memc_->SetOsdMode(MEMC_OSD_DISABLE, NULL);
+        }
+        svep_memc_->SetContrastMode(enableMemcComparation);
+
+        // 处理旋转
+        MemcRotateMode rotate = MEMC_ROTATE_0;
+        switch(drmLayer->transform){
+        case DRM_MODE_ROTATE_0:
+          rotate = MEMC_ROTATE_0;
+          break;
+        case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_X :
+          rotate = MEMC_REFLECT_X;
+          break;
+        case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_Y:
+          rotate = MEMC_REFLECT_Y;
+          break;
+        case DRM_MODE_ROTATE_90:
+          rotate = MEMC_ROTATE_90;
+          break;
+        case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_X | DRM_MODE_REFLECT_Y:
+          rotate = MEMC_ROTATE_180;
+          break;
+        case DRM_MODE_ROTATE_270:
+          rotate = MEMC_ROTATE_270;
+          break;
+        // case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_X | DRM_MODE_ROTATE_90 :
+        //   usage = IM_HAL_TRANSFORM_FLIP_H | IM_HAL_TRANSFORM_ROT_90;
+        //   break;
+        // case DRM_MODE_ROTATE_0 | DRM_MODE_REFLECT_Y | DRM_MODE_ROTATE_90:
+        //   usage = IM_HAL_TRANSFORM_FLIP_V | IM_HAL_TRANSFORM_ROT_90;
+        //   break;
+        default:
+          rotate = MEMC_ROTATE_0;
+          ALOGE_IF(LogLevel(DBG_DEBUG),"Unknow sf transform 0x%x", drmLayer->transform);
+        }
+        ret = svep_memc_->SetRotateMode(rotate);
+        if (ret != MemcError::MEMC_NO_ERROR){
+          HWC2_ALOGE("Memc SetOsdMode fail.\n");
+          continue;
+        }
+
+        memcSrcInfo.mCrop_.iLeft_  = drmLayer->source_crop.left;
+        memcSrcInfo.mCrop_.iTop_   = drmLayer->source_crop.top;
+        memcSrcInfo.mCrop_.iRight_ = drmLayer->source_crop.right;
+        memcSrcInfo.mCrop_.iBottom_= drmLayer->source_crop.bottom;
+        ret = svep_memc_->MatchMemcMode(&memcSrcInfo, &memc_match_mode);
+        if(ret != MemcError::MEMC_NO_ERROR){
+          HWC2_ALOGD_IF_DEBUG("MatchMemcMode fail!, skip this policy. ret=%d", ret);
+          drmLayer->bUseMemc_ = false;
+          continue;
+        }
+
+        //get dst info
+        ret = svep_memc_->GetDstImageInfo(&memcDstInfo);
+        if(ret != MemcError::MEMC_NO_ERROR){
+          HWC2_ALOGD_IF_DEBUG("GetDstImageInfo fail!, skip this policy. ret=%d", ret);
+          continue;
+        }
+
+        // 使用查询到的Memc输出参数构造一个虚拟的layer
+        hwc_frect_t source_crop;
+        source_crop.left   = memcDstInfo.mCrop_.iLeft_;
+        source_crop.top    = memcDstInfo.mCrop_.iTop_;
+        source_crop.right  = memcDstInfo.mCrop_.iRight_;
+        source_crop.bottom = memcDstInfo.mCrop_.iBottom_;
+        drmLayer->UpdateAndStoreInfoFromDrmBuffer(drmLayer->sf_handle,
+                                                  drmLayer->iFd_,
+                                                  memcDstInfo.mBufferInfo_.iFormat_,
+                                                  memcDstInfo.mBufferInfo_.iWidth_,
+                                                  memcDstInfo.mBufferInfo_.iHeight_,
+                                                  memcDstInfo.mBufferInfo_.iStride_,
+                                                  memcDstInfo.mBufferInfo_.iHeightStride_,
+                                                  0,
+                                                  0,
+                                                  0,
+                                                  memcDstInfo.mBufferInfo_.iFormat_,
+                                                  0,
+                                                  drmLayer->uByteStridePlanes_,
+                                                  std::string("MEMC-")+drmLayer->sLayerName_,
+                                                  source_crop,
+                                                  drmLayer->uBufferId_,
+                                                  drmLayer->uGemHandle_,
+                                                  DRM_MODE_ROTATE_0);
+        memc_layer_ready = true;
+        drmLayer->bUseMemc_ = true;
+        drmLayer->svep_memc_ = svep_memc_;
+        // drmLayer->iBestPlaneType = PLANE_RK3588_ALL_ESMART_MASK;
+
+        if(last_memc_buffer_id != drmLayer->uBufferId_ ||
+          last_memc_mode != memc_mode){
+          last_memc_mode = memc_mode;
+          last_memc_buffer_id = drmLayer->uBufferId_; //更新为当前帧的uBufferId_
+          memc_new_buffer = true;
+        }
+
+        break;
+    }
   }
 
-  if(memc_layer_ready || use_laster_memc_layer){
+  if(memc_layer_ready){
     ALOGD_IF(LogLevel(DBG_DEBUG), "%s:line=%d memc layer ready, to matchPlanes",__FUNCTION__,__LINE__);
     int ret = 0;
     if(ctx.request.iSkipCnt > 0){
@@ -3626,52 +3579,19 @@ int Vop3588::TryMemcPolicy(std::vector<DrmCompositionPlane> *composition,
         ret = TryMixVideoPolicy(composition,layers,crtc,plane_groups);
       }
     }
-    if(!ret){ // Match sucess, to call im2d interface
+
+    if(!ret){ // Match sucess, to call memc interface
       for(auto &drmLayer : layers){
         if(drmLayer->bUseMemc_){
-          if(enableMemcOsd){
-            MEMC_OSD_MODE osd_mode = MEMC_OSD_ENABLE_VIDEO;
-            const wchar_t* osd_str = MEMC_OSD_VIDEO_STR;
-            if(enableMemcOsdOneline > 0){
-              // 视频播放SR若干帧后，采用oneline OSD模式
-              if(mMemcLastMode_ != memc_match_mode){
-                struct timeval tp;
-                gettimeofday(&tp, NULL);
-                mMemcLastMode_ = memc_match_mode;
-                mMemcBeginTimeMs_ = tp.tv_sec * 1000 + tp.tv_usec / 1000;
-                mMemcEnableOnelineMode_ = false;
-              }
-              if(!mMemcEnableOnelineMode_){
-                struct timeval tp;
-                gettimeofday(&tp, NULL);
-                uint64_t current_time = tp.tv_sec * 1000 + tp.tv_usec / 1000;
-                if((current_time - mMemcBeginTimeMs_) > osd_oneline_wait_second * 1000){
-                  mMemcEnableOnelineMode_ = true;
-                }
-              }else{
-                osd_mode = MEMC_OSD_ENABLE_VIDEO_ONELINE;
-                osd_str = MEMC_OSD_VIDEO_ONELINE_STR;
-              }
+          if(memc_new_buffer){
+            ret = svep_memc_->SetSrcImage(&memcSrcInfo);
+            if(ret != MemcError::MEMC_NO_ERROR){
+              HWC2_ALOGD_IF_DEBUG("SetSrcImage fail!, skip this policy. ret=%d", ret);
+              drmLayer->ResetInfoFromStore();
+              drmLayer->bUseMemc_ = false;
+              break;
             }
-            svep_memc_->SetOsdMode(osd_mode, osd_str);
-          }else{
-            svep_memc_->SetOsdMode(MEMC_OSD_DISABLE, NULL);
           }
-          svep_memc_->SetContrastMode(enableMemcComparation);
-          int memc_fence = -1;
-          int ret = svep_memc_->RunAsync(&memcSrcInfo, &memcDstInfo, &memc_fence);
-          if(ret != MEMC_ERROR::MEMC_NO_ERROR){
-            HWC2_ALOGD_IF_DEBUG("MpRunAsync fail!, skip this policy. ret=%d", ret);
-            memcBufferQueue_->QueueBuffer(dst_buffer);
-            drmLayer->ResetInfoFromStore();
-            drmLayer->bUseMemc_ = false;
-            break;
-          }
-
-          dst_buffer->SetFinishFence(dup(memc_fence));
-          drmLayer->pSrBuffer_ = dst_buffer;
-          drmLayer->acquire_fence = sp<AcquireFence>(new AcquireFence(memc_fence));
-          memcBufferQueue_->QueueBuffer(dst_buffer);
           uMemcFrameNo_ = ctx.request.frame_no_;
           mMemcLastMode_ = memc_match_mode;
           return 0;
@@ -3683,7 +3603,6 @@ int Vop3588::TryMemcPolicy(std::vector<DrmCompositionPlane> *composition,
       HWC2_ALOGD_IF_DEBUG("MatchPlanes fail! reset DrmHwcLayer.");
       for(auto &drmLayer : layers){
         if(drmLayer->bUseMemc_){
-          memcBufferQueue_->QueueBuffer(dst_buffer);
           drmLayer->ResetInfoFromStore();
           drmLayer->bUseMemc_ = false;
         }
@@ -4314,6 +4233,7 @@ void Vop3588::InitStateContext(
     ctx.state.bIsCropSplitPrimary_ = conn->IsSplitPrimary();
 
     DrmMode mode = conn->current_mode();
+    ctx.state.fScreenRefresh_ = mode.v_refresh();
     if(ctx.state.b8kMode_ != mode.is_8k_mode()){
       HWC2_ALOGD_IF_DEBUG("%s 8K Mode.", mode.is_8k_mode() ? "Enter" : "Quit");
     }

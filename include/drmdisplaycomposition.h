@@ -227,6 +227,16 @@ class DrmDisplayComposition {
     return has_svep_layer_;
   }
 
+  bool has_memc() {
+    return has_svep_memc_layer_;
+  }
+
+#ifdef USE_LIBSVEP_MEMC
+  std::shared_ptr<SvepMemc> get_svep_memc() const{
+    return svep_memc_;
+  }
+#endif
+
   bool has_sideband2() const {
     return has_sideband2_layer_;
   }
@@ -271,6 +281,10 @@ class DrmDisplayComposition {
   bool geometry_changed_;
   bool has_svep_layer_;
   bool has_hwpq_layer_;
+  bool has_svep_memc_layer_;
+#ifdef USE_LIBSVEP_MEMC
+  std::shared_ptr<SvepMemc> svep_memc_;
+#endif
   // sideband
   bool has_sideband2_layer_ = false;
   uint64_t sideband_tunnel_id_ = 0;

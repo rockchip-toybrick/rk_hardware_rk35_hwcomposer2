@@ -988,8 +988,8 @@ int DrmDisplayCompositor::CollectModeSetInfo(drmModeAtomicReqPtr pset,
 
   // RK3528 平台 Sideband 后续流程会处理
 #if defined(USE_VIVID_HDR) && USE_VIVID_HDR
-  if( IsSidebandMode() && !is_sideband_collect){
-    HWC2_ALOGD_IF_INFO("SidebandMode skip normal hdr modeset");
+  if( (IsSidebandMode() || IsMemcMode()) && !is_sideband_collect){
+    HWC2_ALOGD_IF_INFO("SidebandMode/MemcMode skip normal hdr modeset");
     return 0;
   }
 #endif
@@ -1272,6 +1272,32 @@ int DrmDisplayCompositor::UpdateSidebandState() {
   return 0;
 }
 
+#ifdef USE_LIBSVEP_MEMC
+int DrmDisplayCompositor::UpdateMemcState() {
+  ATRACE_CALL();
+  AutoLock lock(&lock_, __func__);
+  if (lock.Lock())
+    return -1;
+
+  // 按照目前的memc，getbuffer和signal 成对调用的逻辑，若上一帧存在buffer，则需要signal
+
+  if(drawing_memc_.buffer_ != NULL ){
+    if(drawing_memc_.svep_memc_->ReleaseDstImage(drawing_memc_.buffer_->GetBufferId()) != MEMC_NO_ERROR){
+      HWC2_ALOGE("MemcStream: ReleaseDstImage fail, last buffer id=%" PRIu64 ,
+                 drawing_memc_.buffer_->GetBufferId());
+    }else{
+      HWC2_ALOGD_IF_DEBUG("MemcStream: ReleaseDstImage Succeed, last buffer id=%" PRIu64 ,
+                 drawing_memc_.buffer_->GetBufferId());
+    }
+  }
+
+  drawing_memc_.enable_ = current_memc_.enable_;
+  drawing_memc_.buffer_ = current_memc_.buffer_;
+  drawing_memc_.svep_memc_ = current_memc_.svep_memc_;
+  return 0;
+}
+#endif
+
 int DrmDisplayCompositor::CollectCommitInfo(drmModeAtomicReqPtr pset,
                                             DrmDisplayComposition *display_comp,
                                             bool test_only,
@@ -1299,12 +1325,17 @@ int DrmDisplayCompositor::CollectCommitInfo(drmModeAtomicReqPtr pset,
     return -ENODEV;
   }
 
-
   frame_no_ = display_comp->frame_no();
   // Enable DrmDisplayCompositor sideband2 mode
   current_sideband2_.enable_ = display_comp->has_sideband2();
   current_sideband2_.tunnel_id_ = display_comp->get_sideband_tunnel_id();
   current_sideband2_.buffer_ = NULL;
+
+#ifdef USE_LIBSVEP_MEMC
+  current_memc_.enable_ = display_comp->has_memc();
+  current_memc_.svep_memc_ = display_comp->get_svep_memc();
+  current_memc_.buffer_ = NULL;
+#endif
 
   // WriteBack Mode
   if(!test_only){
@@ -1459,7 +1490,7 @@ int DrmDisplayCompositor::CollectCommitInfo(drmModeAtomicReqPtr pset,
         layer.acquire_fence->destroy();
       }
 
-      if (!layer.buffer && !layer.bSidebandStreamLayer_) {
+      if (!layer.buffer && !layer.bSidebandStreamLayer_ && !layer.bUseMemc_) {
         ALOGE("Expected a valid framebuffer for pset");
         break;
       }
@@ -1482,6 +1513,9 @@ int DrmDisplayCompositor::CollectCommitInfo(drmModeAtomicReqPtr pset,
         continue;
       }
 
+      if(layer.bUseMemc_){
+        continue;
+      }
 #ifdef RK3528
       if(layer.bNeedPreScale_ && !layer.bIsPreScale_){
         // 如果PreScale图层没有准备号且填黑图层未准备好，则关闭该图层
@@ -1963,6 +1997,9 @@ void DrmDisplayCompositor::Commit() {
     UpdateModeSetState();
     UpdateSidebandState();
     UpdateDrmPlaneAssignState();
+#ifdef USE_LIBSVEP_MEMC
+    UpdateMemcState();
+#endif
   }
 
   AutoLock lock(&lock_, __func__);
@@ -2207,6 +2244,10 @@ int DrmDisplayCompositor::CommitFrame(DrmDisplayComposition *display_comp,
 
       if(layer.bSidebandStreamLayer_){
         HWC2_ALOGI("SidebandLayer continue, iTunnelId = %d", layer.iTunnelId_);
+        continue;
+      }
+      if(layer.bUseMemc_){
+        HWC2_ALOGI("MEMC Layer continue, iTunnelId = %d", layer.iTunnelId_);
         continue;
       }
 
@@ -2738,6 +2779,30 @@ void DrmDisplayCompositor::ClearDisplay() {
       }
     }
   }
+
+#ifdef USE_LIBSVEP_MEMC
+  if(drawing_memc_.enable_ && drawing_memc_.buffer_ != NULL && drawing_memc_.svep_memc_ != NULL){
+    // 释放上一帧 ReleaseFence
+    if(drawing_memc_.svep_memc_->ReleaseDstImage(drawing_memc_.buffer_->GetBufferId())){
+      HWC2_ALOGE("MemcStream: display-id=%d ReleaseDstImage fail, last buffer id=%" PRIu64 ,
+                  display_, drawing_memc_.buffer_->GetBufferId());
+      drawing_memc_.enable_ = false;
+      drawing_memc_.buffer_ = NULL;
+      drawing_memc_.svep_memc_ = NULL;
+    }
+  }
+
+  if(current_memc_.enable_ && current_memc_.buffer_ != NULL && current_memc_.svep_memc_ != NULL){
+    // 释放当前帧 ReleaseFence
+    if(current_memc_.svep_memc_->ReleaseDstImage(current_memc_.buffer_->GetBufferId())){
+      HWC2_ALOGE("MemcStream: display-id=%d ReleaseDstImage fail, last buffer id=%" PRIu64 ,
+                  display_, current_memc_.buffer_->GetBufferId());
+      current_memc_.enable_ = false;
+      current_memc_.buffer_ = NULL;
+      current_memc_.svep_memc_ = NULL;
+    }
+  }
+#endif
 
   clear_ = true;
   //vsync_worker_.VSyncControl(false);
@@ -3392,6 +3457,467 @@ int DrmDisplayCompositor::CollectVPInfo() {
 
   return ret;
 }
+
+#ifdef USE_LIBSVEP_MEMC
+// 收集来自 MEMC 的送显信息
+int DrmDisplayCompositor::CollectMEMCInfo() {
+  ATRACE_CALL();
+  int ret = 0;
+  if(!pset_){
+    pset_ = drmModeAtomicAlloc();
+    if (!pset_) {
+      ALOGE("Failed to allocate property set");
+      return -1 ;
+    }
+  }
+
+  drmModeAtomicReqPtr pset = pset_;
+  DrmDisplayComposition* current_composition = NULL;
+  bool sf_update = false;
+  // collect_composition_map_ 有值则表示当前帧包含 SF 刷新
+  if(collect_composition_map_.count(display_) > 0){
+    current_composition = collect_composition_map_[display_].get();
+    sf_update = true;
+  // collect_composition_map_ 无值，则表示当前帧包含不包含
+  }else if(active_composition_map_.count(display_) > 0){
+    current_composition = active_composition_map_[display_].get();
+  }
+
+  if(current_composition == NULL){
+    HWC2_ALOGE("can't find suitable active DrmDisplayComposition");
+    return 0;
+  }
+
+  std::vector<DrmHwcLayer> &layers = current_composition->layers();
+  std::vector<DrmCompositionPlane> &comp_planes = current_composition
+                                                      ->composition_planes();
+  DrmDevice *drm = resource_manager_->GetDrmDevice(display_);
+
+  DrmConnector *connector = drm->GetConnectorForDisplay(display_);
+  if (!connector) {
+    ALOGE("Could not locate connector for display %d", display_);
+    return -ENODEV;
+  }
+
+  DrmCrtc *crtc = drm->GetCrtcForDisplay(display_);
+  if (!crtc) {
+    HWC2_ALOGE("Could not locate crtc for display %d", display_);
+    return -ENODEV;
+  }
+
+  int zpos = -1;
+
+  for (DrmCompositionPlane &comp_plane : comp_planes) {
+    DrmPlane *plane = comp_plane.plane();
+    std::vector<size_t> &source_layers = comp_plane.source_layers();
+
+    int fb_id = -1;
+    hwc_rect_t display_frame;
+    // Commit mirror function
+    hwc_rect_t display_frame_mirror;
+    hwc_frect_t source_crop;
+    uint64_t rotation = 0;
+    uint64_t alpha = 0xFFFF;
+    uint64_t blend = 0;
+    uint16_t eotf = TRADITIONAL_GAMMA_SDR;
+    drm_colorspace colorspace;
+
+    int dst_l,dst_t,dst_w,dst_h;
+    int src_l,src_t,src_w,src_h;
+    bool afbcd = false, yuv = false, sideband = false;
+
+    crtc = comp_plane.crtc();
+
+    if (comp_plane.type() != DrmCompositionPlane::Type::kDisable) {
+
+      if(source_layers.empty()){
+        ALOGE("Can't handle empty source layer CompositionPlane.");
+        continue;
+      }
+
+      if (source_layers.size() > 1) {
+        ALOGE("Can't handle more than one source layer sz=%zu type=%d",
+              source_layers.size(), comp_plane.type());
+        continue;
+      }
+
+      if (source_layers.front() >= layers.size()) {
+        ALOGE("Source layer index %zu out of bounds %zu type=%d",
+              source_layers.front(), layers.size(), comp_plane.type());
+        break;
+      }
+
+      DrmHwcLayer &layer = layers[source_layers.front()];
+      if (!layer.bUseMemc_ && sf_update) {
+        continue;
+      }
+
+      if(layer.bUseMemc_){
+        vt_rect_t dis_rect = {0,0,0,0};
+        dis_rect.left   = layer.display_frame.left;
+        dis_rect.top    = layer.display_frame.top;
+        dis_rect.right  = layer.display_frame.right;
+        dis_rect.bottom = layer.display_frame.bottom;
+
+        float refresh = 60.0f;  // Default to 60Hz refresh rate
+        DrmDevice *drm = resource_manager_->GetDrmDevice(display_);
+        DrmConnector *conn = drm->GetConnectorForDisplay(display_);
+        if (conn && conn->state() == DRM_MODE_CONNECTED) {
+          if (conn->active_mode().v_refresh() > 0.0f)
+            refresh = conn->active_mode().v_refresh();
+        }
+
+        struct timespec current_time;
+        clock_gettime(CLOCK_MONOTONIC, &current_time);
+        int64_t phased_timestamp = GetPhasedVSync(kOneSecondNs / refresh ,
+                                            current_time.tv_sec * kOneSecondNs +
+                                                current_time.tv_nsec);
+
+        MemcImageInfo dst;
+        int ret = layer.svep_memc_->GetDstImage(&dst, phased_timestamp);
+        if(ret != MEMC_NO_ERROR){
+          HWC2_ALOGD_IF_WARN("MEMC Stream: display-id=%d GetDstImage failed.", display_);
+          continue;
+        }
+        if(dst.mAcquireFence_.get() > 0){
+          ret = sync_wait(dst.mAcquireFence_.get(), 1500);
+          if(ret){
+              HWC2_ALOGD_IF_WARN("Failed to wait for Memc finish fence %d/%d 1500ms, buffer_id=%" PRIu64 "",
+                                                  dst.mAcquireFence_.get(), ret, dst.mBufferInfo_.uBufferId_);
+          }
+          dst.mAcquireFence_.Close();
+        }
+
+        if(dst.mBufferInfo_.iFd_ <= 0 || dst.mBufferInfo_.uBufferId_ <= 0){
+          HWC2_ALOGD_IF_WARN("MEMC Stream: display-id=%d get Invalid image!", display_);
+          continue;
+        }
+
+        uint64_t uModifier_ = 0;
+        if(dst.mBufferInfo_.uMask_&MEMC_AFBC_FORMAT){
+          if(gIsRK3576()){
+            HWC2_ALOGD_IF_DEBUG("TODO: AFBC/RFBC Need to be updated for RK3576!!!");
+            uModifier_ = AFBC_FORMAT_MOD_BLOCK_SIZE_32x8;
+          }else{
+            uModifier_ = AFBC_FORMAT_MOD_BLOCK_SIZE_16x16;
+          }
+        }
+        std::shared_ptr<DrmBuffer> buffer = std::make_shared<DrmBuffer>(
+          dst.mBufferInfo_.iFd_,
+          dst.mBufferInfo_.iWidth_,
+          dst.mBufferInfo_.iHeight_,
+          dst.mBufferInfo_.iStride_,
+          dst.mBufferInfo_.iHeightStride_,
+          dst.mBufferInfo_.iByteStride_,
+          dst.mBufferInfo_.iFormat_,
+          dst.mBufferInfo_.iSize_,
+          dst.mBufferInfo_.uBufferId_,
+          uModifier_,
+          "MemcBuffer"
+        );
+        {
+          // 更新 sideband Buffer 参数
+                    // 更新 sideband Buffer 参数
+          fb_id = buffer->GetFbId();
+          yuv = layer.bYuv_;
+          afbcd = buffer->GetModifier() > 0;
+
+          int left = 0, top = 0, right = 0, bottom = 0;
+          source_crop.left   = (float)dst.mCrop_.iLeft_;
+          source_crop.top    = (float)dst.mCrop_.iTop_;
+          source_crop.right  = (float)dst.mCrop_.iRight_;
+          source_crop.bottom = (float)dst.mCrop_.iBottom_;
+        }
+
+        // 更新Sideband请求状态状态
+        current_memc_.enable_ = true;
+        current_memc_.svep_memc_ = layer.svep_memc_;
+        current_memc_.buffer_ = buffer;
+
+        // RK3528 更新HDR信息, 若无报错，则使用 metadata Hdr模式
+#if defined(USE_VIVID_HDR) && USE_VIVID_HDR
+          if(comp_plane.get_zpos() == 0 && !CollectVPHdrInfo(layer)){
+            current_composition->SetDisplayHdrMode(DRM_HWC_METADATA_HDR, layer.eDataSpace_);
+          }else{
+            current_composition->SetDisplayHdrMode(DRM_HWC_SDR, HAL_DATASPACE_UNKNOWN);
+          }
+          CollectModeSetInfo(pset, current_composition, true);
+#endif
+      }else{
+        fb_id = layer.buffer->fb_id;
+        afbcd = layer.bAfbcd_;
+        yuv = layer.bYuv_;
+        source_crop = layer.source_crop;
+      }
+
+#ifdef RK3528
+      if(layer.bNeedPreScale_ && !layer.bIsPreScale_){
+        HWC2_ALOGD_IF_WARN("%s bNeedPreScale_=%d bIsPreScale_=%d skip until PreScale ready.",
+                            layer.sLayerName_.c_str(),
+                            layer.bNeedPreScale_,
+                            layer.bIsPreScale_);
+        continue;
+      }
+#endif
+
+      display_frame = layer.display_frame;
+      display_frame_mirror = layer.display_frame_mirror;
+      if (layer.blending == DrmHwcBlending::kPreMult) alpha = layer.alpha << 8;
+      eotf = layer.uEOTF;
+      colorspace = layer.uColorSpace;
+
+      if (plane->blend_property().id()) {
+        switch (layer.blending) {
+          case DrmHwcBlending::kPreMult:
+            std::tie(blend, ret) = plane->blend_property().GetEnumValueWithName(
+                "Pre-multiplied");
+            break;
+          case DrmHwcBlending::kCoverage:
+            std::tie(blend, ret) = plane->blend_property().GetEnumValueWithName(
+                "Coverage");
+            break;
+          case DrmHwcBlending::kNone:
+          default:
+            std::tie(blend, ret) = plane->blend_property().GetEnumValueWithName(
+                "None");
+            break;
+        }
+      }else if(plane->blend_property_vop1_kernel4_19().id()){
+        blend= (layer.blending == DrmHwcBlending::kPreMult) ? 1:0;
+      }
+
+      zpos = comp_plane.get_zpos();
+      if(current_composition->display() > 0xf)
+        zpos=1;
+      if(zpos < 0)
+        ALOGE("The zpos(%d) is invalid", zpos);
+
+      rotation = layer.transform;
+    }
+
+    // Disable the plane if there's no framebuffer
+    if (fb_id < 0) {
+      ret = drmModeAtomicAddProperty(pset, plane->id(),
+                                     plane->crtc_property().id(), 0) < 0 ||
+            drmModeAtomicAddProperty(pset, plane->id(),
+                                     plane->fb_property().id(), 0) < 0;
+      if (ret) {
+        ALOGE("Failed to add plane %d disable to pset", plane->id());
+        continue;
+      }
+      continue;
+    }
+    src_l = (int)source_crop.left;
+    src_t = (int)source_crop.top;
+    src_w = (int)(source_crop.right - source_crop.left);
+    src_h = (int)(source_crop.bottom - source_crop.top);
+
+    // Commit mirror function
+    if(comp_plane.mirror()){
+      dst_l = display_frame_mirror.left;
+      dst_t = display_frame_mirror.top;
+      dst_w = display_frame_mirror.right - display_frame_mirror.left;
+      dst_h = display_frame_mirror.bottom - display_frame_mirror.top;
+    }else{
+      dst_l = display_frame.left;
+      dst_t = display_frame.top;
+      dst_w = display_frame.right - display_frame.left;
+      dst_h = display_frame.bottom - display_frame.top;
+    }
+
+    if(yuv){
+      src_l = ALIGN_DOWN(src_l, 2);
+      src_t = ALIGN_DOWN(src_t, 2);
+      src_w = ALIGN_DOWN(src_w, 2);
+      src_h = ALIGN_DOWN(src_h, 2);
+    }
+
+
+    ret = drmModeAtomicAddProperty(pset, plane->id(),
+                                   plane->crtc_property().id(), crtc->id()) < 0;
+    ret |= drmModeAtomicAddProperty(pset, plane->id(),
+                                    plane->fb_property().id(), fb_id) < 0;
+    ret |= drmModeAtomicAddProperty(pset, plane->id(),
+                                    plane->crtc_x_property().id(),
+                                    dst_l) < 0;
+    ret |= drmModeAtomicAddProperty(pset, plane->id(),
+                                    plane->crtc_y_property().id(),
+                                    dst_t) < 0;
+    ret |= drmModeAtomicAddProperty(pset, plane->id(),
+                                    plane->crtc_w_property().id(),
+                                    dst_w) <
+           0;
+    ret |= drmModeAtomicAddProperty(pset, plane->id(),
+                                    plane->crtc_h_property().id(),
+                                    dst_h) <
+           0;
+    ret |= drmModeAtomicAddProperty(pset, plane->id(),
+                                    plane->src_x_property().id(),
+                                    (int)(src_l) << 16) < 0;
+    ret |= drmModeAtomicAddProperty(pset, plane->id(),
+                                    plane->src_y_property().id(),
+                                    (int)(src_t) << 16) < 0;
+    ret |= drmModeAtomicAddProperty(pset, plane->id(),
+                                    plane->src_w_property().id(),
+                                    (int)(src_w)
+                                        << 16) < 0;
+    ret |= drmModeAtomicAddProperty(pset, plane->id(),
+                                    plane->src_h_property().id(),
+                                    (int)(src_h)
+                                        << 16) < 0;
+    ret |= drmModeAtomicAddProperty(pset, plane->id(),
+                                   plane->zpos_property().id(), zpos) < 0;
+    if (ret) {
+      ALOGE("Failed to add plane %d to set", plane->id());
+      break;
+    }
+
+    size_t index=0;
+    std::ostringstream out_log;
+
+    out_log << "DrmDisplayCompositor[" << index << "]"
+            << " frame_no=" << current_composition->frame_no()
+            << " display=" << current_composition->display()
+            << " plane=" << (plane ? plane->name() : "Unknow")
+            << " crct id=" << crtc->id()
+            << " fb id=" << fb_id
+            << " display_frame[" << dst_l << ","
+            << dst_t << "," << dst_w
+            << "," << dst_h << "]"
+            << " source_crop[" << src_l << ","
+            << src_t << "," << src_w
+            << "," << src_h << "]"
+            << ", zpos=" << zpos
+            ;
+    index++;
+
+    if (plane->rotation_property().id()) {
+      ret = drmModeAtomicAddProperty(pset, plane->id(),
+                                     plane->rotation_property().id(),
+                                     rotation) < 0;
+      if (ret) {
+        ALOGE("Failed to add rotation property %d to plane %d",
+              plane->rotation_property().id(), plane->id());
+        break;
+      }
+      out_log << " rotation=" << rotation;
+    }
+
+    if (plane->alpha_property().id()) {
+      ret = drmModeAtomicAddProperty(pset, plane->id(),
+                                     plane->alpha_property().id(), alpha) < 0;
+      if (ret) {
+        ALOGE("Failed to add alpha property %d to plane %d",
+              plane->alpha_property().id(), plane->id());
+        break;
+      }
+      out_log << " alpha=" << std::hex <<  alpha;
+    }
+
+    if (plane->alpha_property_vop1_kernel4_19().id()) {
+      ret = drmModeAtomicAddProperty(pset, plane->id(),
+                                     plane->alpha_property_vop1_kernel4_19().id(), alpha>>8) < 0;
+      if (ret) {
+        ALOGE("Failed to add alpha property %d to plane %d",
+              plane->alpha_property_vop1_kernel4_19().id(), plane->id());
+        break;
+      }
+      out_log << " alpha=" << std::hex <<  alpha;
+    }
+
+    if (plane->blend_property().id()) {
+      ret = drmModeAtomicAddProperty(pset, plane->id(),
+                                     plane->blend_property().id(), blend) < 0;
+      if (ret) {
+        ALOGE("Failed to add pixel blend mode property %d to plane %d",
+              plane->blend_property().id(), plane->id());
+        break;
+      }
+      out_log << " blend mode =" << blend;
+    }
+
+    if (plane->blend_property_vop1_kernel4_19().id()) {
+      ret = drmModeAtomicAddProperty(pset, plane->id(),
+                                     plane->blend_property_vop1_kernel4_19().id(), blend) < 0;
+      if (ret) {
+        ALOGE("Failed to add pixel blend mode property %d to plane %d",
+              plane->blend_property_vop1_kernel4_19().id(), plane->id());
+        break;
+      }
+      out_log << " blend mode =" << blend;
+    }
+
+    if(plane->get_hdr2sdr() && plane->eotf_property().id()) {
+      ret = drmModeAtomicAddProperty(pset, plane->id(),
+                                     plane->eotf_property().id(),
+                                     eotf) < 0;
+      if (ret) {
+        ALOGE("Failed to add eotf property %d to plane %d",
+              plane->eotf_property().id(), plane->id());
+        break;
+      }
+      out_log << " eotf=" << std::hex <<  eotf;
+    }
+
+    if(gIsDrmVerison6_1()){
+      if(plane->kernel6_1_color_encoding().id()) {
+        ret = drmModeAtomicAddProperty(pset, plane->id(),
+                                      plane->kernel6_1_color_encoding().id(),
+                                      colorspace.colorspace_kernel_6_1_.color_encoding_) < 0;
+        if (ret) {
+          ALOGE("Failed to add kernel6_1_color_encoding property %d to plane %d",
+                plane->kernel6_1_color_encoding().id(), plane->id());
+          break;
+        }
+        out_log << " color_encoding=" << std::hex <<  colorspace.colorspace_kernel_6_1_.color_encoding_;
+      }
+
+      if(plane->kernel6_1_color_range().id()) {
+        ret = drmModeAtomicAddProperty(pset, plane->id(),
+                                      plane->kernel6_1_color_range().id(),
+                                      colorspace.colorspace_kernel_6_1_.color_range_) < 0;
+        if (ret) {
+          ALOGE("Failed to add kernel6_1_color_range property %d to plane %d",
+                plane->kernel6_1_color_range().id(), plane->id());
+          break;
+        }
+        out_log << " color_range=" << std::hex <<  colorspace.colorspace_kernel_6_1_.color_range_;
+      }
+    }else{
+      if(plane->colorspace_property().id()) {
+        ret = drmModeAtomicAddProperty(pset, plane->id(),
+                                      plane->colorspace_property().id(),
+                                      colorspace.colorspace_kernel_510_) < 0;
+        if (ret) {
+          ALOGE("Failed to add colorspace property %d to plane %d",
+                plane->colorspace_property().id(), plane->id());
+          break;
+        }
+        out_log << " colorspace=" << std::hex <<  colorspace.colorspace_kernel_510_;
+      }
+    }
+
+    if(plane->async_commit_property().id()) {
+      ret = drmModeAtomicAddProperty(pset, plane->id(),
+                                    plane->async_commit_property().id(),
+                                    sideband == true ? 1 : 0) < 0;
+      if (ret) {
+        ALOGE("Failed to add async_commit_property property %d to plane %d",
+              plane->async_commit_property().id(), plane->id());
+        break;
+      }
+
+      out_log << " async_commit=" << sideband;
+    }
+
+    HWC2_ALOGD_IF_DEBUG("SidebandStream: %s",out_log.str().c_str());
+    out_log.clear();
+  }
+
+  return ret;
+}
+#endif
+
 static inline long __currentTime(){
   struct timeval tp;
   gettimeofday(&tp, NULL);
@@ -3768,7 +4294,7 @@ int DrmDisplayCompositor::WriteBackByRGA() {
 
       DrmHwcLayer &layer = layers[source_layers.front()];
 
-      if (!layer.buffer && !layer.bSidebandStreamLayer_) {
+      if (!layer.buffer && !layer.bSidebandStreamLayer_ && !layer.bUseMemc_) {
         ALOGE("Expected a valid framebuffer for pset");
         continue;
       }
@@ -4170,6 +4696,7 @@ int DrmDisplayCompositor::Composite() {
     ALOGE("Failed to acquire compositor lock %d", ret);
     return ret;
   }
+
   if(IsSidebandMode() && CollectVPInfo()){
     HWC2_ALOGE("CollectVPInfo fail.");
   }
@@ -4183,6 +4710,12 @@ int DrmDisplayCompositor::Composite() {
   if(gIsRK3566()){
     CollectForceDisablePlane();
   }
+
+#ifdef USE_LIBSVEP_MEMC
+  if(IsMemcMode() && CollectMEMCInfo()){
+    HWC2_ALOGE("CollectMEMCInfo fail.");
+  }
+#endif
 
   ret = pthread_mutex_unlock(&lock_);
   if (ret) {
@@ -4224,6 +4757,14 @@ bool DrmDisplayCompositor::HaveQueuedComposites() const {
 
 bool DrmDisplayCompositor::IsSidebandMode() const{
   return current_sideband2_.enable_;
+}
+
+bool DrmDisplayCompositor::IsMemcMode() const{
+#ifdef USE_LIBSVEP_MEMC
+  return current_memc_.enable_;
+#else
+  return false;
+#endif
 }
 
 int DrmDisplayCompositor::GetCompositeQueueMaxSize(DrmDisplayComposition* composition){

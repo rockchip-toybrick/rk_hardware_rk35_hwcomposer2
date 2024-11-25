@@ -336,7 +336,7 @@ ifeq ($(strip $(BOARD_USES_LIBSVEP_MEMC)),true)
 
 CHECKED_DIRECTORY := hardware/rockchip/libsvep/libsvepmemc
 ifeq ($(wildcard $(CHECKED_DIRECTORY)),)
-    $(error Directory $(CHECKED_DIRECTORY) does not exist, Please upgrade the libsvep version!)
+    $(error Directory $(CHECKED_DIRECTORY) does not exist, Please upgrade the libsvepmemc to V2.1.0 version!)
 else
     $(info Directory $(CHECKED_DIRECTORY) exists)
 endif

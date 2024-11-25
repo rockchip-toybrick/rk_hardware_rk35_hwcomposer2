@@ -51,6 +51,7 @@
 
 #ifdef USE_LIBSVEP_MEMC
 #include "SvepMemc.h"
+#include "MemcVersion.h"
 #endif
 
 #include <cutils/properties.h>
@@ -192,6 +193,8 @@ typedef struct StateContext{
   // 4k120 display mode
   bool b4k120pMode_;
 
+  float fScreenRefresh_;
+
   // resolution mode
   int iDisplayWidth_;
   int iDisplayHeight_;
@@ -273,8 +276,7 @@ struct PqBufferInfo{
 
 #ifdef USE_LIBSVEP_MEMC
      ,
-     svep_memc_(std::make_shared<MemcProxyMode>()),
-     memcBufferQueue_((std::make_shared<DrmBufferQueue>()))
+     svep_memc_(std::make_shared<SvepMemc>())
 #endif
   {
     Init();
@@ -446,10 +448,9 @@ struct PqBufferInfo{
 
 #ifdef USE_LIBSVEP_MEMC
   // MEMC
-  std::shared_ptr<MemcProxyMode> svep_memc_;
+  std::shared_ptr<SvepMemc> svep_memc_;
   bool bMemcReady_;
   uint64_t uMemcFrameNo_;
-  std::shared_ptr<DrmBufferQueue> memcBufferQueue_;
   SvepXml mMemcEnv_;
   int mMemcLastMode_;
   bool mMemcEnableOnelineMode_;

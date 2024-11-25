@@ -27,6 +27,10 @@
 #include "rkpq.h"
 #endif
 
+#ifdef USE_LIBSVEP_MEMC
+#include "SvepMemc.h"
+#endif
+
 #include <pthread.h>
 #include <memory>
 #include <sstream>
@@ -70,6 +74,11 @@ class DrmDisplayCompositor {
 
   int CollectVPInfo();
   int CollectVPHdrInfo(DrmHwcLayer &layer);
+
+#ifdef USE_LIBSVEP_MEMC
+  int CollectMEMCInfo();
+#endif
+
   // HwVirtualDisplay功能
   int WriteBackByRGA();
   void Dump(std::ostringstream *out) const;
@@ -82,6 +91,7 @@ class DrmDisplayCompositor {
 
   bool HaveQueuedComposites() const;
   bool IsSidebandMode() const;
+  bool IsMemcMode() const;
   int GetCompositeQueueMaxSize(DrmDisplayComposition* composition);
   int CollectForceDisablePlane();
 
@@ -98,6 +108,14 @@ struct SidebandState {
   uint64_t tunnel_id_ = 0;
   std::shared_ptr<DrmBuffer> buffer_ = NULL;
 };
+
+#ifdef USE_LIBSVEP_MEMC
+  struct MemcState {
+    bool enable_ = false;
+    std::shared_ptr<SvepMemc> svep_memc_ = NULL;
+    std::shared_ptr<DrmBuffer> buffer_ = NULL;
+  };
+#endif
 
   struct HdrState{
     DrmHdrType mode_ = DRM_HWC_SDR;
@@ -156,6 +174,11 @@ struct SidebandState {
   int UpdateModeSetState();
   int UpdateDrmPlaneAssignState();
   int UpdateSidebandState();
+
+#ifdef USE_LIBSVEP_MEMC
+  int UpdateMemcState();
+#endif
+
   int ApplyDpms(DrmDisplayComposition *display_comp);
   int DisablePlanes(DrmDisplayComposition *display_comp);
 
@@ -232,6 +255,11 @@ struct SidebandState {
   // RK Support Sideband mode
   SidebandState current_sideband2_;
   SidebandState drawing_sideband2_;
+
+#ifdef USE_LIBSVEP_MEMC
+  MemcState current_memc_;
+  MemcState drawing_memc_;
+#endif
 
   // 丢帧模式
   bool drop_mode_ = false;

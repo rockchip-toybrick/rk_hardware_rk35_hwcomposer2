@@ -35,6 +35,10 @@
 #include "rockchip/hdr/drmhdrparser.h"
 #include "resources/resourcescache.h"
 
+#ifdef USE_LIBSVEP_MEMC
+#include "SvepMemc.h"
+#endif
+
 struct hwc_import_context;
 
 #include "rockchip/drmgralloc.h"
@@ -291,7 +295,6 @@ struct DrmHwcLayer {
   std::shared_ptr<DrmBuffer> pSrBuffer_;
 
   bool bUseMemc_;
-  std::shared_ptr<DrmBuffer> pMemcBuffer_;
 
   bool bUsePq_;
   std::shared_ptr<DrmBuffer> pPqBuffer_;
@@ -316,6 +319,10 @@ struct DrmHwcLayer {
   bool IsMetadataHdr_;
   rk_hdr_parser_params_t metadataHdrParam_;
   rk_hdr_fmt_info_t metadataHdrFmtInfo_;
+
+#ifdef USE_LIBSVEP_MEMC
+  std::shared_ptr<SvepMemc> svep_memc_;
+#endif
 
   // fps
   float fFps_;

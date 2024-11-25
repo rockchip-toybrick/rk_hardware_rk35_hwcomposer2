@@ -60,8 +60,7 @@ void DrmCompositorWorker::Routine() {
     }
   }
 
-
-  if(!compositor_->IsSidebandMode()){
+  if(!compositor_->IsSidebandMode() && !compositor_->IsMemcMode()){
     if (!compositor_->HaveQueuedComposites()) {
       Lock();
       int wait_ret = WaitForSignalOrExitLocked(kWaitTimeOut_);

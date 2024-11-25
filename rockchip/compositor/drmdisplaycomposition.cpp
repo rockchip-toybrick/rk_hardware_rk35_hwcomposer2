@@ -61,6 +61,7 @@ int DrmDisplayComposition::Init(DrmDevice *drm, DrmCrtc *crtc,
   hdr_mode_ = DRM_HWC_SDR;
   bYuv10bit_ = false;
   has_sideband2_layer_ = false;
+  has_svep_memc_layer_ = false;
   return 0;
 }
 
@@ -80,12 +81,19 @@ int DrmDisplayComposition::SetLayers(DrmHwcLayer *layers, size_t num_layers,
   sideband_tunnel_id_ = 0;
   has_sideband2_layer_ = false;
   has_hwpq_layer_ = false;
+  has_svep_memc_layer_ = false;
 
   for (size_t layer_index = 0; layer_index < num_layers; layer_index++) {
     if(layers[layer_index].bUseSr_ ||
        layers[layer_index].bUseMemc_){
         has_svep_layer_ = true;
     }
+#ifdef USE_LIBSVEP_MEMC
+    if(layers[layer_index].bUseMemc_){
+        has_svep_memc_layer_ = true;
+        svep_memc_ = layers[layer_index].svep_memc_;
+    }
+#endif
     if(layers[layer_index].bSidebandStreamLayer_ && layers[layer_index].iTunnelId_ > 0){
         has_sideband2_layer_ = layers[layer_index].bSideband2_;
         sideband_tunnel_id_ = layers[layer_index].iTunnelId_;
@@ -249,7 +257,6 @@ int DrmDisplayComposition::CreateAndAssignReleaseFences(SyncTimeline &sync_timel
       continue;
     }
 
-
     int sync_timeline_cnt = sync_timeline.IncTimeline();
     sprintf(acBuf,"RFD%" PRIu64 "-FN%" PRIu64 "-TC%d" ,display_id_, frame_no_, sync_timeline_cnt);
     layer->release_fence = sp<ReleaseFence>(new ReleaseFence(sync_timeline, sync_timeline_cnt, acBuf));
@@ -258,10 +265,6 @@ int DrmDisplayComposition::CreateAndAssignReleaseFences(SyncTimeline &sync_timel
 #if (defined USE_LIBSR) || (defined USE_LIBSVEP_MEMC)
       if(layer->bUseSr_ && layer->pSrBuffer_ != NULL){
         layer->pSrBuffer_->SetReleaseFence(dup(layer->release_fence->getFd()));
-        HWC2_ALOGD_IF_DEBUG(" Create SrReleaseFence(%s) Sucess: frame = %" PRIu64 " LayerName=%s",acBuf, frame_no_, layer->sLayerName_.c_str());
-      }
-      if(layer->bUseMemc_ && layer->pMemcBuffer_ != NULL){
-        layer->pMemcBuffer_->SetReleaseFence(dup(layer->release_fence->getFd()));
         HWC2_ALOGD_IF_DEBUG(" Create SrReleaseFence(%s) Sucess: frame = %" PRIu64 " LayerName=%s",acBuf, frame_no_, layer->sLayerName_.c_str());
       }
 #endif
