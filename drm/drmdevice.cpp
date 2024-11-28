@@ -950,39 +950,39 @@ int DrmDevice::GetDisplayPipelineChange(uint64_t* output_change_mask) {
 
   struct DisplayModeXml last_dm_xml = DmXml_;
   int ret = InitEnvFromXml();
-  if(ret){
-    HWC2_ALOGW("DisplayPipeChange: InitEnvFromXml fail, please check xml file.");
-    return -1;
-  }
+  if(ret == 0){
+    // 检查 xml 更新前后的更新
+    uint64_t xml_change_mask = DRM_PIPELINE_NO_CHANGE;
+    ret = CheckEnvXmlChange(&last_dm_xml, &DmXml_, &xml_change_mask);
+    if(ret){
+      HWC2_ALOGW("DisplayPipeChange: CheckEnvXmlChange fail, change_mask=%" PRIx64 " ret=%d",
+                  xml_change_mask, ret);
+      return -1;
 
-  // 检查 xml 更新前后的更新
-  uint64_t xml_change_mask = DRM_PIPELINE_NO_CHANGE;
-  ret = CheckEnvXmlChange(&last_dm_xml, &DmXml_, &xml_change_mask);
-  if(ret){
-    HWC2_ALOGW("DisplayPipeChange: CheckEnvXmlChange fail, change_mask=%" PRIx64 " ret=%d",
-                xml_change_mask, ret);
-    return -1;
+    }
 
-  }
-
-  // 如果存在 XML 存在更新
-  if(xml_change_mask != DRM_PIPELINE_NO_CHANGE){
-    *output_change_mask = xml_change_mask;
+    // 如果存在 XML 存在更新
+    if(xml_change_mask != DRM_PIPELINE_NO_CHANGE){
+      *output_change_mask = xml_change_mask;
+    // 若不存在有效XML配置，则仅检查 Primary/Extend 属性是否更新
+    }
     return 0;
-  // 若不存在有效XML配置，则仅检查 Primary/Extend 属性是否更新
   }else{
+    HWC2_ALOGW("DisplayPipeChange: InitEnvFromXml fail, please check xml file. try to use property.");
     char primary_name_tmp[PROPERTY_VALUE_MAX];
     char extend_name_tmp[PROPERTY_VALUE_MAX];
     int primary_length = property_get("vendor.hwc.device.primary", primary_name_tmp, NULL);
     int extend_length = property_get("vendor.hwc.device.extend", extend_name_tmp, NULL);
     // 属性有更新，则设置 PrimaryChange mask
     if(strncmp(primary_name_tmp, primary_name, sizeof(primary_name_tmp)) != 0 ||
-       strncmp(extend_name_tmp, extend_name, sizeof(extend_name_tmp)) != 0){
+      strncmp(extend_name_tmp, extend_name, sizeof(extend_name_tmp)) != 0){
       *output_change_mask = DRM_PIPELINE_PRIMARY_CHANGE;
-      return 0;
+      strncpy(primary_name, primary_name_tmp, sizeof(primary_name_tmp));
+      strncpy(extend_name, extend_name_tmp, sizeof(extend_name_tmp));
     }
+    return 0;
   }
-  return 0;
+  return -1;
 }
 
 
