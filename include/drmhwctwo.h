@@ -1020,7 +1020,9 @@ class DrmHwcTwo : public hwc2_device_t {
     // 发送分辨率更新事件
     int HandleDisplayModeUpdateEvent(DrmEvent event);
     // 处理显示管道更新时间
-    int HaneleDisplayPipelineUpdateEvent();
+    int HaneleDisplayPipelineUpdateEvent(uint64_t force_mask_update = 0);
+    // 处理单主屏模式
+    int HandleSingleDisplayEvent(DrmEvent event);
 
   private:
     // 主屏切换事件处理流程

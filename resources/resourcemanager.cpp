@@ -190,6 +190,10 @@ int ResourceManager::InitProperty() {
   // RK车机和投影平台需要0，1，2，3这样的顺序ID，因此默认不开启EDID上报
   property_get("vendor.hwc.enable_edid_report", property_value, "0");
   mEnableEdidReport_ = atoi(property_value) > 0;
+  // 使能 SingelDisplay 后，HWC仅向SurfaceFlinger注册主屏
+  // 所有的热插拔时间都会进行优先级仲裁，重新指定主屏上报SurfaceFlinger
+  property_get("vendor.hwc.enable_single_display_mode", property_value, "0");
+  mEnableSingleDisplayMode_ = atoi(property_value) > 0;
 
   return 0;
 }
@@ -220,6 +224,10 @@ bool ResourceManager::GetEnableEdidReport() const{
 
 bool ResourceManager::GetEnableRgaAcquireFence() const{
   return mEnableRgaAcquireFence;
+}
+
+bool ResourceManager::IsSingleDisplayMode() const{
+  return mEnableSingleDisplayMode_;
 }
 
 bool ResourceManager::GetRgaSupportAbove4GB() const{

@@ -131,6 +131,7 @@ class ResourceManager {
   bool GetEnableEdidReport() const;
   bool GetEnableRgaAcquireFence() const;
   bool GetRgaSupportAbove4GB() const;
+  bool IsSingleDisplayMode() const;
 
  private:
   ResourceManager();
@@ -195,6 +196,8 @@ class ResourceManager {
   bool mEnableEdidReport_ = false;
   // Enable RGA acquire fence, RGA kernel driver before 20240724 may crash with acquire fence
   bool mEnableRgaAcquireFence = false;
+  // Enable signal display
+  bool mEnableSingleDisplayMode_ = false;
 
   mutable std::recursive_mutex mRecursiveMutex;
 };
