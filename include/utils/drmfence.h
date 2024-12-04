@@ -161,8 +161,10 @@ class DeferredRetireFence {
             mFences.pop();
         }
 
+        // 根据 hwcomposer2.h 接口要求，Layer::GetReleaseFence
+        // 应该获取当前帧的ReleaseFence，而不是获取上一帧
         const sp<ReleaseFence> &get() const {
-            return mFences.front();
+            return mFences.back();
         }
         const sp<ReleaseFence> &get_back() const {
             return mFences.back();
