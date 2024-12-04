@@ -244,6 +244,11 @@ ifneq ($(filter rk3588, $(strip $(TARGET_BOARD_PLATFORM))), )
 TARGET_SOC_PLATFORM := rk3588
 endif
 
+# RK3562
+ifneq ($(filter rk3562, $(strip $(TARGET_BOARD_PLATFORM))), )
+TARGET_SOC_PLATFORM := rk3562
+endif
+
 # RK356x
 ifneq ($(filter rk356x, $(strip $(TARGET_BOARD_PLATFORM))), )
 TARGET_SOC_PLATFORM := rk356x
