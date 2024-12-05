@@ -1113,6 +1113,7 @@ void DrmHwcLayer::ResetInfoFromStore(){
   iHeight_     = storeLayerInfo_.iHeight_;
   iStride_     = storeLayerInfo_.iStride_;
   iHeightStride_ = storeLayerInfo_.iHeightStride_;
+  iSize_       = storeLayerInfo_.iSize_;
   iByteStride_ = storeLayerInfo_.iByteStride_;
   iUsage       = storeLayerInfo_.iUsage;
   uFourccFormat_ = storeLayerInfo_.uFourccFormat_;
