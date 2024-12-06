@@ -3431,7 +3431,9 @@ int Vop3576::TrySrPolicy(std::vector<DrmCompositionPlane> *composition,
                                                     DRM_MODE_ROTATE_0);
           rga_layer_ready = true;
           drmLayer->bUseSr_ = true;
-          drmLayer->iBestPlaneType = PLANE_RK3576_ALL_ESMART_MASK;
+          if(ctx.state.bCurrentHwPqMode_ == PqUtils::HWPQ_DISABLE){
+            drmLayer->iBestPlaneType = PLANE_RK3576_ALL_ESMART_MASK;
+          }
           break;
         }else{
           std::shared_ptr<DrmBuffer> output_buffer = bufferQueue_->BackDrmBuffer();
@@ -3469,7 +3471,9 @@ int Vop3576::TrySrPolicy(std::vector<DrmCompositionPlane> *composition,
                                                     DRM_MODE_ROTATE_0);
           use_laster_rga_layer = true;
           drmLayer->bUseSr_ = true;
-          drmLayer->iBestPlaneType = PLANE_RK3576_ALL_ESMART_MASK;
+          if(ctx.state.bCurrentHwPqMode_ == PqUtils::HWPQ_DISABLE){
+            drmLayer->iBestPlaneType = PLANE_RK3576_ALL_ESMART_MASK;
+          }
           drmLayer->pSrBuffer_ = output_buffer;
           drmLayer->acquire_fence = sp<AcquireFence>(new AcquireFence(output_buffer->GetFinishFence()));
           break;
@@ -3741,7 +3745,9 @@ int Vop3576::TryMemcPolicy(std::vector<DrmCompositionPlane> *composition,
                                                     DRM_MODE_ROTATE_0);
           memc_layer_ready = true;
           drmLayer->bUseMemc_ = true;
-          drmLayer->iBestPlaneType = PLANE_RK3576_ALL_ESMART_MASK;
+          if(ctx.state.bCurrentHwPqMode_ == PqUtils::HWPQ_DISABLE){
+            drmLayer->iBestPlaneType = PLANE_RK3576_ALL_ESMART_MASK;
+          }
           break;
         }else{
           // set src info
@@ -3841,7 +3847,9 @@ int Vop3576::TryMemcPolicy(std::vector<DrmCompositionPlane> *composition,
 
           use_laster_memc_layer = true;
           drmLayer->bUseMemc_ = true;
-          drmLayer->iBestPlaneType = PLANE_RK3576_ALL_ESMART_MASK;
+          if(ctx.state.bCurrentHwPqMode_ == PqUtils::HWPQ_DISABLE){
+            drmLayer->iBestPlaneType = PLANE_RK3576_ALL_ESMART_MASK;
+          }
           break;
         }
       }
