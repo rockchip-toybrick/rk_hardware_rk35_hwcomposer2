@@ -6554,10 +6554,10 @@ int DrmHwcTwo::EventWorker::HandleSplitModeChange() {
         hwc2_->CreateDisplay(conn->GetSplitModeId(), HWC2::DisplayType::Physical);
       }
       display.ChosePreferredConfig();
-      if(display.CheckStateAndReinit(!hwc2_->IsHasRegisterDisplayId(display_id)) == HWC2::Error::None){
+      if(display.CheckStateAndReinit(!hwc2_->IsHasRegisterDisplayId(conn->GetSplitModeId())) == HWC2::Error::None){
         HWC2_ALOGI("DisplayPipeChange : SplitMode : %s-%d isHorizontalSplit,, send hotplug to SF.",
                   drm->connector_type_str(conn->type()),conn->type_id());
-        hwc2_->HandleDisplayHotplug(display_id, cur_state);
+        hwc2_->HandleDisplayHotplug(conn->GetSplitModeId(), cur_state);
       }else{
         HWC2_ALOGE("DisplayPipeChange : SplitMode : %s-%d isHorizontalSplit, CheckStateAndReinit fail, skip hotplug.",
                   drm->connector_type_str(conn->type()),conn->type_id());
