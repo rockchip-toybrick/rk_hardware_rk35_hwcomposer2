@@ -1893,6 +1893,37 @@ int DrmDisplayCompositor::CollectInfo(
   return 0;
 }
 
+int DrmDisplayCompositor::CollectForceDisablePlane() {
+  ATRACE_CALL();
+  int ret = 0;
+  if(!pset_){
+    return -1;
+  }
+  if (!gIsRK3566()){
+    return 0;
+  }
+
+  drmModeAtomicReqPtr pset = pset_;
+  DrmDisplayComposition* current_composition = NULL;
+
+  DrmDevice *drm = resource_manager_->GetDrmDevice(display_);
+  if(!drm){
+    HWC2_ALOGE("Can not found drm device for display %d", display_);
+    return -1;
+  }
+  std::vector<PlaneGroup *> all_plane_groups = drm->GetPlaneGroups();
+  for(auto &plane_group : all_plane_groups){
+    if(plane_group->current_crtc_ == 0){
+      for (auto &plane : plane_group->planes) {
+        ret |= drmModeAtomicAddProperty(pset, plane->id(), plane->crtc_property().id(), 0) < 0;
+        ret |= drmModeAtomicAddProperty(pset, plane->id(), plane->fb_property().id(), 0) < 0;
+        HWC2_ALOGD_IF_DEBUG("Disable plane %s", plane->name());
+      }
+    }
+  }
+  return ret;
+}
+
 void DrmDisplayCompositor::Commit() {
   ATRACE_CALL();
 
@@ -4148,6 +4179,10 @@ int DrmDisplayCompositor::Composite() {
     HWC2_ALOGE("CollectHwPqInfo fail.");
   }
 #endif
+
+  if(gIsRK3566()){
+    CollectForceDisablePlane();
+  }
 
   ret = pthread_mutex_unlock(&lock_);
   if (ret) {

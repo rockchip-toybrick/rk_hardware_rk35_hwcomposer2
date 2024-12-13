@@ -83,6 +83,7 @@ class DrmDisplayCompositor {
   bool HaveQueuedComposites() const;
   bool IsSidebandMode() const;
   int GetCompositeQueueMaxSize(DrmDisplayComposition* composition);
+  int CollectForceDisablePlane();
 
  private:
   struct ModeState {
