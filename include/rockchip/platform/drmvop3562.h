@@ -335,7 +335,8 @@ struct SvepXml{
   int last_enhancement_rate = 0;
   int last_contrast_mode = 0;
   int last_contrast_offset = 0;
-  bool mSrSupportScale_;
+  bool mSrSupportScale_ = false;
+  int mSrAuthTimeline_ = 0;
 #endif
 };
 

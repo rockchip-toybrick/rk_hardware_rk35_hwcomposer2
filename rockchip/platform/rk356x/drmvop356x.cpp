@@ -2146,8 +2146,21 @@ int Vop356x::TrySrPolicy(std::vector<DrmCompositionPlane> *composition,
   if(svep_sr_.get() != NULL){
     SrError error = svep_sr_->Init(SR_VERSION, true);
     if (error != SrError::None){
-        HWC2_ALOGD_IF_DEBUG("Sr Init fail, plase check License.\n");
-        return -1;
+        int auth_timeline = hwc_get_int_property("sys.svep.auth_timeline", "0");
+        if(mSrAuthTimeline_ != auth_timeline){
+          mSrAuthTimeline_ = auth_timeline;
+          svep_sr_ = std::make_shared<SvepSr>();
+          error = svep_sr_->Init(SR_VERSION, true);
+          if (error != SrError::None){
+            HWC2_ALOGD_IF_DEBUG("Sr Init fail, plase check License.\n");
+            return -1;
+          }else{
+            bSrReady_ = true;
+          }
+        }else{
+          HWC2_ALOGD_IF_DEBUG("Sr Init fail, plase check License.\n");
+          return -1;
+        }
     }
   }else{
     bSrReady_ = true;
@@ -3558,7 +3571,17 @@ int Vop356x::InitContext(
     if(svep_sr_.get() != NULL){
       SrError error = svep_sr_->Init(SR_VERSION, true);
       if (error != SrError::None){
-          HWC2_ALOGD_IF_DEBUG("Sr Init fail, plase check License.\n");
+          int auth_timeline = hwc_get_int_property("sys.svep.auth_timeline", "0");
+          if(mSrAuthTimeline_ != auth_timeline){
+            mSrAuthTimeline_ = auth_timeline;
+            svep_sr_ = std::make_shared<SvepSr>();
+            error = svep_sr_->Init(SR_VERSION, true);
+            if (error != SrError::None){
+              HWC2_ALOGD_IF_DEBUG("Sr Init fail, plase check License.\n");
+            }
+          }else{
+            HWC2_ALOGD_IF_DEBUG("Sr Init fail, plase check License.\n");
+          }
       }
     }
   }
