@@ -1,3 +1,9 @@
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'  # 只有通过 schedule 触发才执行
+      when: always
+    - when: never  # 其他所有情况都不执行
+
 stages:
   - build
 
