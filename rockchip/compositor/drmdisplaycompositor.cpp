@@ -3986,7 +3986,7 @@ int DrmDisplayCompositor::CollectVPHdrInfo(DrmHwcLayer &hdrLayer){
   // 用于判断是否存在 metadata 信息
   bool codec_meta_exist = false;
   // 获取存储 metadata 信息的 offset
-  int64_t offset = hdrLayer.bHasMetadata_ ? gralloc->hwc_get_offset_of_dynamic_hdr_metadata(hdrLayer.sf_handle):0;
+  int64_t offset = gralloc->hwc_get_offset_of_dynamic_hdr_metadata(hdrLayer.sf_handle);
   if(offset < 0){
     HWC2_ALOGD_IF_ERR("Fail to get hdr metadata offset, Id=%d Name=%s ", hdrLayer.uId_, hdrLayer.sLayerName_.c_str());
   }
