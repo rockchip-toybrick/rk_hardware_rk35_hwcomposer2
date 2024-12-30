@@ -283,7 +283,7 @@ class DrmDisplayComposition {
   bool has_hwpq_layer_;
   bool has_svep_memc_layer_;
 #ifdef USE_LIBSVEP_MEMC
-  std::shared_ptr<SvepMemc> svep_memc_;
+  std::shared_ptr<SvepMemc> svep_memc_ = NULL;
 #endif
   // sideband
   bool has_sideband2_layer_ = false;

@@ -321,7 +321,7 @@ struct DrmHwcLayer {
   rk_hdr_fmt_info_t metadataHdrFmtInfo_;
 
 #ifdef USE_LIBSVEP_MEMC
-  std::shared_ptr<SvepMemc> svep_memc_;
+  std::shared_ptr<SvepMemc> svep_memc_ = NULL;
 #endif
 
   // fps

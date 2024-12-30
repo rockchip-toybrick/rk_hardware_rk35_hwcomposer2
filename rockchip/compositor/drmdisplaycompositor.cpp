@@ -1514,6 +1514,7 @@ int DrmDisplayCompositor::CollectCommitInfo(drmModeAtomicReqPtr pset,
       }
 
       if(layer.bUseMemc_){
+        //图层已不需要处理, 由函数CollectMEMCInfo获取MEMC输出图像
         continue;
       }
 #ifdef RK3528
@@ -2247,7 +2248,7 @@ int DrmDisplayCompositor::CommitFrame(DrmDisplayComposition *display_comp,
         continue;
       }
       if(layer.bUseMemc_){
-        HWC2_ALOGI("MEMC Layer continue, iTunnelId = %d", layer.iTunnelId_);
+        HWC2_ALOGI("SvepMemc Layer continue, iTunnelId = %d", layer.iTunnelId_);
         continue;
       }
 
@@ -2784,7 +2785,7 @@ void DrmDisplayCompositor::ClearDisplay() {
   if(drawing_memc_.enable_ && drawing_memc_.buffer_ != NULL && drawing_memc_.svep_memc_ != NULL){
     // 释放上一帧 ReleaseFence
     if(drawing_memc_.svep_memc_->ReleaseDstImage(drawing_memc_.buffer_->GetBufferId())){
-      HWC2_ALOGE("MemcStream: display-id=%d ReleaseDstImage fail, last buffer id=%" PRIu64 ,
+      HWC2_ALOGE("SvepMemc: display-id=%d ReleaseDstImage fail, last buffer id=%" PRIu64 ,
                   display_, drawing_memc_.buffer_->GetBufferId());
       drawing_memc_.enable_ = false;
       drawing_memc_.buffer_ = NULL;
@@ -3576,20 +3577,20 @@ int DrmDisplayCompositor::CollectMEMCInfo() {
         MemcImageInfo dst;
         int ret = layer.svep_memc_->GetDstImage(&dst, phased_timestamp);
         if(ret != MEMC_NO_ERROR){
-          HWC2_ALOGD_IF_WARN("MEMC Stream: display-id=%d GetDstImage failed.", display_);
+          HWC2_ALOGD_IF_WARN("SvepMemc: display-id=%d GetDstImage failed.", display_);
           continue;
         }
         if(dst.mAcquireFence_.get() > 0){
           ret = sync_wait(dst.mAcquireFence_.get(), 1500);
           if(ret){
-              HWC2_ALOGD_IF_WARN("Failed to wait for Memc finish fence %d/%d 1500ms, buffer_id=%" PRIu64 "",
+              HWC2_ALOGD_IF_WARN("Failed to wait for SvepMemc finish fence %d/%d 1500ms, buffer_id=%" PRIu64 "",
                                                   dst.mAcquireFence_.get(), ret, dst.mBufferInfo_.uBufferId_);
           }
           dst.mAcquireFence_.Close();
         }
 
         if(dst.mBufferInfo_.iFd_ <= 0 || dst.mBufferInfo_.uBufferId_ <= 0){
-          HWC2_ALOGD_IF_WARN("MEMC Stream: display-id=%d get Invalid image!", display_);
+          HWC2_ALOGD_IF_WARN("SvepMemc: display-id=%d get Invalid image!", display_);
           continue;
         }
 
@@ -3910,7 +3911,7 @@ int DrmDisplayCompositor::CollectMEMCInfo() {
       out_log << " async_commit=" << sideband;
     }
 
-    HWC2_ALOGD_IF_DEBUG("SidebandStream: %s",out_log.str().c_str());
+    HWC2_ALOGD_IF_DEBUG("SvepMemc: %s",out_log.str().c_str());
     out_log.clear();
   }
 

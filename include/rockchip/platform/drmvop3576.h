@@ -51,7 +51,6 @@
 
 #ifdef USE_LIBSVEP_MEMC
 #include "SvepMemc.h"
-#include "MemcVersion.h"
 #endif
 
 #include <cutils/properties.h>
@@ -448,7 +447,7 @@ struct PqBufferInfo{
 
 #ifdef USE_LIBSVEP_MEMC
   // MEMC
-  std::shared_ptr<SvepMemc> svep_memc_;
+  std::shared_ptr<SvepMemc> svep_memc_ = NULL;
   bool bMemcReady_;
   bool last_memc_mode = false;
   uint64_t uMemcFrameNo_;

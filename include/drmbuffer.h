@@ -34,7 +34,7 @@ class DrmBuffer{
 public:
   DrmBuffer(int w, int h, int format, uint64_t usage = 0, std::string sName_ = "unset", int parent_id = 0);
   DrmBuffer(native_handle_t* in_handle);
-  DrmBuffer(int Fd, int width, int height, int stride, int heightStride, int byteStride, int fourccFormat,
+  DrmBuffer(int fd, int width, int height, int stride, int heightStride, int byteStride, int fourccFormat,
                             int size, uint64_t bufferId, uint64_t modifier, std::string name="DrmBuffer");
   ~DrmBuffer();
   int Init();

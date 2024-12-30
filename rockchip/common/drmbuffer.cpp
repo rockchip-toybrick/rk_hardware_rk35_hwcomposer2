@@ -146,7 +146,7 @@ DrmBuffer::DrmBuffer(native_handle_t* in_handle) :
   return;
 }
 
-DrmBuffer::DrmBuffer( int Fd,
+DrmBuffer::DrmBuffer( int fd,
                       int width,
                       int height,
                       int stride,
@@ -158,7 +158,7 @@ DrmBuffer::DrmBuffer( int Fd,
                       uint64_t modifier,
                       std::string name):
   uId(getUniqueId()),
-  iFd_(Fd),
+  iFd_(fd),
   iWidth_(width),
   iHeight_(height),
   iFormat_(-1),
