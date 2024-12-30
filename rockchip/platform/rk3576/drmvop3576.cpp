@@ -3099,6 +3099,9 @@ int Vop3576::TrySvepPolicy(
       return ret;
     }
   }else{
+    if(last_sr_mode){
+      svep_sr_ = std::make_shared<SvepSr>();
+    }
     last_sr_mode = false;
   }
 #endif
@@ -3107,7 +3110,7 @@ int Vop3576::TrySvepPolicy(
   if(hwc_get_int_property(MEMC_MODE_NAME, "0") > 0){
     ret = TryMemcPolicy(composition, layers, crtc, plane_groups);
     if(ret){
-      HWC2_ALOGD_IF_DEBUG("TrySrPolicy match fail.");
+      HWC2_ALOGD_IF_DEBUG("TryMemcPolicy match fail.");
       ClearMemcJob();
       last_memc_mode = false;
     }else{
@@ -4714,32 +4717,6 @@ int Vop3576::InitContext(
 
 #if (defined USE_LIBSR) || (defined USE_LIBSVEP_MEMC)
   TrySvepOverlay();
-#endif
-
-#ifdef USE_LIBSR
-  DrmDevice *drm = crtc->getDrmDevice();
-  DrmConnector *conn = drm->GetConnectorForDisplay(crtc->display());
-  // 只有主屏可以享受视频 SR 效果
-  if(conn && conn->state() == DRM_MODE_CONNECTED &&
-      conn->display() == 0){
-      HWC2_ALOGD_IF_DEBUG("Only Primary Display enable SR function. display=%d", conn->display());
-    if(svep_sr_.get() != NULL){
-      SrError error = svep_sr_->Init(SR_VERSION, true);
-      if (error != SrError::None){
-          int auth_timeline = hwc_get_int_property("sys.svep.auth_timeline", "0");
-          if(mSrAuthTimeline_ != auth_timeline){
-            mSrAuthTimeline_ = auth_timeline;
-            svep_sr_ = std::make_shared<SvepSr>();
-            error = svep_sr_->Init(SR_VERSION, true);
-            if (error != SrError::None){
-              HWC2_ALOGD_IF_DEBUG("Sr Init fail, plase check License.\n");
-            }
-          }else{
-            HWC2_ALOGD_IF_DEBUG("Sr Init fail, plase check License.\n");
-          }
-      }
-    }
-  }
 #endif
 
 #ifdef USE_LIBPQ
