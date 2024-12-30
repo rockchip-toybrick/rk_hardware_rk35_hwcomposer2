@@ -414,6 +414,7 @@ struct SvepXml{
   // MEMC
   std::shared_ptr<SvepMemc> svep_memc_;
   bool bMemcReady_;
+  bool last_memc_mode = false;
   uint64_t uMemcFrameNo_;
   SvepXml mMemcEnv_;
   int mMemcLastMode_;

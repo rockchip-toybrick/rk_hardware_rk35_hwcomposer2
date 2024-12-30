@@ -3109,10 +3109,13 @@ int Vop3576::TrySvepPolicy(
     if(ret){
       HWC2_ALOGD_IF_DEBUG("TrySrPolicy match fail.");
       ClearMemcJob();
+      last_memc_mode = false;
     }else{
       HWC2_ALOGD_IF_DEBUG("TryMemcPolicy match success.");
       return ret;
     }
+  }else{
+    last_memc_mode = false;
   }
 #endif
 
@@ -3620,7 +3623,6 @@ int Vop3576::TryMemcPolicy(std::vector<DrmCompositionPlane> *composition,
     memc_mode = true;
   }
 
-  static bool last_memc_mode = false;
   if(!memc_mode){
     last_memc_mode = memc_mode;
     return -1;
