@@ -5852,8 +5852,23 @@ void DrmHwcTwo::DrmHotplugHandler::HandleEvent(uint64_t timestamp_us) {
   }
 
   if(changed_conn_cnt == 0){
-    HWC2_ALOGW("hwc_hotplug : receive drm hotplug event but no state change. "
-               "display's connection maybe have error, timestamp_us=%" PRIu64, timestamp_us);
+    if(gIsRK3528() && timestamp_us == 0){
+      HWC2_ALOGW("hwc_hotplug : RK3528 process first hotplug, timestamp_us=%" PRIu64, timestamp_us);
+      for (auto &conn : drm_->connectors()) {
+        DrmEvent event;
+        event.display_id = conn->display();
+        event.connection = conn->hotplug_state();
+        event.type = HOTPLUG_DRM_EVENT;
+        event.timestamp = timestamp_us;
+        hwc2_->eventWorker_.SendDrmEvent(event);
+        HWC2_ALOGI("hwc_hotplug : rk3528 send first hotplug, connector %s-%d , timestamp_us=%" PRIu64,
+                    drm_->connector_type_str(conn->type()), conn->type_id(),
+                    timestamp_us);
+      }
+    }else{
+      HWC2_ALOGW("hwc_hotplug : receive drm hotplug event but no state change. "
+                 "display's connection maybe have error, timestamp_us=%" PRIu64, timestamp_us);
+    }
   }
 }
 
