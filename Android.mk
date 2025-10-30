@@ -123,20 +123,8 @@ LOCAL_SRC_FILES := \
   rockchip/common/drmbaseparameter.cpp \
   rockchip/platform/common/platformdrmgeneric.cpp \
   rockchip/platform/common/platform.cpp \
-  rockchip/platform/rk3326/drmvop3326.cpp \
-  rockchip/platform/rk3399/drmvop3399.cpp \
-  rockchip/platform/rk356x/drmvop356x.cpp \
   rockchip/platform/rk3588/drmvop3588.cpp \
-  rockchip/platform/rk3576/drmvop3576.cpp \
-  rockchip/platform/rk3528/drmvop3528.cpp \
-  rockchip/platform/rk3562/drmvop3562.cpp \
-  rockchip/platform/rk3326/drmhwc3326.cpp \
-  rockchip/platform/rk3399/drmhwc3399.cpp \
-  rockchip/platform/rk356x/drmhwc356x.cpp \
   rockchip/platform/rk3588/drmhwc3588.cpp \
-  rockchip/platform/rk3576/drmhwc3576.cpp \
-  rockchip/platform/rk3528/drmhwc3528.cpp \
-  rockchip/platform/rk3562/drmhwc3562.cpp \
   rockchip/common/drmbufferqueue.cpp \
   rockchip/common/drmbuffer.cpp \
   rockchip/common/hdr/drmhdrparser.cpp \

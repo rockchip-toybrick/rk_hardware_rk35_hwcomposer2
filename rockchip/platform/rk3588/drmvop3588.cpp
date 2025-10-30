@@ -2406,7 +2406,7 @@ int Vop3588::TryRgaOverlayPolicy(
 
           IM_STATUS im_state;
           // Call Im2d 格式转换
-          im_state = imcheck_composite(src, dst, pat, src_rect, dst_rect, pat_rect, usage | IM_ASYNC);
+          im_state = imcheck_composite(src, dst, pat, src_rect, dst_rect, pat_rect, static_cast<const int32_t>(usage | IM_ASYNC));
           if(im_state != IM_STATUS_NOERROR){
             HWC2_ALOGE("call im2d scale fail, %s",imStrError(im_state));
             break;
